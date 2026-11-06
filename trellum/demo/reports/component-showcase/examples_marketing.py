@@ -1,7 +1,18 @@
 """Independent, fully observed synthetic acquisition-cohort geography example."""
 import pandas as pd
 
-from trellum.components import DataSource, DataTable, FilterBar, Grid, MetricView, MiniKpi, Panel, RawHTML, Section, TabGroup
+from trellum.components import (
+    DataSource,
+    DataTable,
+    FilterBar,
+    Grid,
+    MetricView,
+    MiniKpi,
+    Panel,
+    RawHTML,
+    Section,
+    TabGroup,
+)
 
 SOURCE = 'showcase_marketing_facts'
 RESULT = 'showcase_marketing_geography'
@@ -48,7 +59,8 @@ def add_sections(ctx):
                                       'percent' if key in {'d30_recovery', 'd7_retention'} else 'number',
                      'precision': 2 if key in {'cost', 'd7_revenue', 'd30_revenue', 'cpi', 'd30_recovery', 'd7_retention'} else 0}
                for key in METRICS}
-    table = lambda title: DataTable(view.empty_frame(), title, dataset_id=RESULT, sortable=True, searchable=True,
+    def table(title):
+        return DataTable(view.empty_frame(), title, dataset_id=RESULT, sortable=True, searchable=True,
                                     columns=['group_label', *METRICS, 'Notes'], column_formats=formats)
     ctx.add_section('Marketing geography', [
         DataSource(SOURCE, frame),

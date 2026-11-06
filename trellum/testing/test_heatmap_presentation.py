@@ -1,7 +1,7 @@
 """Heatmap constructor compatibility and unchanged static aggregation."""
 
-from dataclasses import dataclass, fields
 import inspect
+from dataclasses import dataclass, fields
 
 import pandas as pd
 import pytest

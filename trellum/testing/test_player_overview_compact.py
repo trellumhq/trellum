@@ -10,9 +10,9 @@ import dataclasses
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -25,7 +25,6 @@ from trellum.reporting.diagnostics import compute_details
 from trellum.runner.discovery import discover_report
 from trellum.themes import THEME_REGISTRY
 from trellum.validation import validate_report
-
 
 BASELINE = "99e5c9420c796843ff477566710156ae11049f5e"
 ROOT = Path(__file__).resolve().parents[2]

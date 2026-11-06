@@ -1,20 +1,23 @@
 """Declarations, independent leaf oracles and genuine native report diagnostics."""
 from __future__ import annotations
 
-from decimal import Decimal
 import importlib.util
 import inspect
 import json
 import subprocess
 import sys
 import types
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from trellum.components import RenderContext, TreemapChart
-from trellum.components.charts._treemap_summary import treemap_summary_config, treemap_summary_option_problems
+from trellum.components.charts._treemap_summary import (
+    treemap_summary_config,
+    treemap_summary_option_problems,
+)
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME
@@ -49,7 +52,7 @@ def baseline_class():
     source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/treemap.py'], cwd=ROOT, text=True)
     module = types.ModuleType('_treemap_summary_baseline')
     sys.modules[module.__name__] = module
-    exec(compile(source, 'baseline/treemap.py', 'exec'), module.__dict__)
+    exec(compile(source, 'baseline/treemap.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return module.TreemapChart
 
 

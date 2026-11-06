@@ -7,20 +7,27 @@ import inspect
 import json
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pandas as pd
 import pytest
 
-from trellum.components import AreaChart, ComboChart, DataSource, FilterBar, LineChart, RenderContext
+from trellum.components import (
+    AreaChart,
+    ComboChart,
+    DataSource,
+    FilterBar,
+    LineChart,
+    RenderContext,
+)
 from trellum.components.charts.line_area import line_option_problems
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
-from trellum.themes import DefaultTheme, THEME_REGISTRY
+from trellum.themes import THEME_REGISTRY, DefaultTheme
 from trellum.validation import validate_report
 
 

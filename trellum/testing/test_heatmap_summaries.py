@@ -1,21 +1,25 @@
 """Heatmap-local summary API, original-input guards and native arithmetic."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal
 import importlib.util
 import inspect
 import json
-from pathlib import Path
 import subprocess
 import sys
 import types
+from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from trellum.components import HeatmapChart, RenderContext
-from trellum.components.charts._heatmap_summary import heatmap_summary_config, heatmap_option_problems, heatmap_input_reason
+from trellum.components.charts._heatmap_summary import (
+    heatmap_input_reason,
+    heatmap_option_problems,
+    heatmap_summary_config,
+)
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME
@@ -40,15 +44,17 @@ def render(chart):
 
 def baseline_class():
     source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/heatmap.py'], cwd=ROOT, text=True)
-    module = types.ModuleType('_heatmap_summary_baseline'); sys.modules[module.__name__] = module
-    exec(compile(source, 'baseline/heatmap.py', 'exec'), module.__dict__)
+    module = types.ModuleType('_heatmap_summary_baseline')
+    sys.modules[module.__name__] = module
+    exec(compile(source, 'baseline/heatmap.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return module.HeatmapChart
 
 
 def examples():
     path = ROOT / 'trellum/demo/reports/component-showcase/examples_heatmap_summaries.py'
     spec = importlib.util.spec_from_file_location('examples_heatmap_summaries', path)
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     return module
 
 
@@ -95,7 +101,8 @@ def test_opt_out_exact_baseline_and_keyword_only_subclass_positions(dataset):
 def test_malformed_constructor_render_and_mutation_validation(declaration):
     with pytest.raises(ValueError, match='header_summary'):
         HeatmapChart(frame(), 'x', 'y', 'v', header_summary=declaration)
-    chart = HeatmapChart(frame(), 'x', 'y', 'v'); chart.header_summary = declaration
+    chart = HeatmapChart(frame(), 'x', 'y', 'v')
+    chart.header_summary = declaration
     with pytest.raises(ValueError, match='header_summary'):
         render(chart)
     assert [code for code, _ in heatmap_option_problems(chart)] == ['chart-summary-invalid']
@@ -137,7 +144,8 @@ def test_opt_in_preserves_cells_and_carries_only_compact_original_guard(stat, la
 def test_static_guard_before_legacy_coercion_and_drop_empty(bad):
     df = pd.DataFrame({'x': ['A', 'B'], 'y': ['one', 'two'], 'v': [bad, 10]}, dtype=object)
     chart = HeatmapChart(df, 'x', 'y', 'v', drop_empty=True, header_summary=SUMMARY)
-    _, on = render(chart); _, off = render(baseline_class()(df, 'x', 'y', 'v', drop_empty=True))
+    _, on = render(chart)
+    _, off = render(baseline_class()(df, 'x', 'y', 'v', drop_empty=True))
     assert on['summary_input_reason']
     assert on['cells'] == off['cells']
     assert heatmap_input_reason([bad])
@@ -152,7 +160,8 @@ def test_native_examples_diagnostics_and_independent_expected_arithmetic(tmp_pat
     one = df[(df.platform == 'iOS') & (df.day == '2026-08-01')].groupby(['x', 'y'])['units'].sum()
     assert [one.sum(), one.mean(), one.min(), one.max(), one.count()] == [60, 15, 0, 30, 4]
     ctx = example_context(tmp_path)
-    details = compute_details(ctx); result = validate_report(ctx, details=details)
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
     assert [(c.id, c.level, c.section, c.message) for c in result.checks if c.level in {'warn', 'fail'}] == []
     for section in ctx.sections:
         for chart in walk(section['components']):
@@ -179,7 +188,8 @@ process.stdout.write(JSON.stringify({full:run([0,90,180,270]),one:run([0,10,20,3
   valid:_fwHeatmapInputReason([{v:-3},{v:0},{v:.5}], 'v')}));
 '''
     out = json.loads(subprocess.check_output(['node', '-e', script], text=True))
-    values = lambda key: [r['value'] for r in out[key]]
+    def values(key):
+        return [r['value'] for r in out[key]]
     assert values('full') == [540,135,0,270,4]
     assert values('one') == [60,15,0,30,4]
     assert values('empty') == [None,None,None,None,0]

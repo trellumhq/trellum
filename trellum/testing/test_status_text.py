@@ -1,9 +1,9 @@
 """Semantic small-text roles preserve constructor and author-color contracts."""
-from dataclasses import dataclass, fields
 import hashlib
 import importlib.util
 import inspect
 import json
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import pytest

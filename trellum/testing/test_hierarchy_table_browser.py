@@ -2,9 +2,9 @@
 
 import base64
 import csv
-from decimal import Decimal
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -30,7 +30,8 @@ def browser():
 def native_page(tmp_path, browser):
     ctx = context(tmp_path/'report')
     examples().add_sections(ctx)
-    df = frame(); df['value'] = [0.1, 0.2, 0]
+    df = frame()
+    df['value'] = [0.1, 0.2, 0]
     special = pd.DataFrame({'id':[str(i) for i in range(11)],
         'source':['__proto__','a|b','a',None,'',True,'true',1,'1','Missing','Long '+ 'wrapping label '*30],
         'platform':['leaf','c','b|c','x','x','x','x','x','x','x','x'],
@@ -53,7 +54,8 @@ def native_page(tmp_path, browser):
     data = json.loads((tmp_path/'report/data.json').read_text())
     ids = [cid for cid,cfg in data['components'].items() if cfg['type']=='hierarchy_table']
     page = browser.new_page(viewport={'width':1280,'height':1000})
-    errors = []; page.on('pageerror',lambda error:errors.append(str(error)))
+    errors = []
+    page.on('pageerror',lambda error:errors.append(str(error)))
     def fulfill(route):
         url = urlsplit(route.request.url)
         assert url.hostname == 'hierarchy.test', route.request.url
@@ -301,7 +303,8 @@ def test_focus_falls_back_to_closest_ancestor_and_stale_callbacks_cannot_draw(na
         _fwRenderers.hierarchy_table(id,{..._reportData.components[id],dimensions:['source','platform','month'],column:null});}""",cid)
     buttons = page.locator(f'#{cid} button[data-path]')
     buttons.first.click()
-    child = buttons.nth(1); child.click()
+    child = buttons.nth(1)
+    child.click()
     assert child.evaluate('e=>e===document.activeElement')
     page.evaluate("_fwFilterEngine.setFilter('hierarchy_root','hide-child','platform','equals','Android')")
     assert buttons.first.evaluate('e=>e===document.activeElement')

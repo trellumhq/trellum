@@ -1,11 +1,11 @@
 """Treemap API, genuine report mechanics, label paint and native details."""
 
-from dataclasses import dataclass
 import importlib.util
 import inspect
 import json
 import mimetypes
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -330,7 +330,8 @@ def test_real_hierarchy_paint_details_themes_filters_and_reinit(tmp_path, width)
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
         directory = os.environ.get("TRELLUM_SCREENSHOT_DIR")
         if directory:
-            folder = Path(directory); folder.mkdir(parents=True, exist_ok=True)
+            folder = Path(directory)
+            folder.mkdir(parents=True, exist_ok=True)
             default.locator("summary").click()
             long = _root(page, "Long hierarchy names")
             long.locator("summary").click()

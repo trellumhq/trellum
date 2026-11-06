@@ -59,12 +59,20 @@ def add_sections(ctx):
             stack_toggle_id=dataset + "_split", normalize_toggle_id=dataset + "_mode",
             header_context="Delivered events; original units in the summary.") for series in ("UA", "RT")])])
     dataset = "stacked_summary_eligibility"
-    invalid = frame.copy(); invalid["events"] = invalid.events.astype(object); invalid.loc[0, "events"] = None
-    string = frame.copy(); string["events"] = string.events.astype(object); string.loc[0, "events"] = "10"
-    zero = frame.copy(); zero.loc[zero.channel == "UA", "events"] = 0
-    signed = frame.copy(); signed.loc[signed.channel == "RT", "events"] *= -1
-    rate = frame.copy(); rate["events"] = rate.events / 1000
-    ambiguous = frame.copy(); ambiguous["second"] = ambiguous.events * -1
+    invalid = frame.copy()
+    invalid["events"] = invalid.events.astype(object)
+    invalid.loc[0, "events"] = None
+    string = frame.copy()
+    string["events"] = string.events.astype(object)
+    string.loc[0, "events"] = "10"
+    zero = frame.copy()
+    zero.loc[zero.channel == "UA", "events"] = 0
+    signed = frame.copy()
+    signed.loc[signed.channel == "RT", "events"] *= -1
+    rate = frame.copy()
+    rate["events"] = rate.events / 1000
+    ambiguous = frame.copy()
+    ambiguous["second"] = ambiguous.events * -1
     variants = {"null": invalid, "string": string, "zero": zero, "signed": signed, "rate": rate, "ambiguous": ambiguous}
     sources = {dataset + "_" + key: value for key, value in variants.items()}
     ctx.add_section(TITLES[3], [DataSource(dataset, frame),

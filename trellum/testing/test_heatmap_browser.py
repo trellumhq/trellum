@@ -272,7 +272,8 @@ def _check(tmp_path, width):
 
             evidence = os.environ.get('HEATMAP_EVIDENCE_DIR')
             if evidence:
-                dest = Path(evidence); dest.mkdir(parents=True, exist_ok=True)
+                dest = Path(evidence)
+                dest.mkdir(parents=True, exist_ok=True)
                 page.evaluate('scrollTo(0,0)')
                 page.screenshot(path=str(dest / f'current-module-{width}.png'),full_page=True)
                 for title in ("Complete nonnegative observations", "Measured zero versus no observation"):

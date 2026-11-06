@@ -1,11 +1,11 @@
 """Date range presentation exercised in complete vendored framework reports."""
 from __future__ import annotations
 
+import importlib.util
+import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-import importlib.util
 from pathlib import Path
-import threading
 from urllib.parse import urlencode
 
 import pandas as pd

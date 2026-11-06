@@ -1,8 +1,8 @@
 """KPI declarations validate at rendering; new arithmetic has explicit units."""
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -18,8 +18,8 @@ def render(component):
 
 
 def test_declarations_keyword_only_mutations_and_binding():
-    from dataclasses import dataclass
     import inspect
+    from dataclasses import dataclass
 
     for key in ("availability", "maturity", "comparison"):
         assert inspect.signature(KpiCard).parameters[key].kind == inspect.Parameter.KEYWORD_ONLY
@@ -162,10 +162,10 @@ def module():
 
 
 def test_genuine_examples_full_diagnostics(tmp_path):
+    from trellum.rendering.html_builder import render_report
     from trellum.report import ReportContext
     from trellum.reporting.diagnostics import compute_details
     from trellum.validation import validate_report
-    from trellum.rendering.html_builder import render_report
 
     ctx = ReportContext(config={"name": "KPI states", "studio": "test", "category": "Components", "description":
         "Synthetic supplied observation revenue, cohort age and paired-period conversion comparisons by input case, cohort and region."},

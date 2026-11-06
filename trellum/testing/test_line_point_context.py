@@ -18,7 +18,8 @@ def chart(**kwargs):
 
 def test_default_config_and_keyword_contract():
     assert inspect.signature(LineChart).parameters['point_context'].kind is inspect.Parameter.KEYWORD_ONLY
-    ctx = RenderContext(theme=DEFAULT_THEME); chart().render_html(ctx)
+    ctx = RenderContext(theme=DEFAULT_THEME)
+    chart().render_html(ctx)
     assert 'point_context' not in next(iter(ctx.component_data.values()))
 
 
@@ -32,12 +33,14 @@ def test_default_config_and_keyword_contract():
     {'point_context':[{'series':'same','records':[None,None]}], 'y_labels':['same','same']},
 ])
 def test_strict_point_context(kwargs):
-    with pytest.raises(ValueError): chart(**kwargs)
+    with pytest.raises(ValueError):
+        chart(**kwargs)
 
 
 def test_static_context_and_literal_tooltip():
     c = chart(point_context=[{'series':0,'records':[{'date':'2026-10-22','window':'<literal & text>'},None]}])
-    ctx=RenderContext(theme=DEFAULT_THEME); c.render_html(ctx)
+    ctx=RenderContext(theme=DEFAULT_THEME)
+    c.render_html(ctx)
     cfg=next(iter(ctx.component_data.values()))
     script='global.window=global;'+load_js('runtime/point_context.js')+'''
         const cfg=CFG;
@@ -68,7 +71,8 @@ def test_bound_context_rejects_ambiguous_source_at_render():
     from trellum.components import DataSource
     ctx=RenderContext(theme=DEFAULT_THEME)
     c=chart(dataset_id='facts',point_context=[{'series':0,'date_column':'date','window_column':'window'}])
-    frame=c.df.copy();frame['day']='same'
+    frame=c.df.copy()
+    frame['day']='same'
     ctx.render_child(DataSource('facts',frame))
     with pytest.raises(ValueError,match='unique x'):
         ctx.render_child(c)

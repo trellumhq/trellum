@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from decimal import Decimal
-import math
 from typing import Any, List, Optional
 
 import pandas as pd
 
 from trellum.assets import load_css, load_js
+from trellum.components._table_column_formats import column_formats_config
 from trellum.components._table_drill_down import drill_down_config, raw_action_key
 from trellum.components._table_totals import totals_config, typed_inputs
-from trellum.components._table_column_formats import column_formats_config
 from trellum.components.base import Component, RenderContext
 from trellum.data.transforms import df_to_json_records, format_value
 

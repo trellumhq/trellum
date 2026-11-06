@@ -1,11 +1,11 @@
 """Optional pinned DataTable edges keep the existing table population."""
 
-from dataclasses import dataclass
 import importlib.util
-from pathlib import Path
 import subprocess
 import sys
 import types
+from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -60,7 +60,7 @@ def test_default_off_matches_actual_dependency_output_when_git_object_exists():
         pytest.skip("Required dependency object dceec9e7 unavailable; functional checks still run")
     module = types.ModuleType("_datatable_pinning_dependency")
     sys.modules[module.__name__] = module
-    exec(compile(result.stdout, f"{dependency}/tables.py", "exec"), module.__dict__)
+    exec(compile(result.stdout, f"{dependency}/tables.py", "exec"), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     for loader, suffix in (("load_css", "css"), ("load_js", "js")):
         asset = subprocess.run(["git", "show", f"{dependency}:trellum/static/{suffix}/components/data_table.{suffix}"],
                                cwd=ROOT, capture_output=True, text=True, check=True).stdout
@@ -77,6 +77,7 @@ def test_default_off_visual_matches_actual_dependency(tmp_path, width):
     from urllib.parse import unquote, urlsplit
 
     from playwright.sync_api import sync_playwright
+
     from trellum.rendering.html_builder import render_report
     from trellum.report import ReportContext
 
@@ -87,7 +88,7 @@ def test_default_off_visual_matches_actual_dependency(tmp_path, width):
         pytest.skip("Required dependency object dceec9e7 unavailable; no historical visual baseline")
     module = types.ModuleType("_datatable_pinning_visual_dependency")
     sys.modules[module.__name__] = module
-    exec(compile(result.stdout, f"{dependency}/tables.py", "exec"), module.__dict__)
+    exec(compile(result.stdout, f"{dependency}/tables.py", "exec"), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     for loader, suffix in (("load_css", "css"), ("load_js", "js")):
         asset = subprocess.run(["git", "show", f"{dependency}:trellum/static/{suffix}/components/data_table.{suffix}"],
                                cwd=ROOT, capture_output=True, text=True, check=True).stdout
@@ -203,6 +204,7 @@ def test_native_pinned_edges_keyboard_search_and_capture(tmp_path, width):
     from urllib.parse import unquote, urlsplit
 
     from playwright.sync_api import sync_playwright
+
     from trellum.components import DataSource, DataTable, FilterBar, KpiRow
     from trellum.rendering.html_builder import render_report
     from trellum.report import ReportContext

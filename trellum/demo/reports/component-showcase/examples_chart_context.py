@@ -3,7 +3,13 @@
 import pandas as pd
 
 from trellum.components import (
-    BarChart, DataSource, DoughnutChart, FilterBar, Grid, LineChart, RawHTML,
+    BarChart,
+    DataSource,
+    DoughnutChart,
+    FilterBar,
+    Grid,
+    LineChart,
+    RawHTML,
     SplitPane,
 )
 

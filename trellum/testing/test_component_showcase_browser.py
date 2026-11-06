@@ -9,7 +9,7 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.runner.discovery import discover_report
-from trellum.runner.events import local_annotation_events, _weekday_highlight_config
+from trellum.runner.events import _weekday_highlight_config, local_annotation_events
 
 
 def test_component_showcase_sections_and_independent_filters(tmp_path):

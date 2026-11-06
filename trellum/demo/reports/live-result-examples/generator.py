@@ -1,7 +1,12 @@
 """Bounded synthetic observations through the registered live-query path."""
 from trellum import BaseReport
 from trellum.components import (
-    DataTable, FilterBar, KpiRow, LineChart, LiveDataSource, RawHTML,
+    DataTable,
+    FilterBar,
+    KpiRow,
+    LineChart,
+    LiveDataSource,
+    RawHTML,
     ScopedDataSource,
 )
 

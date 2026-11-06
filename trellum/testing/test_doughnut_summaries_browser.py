@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import base64
 import json
-from io import BytesIO
 import os
 import subprocess
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
@@ -17,9 +17,16 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
+from trellum.testing.test_chart_header_summaries_browser import _ready, _route
+from trellum.testing.test_doughnut_summaries import (
+    BASELINE,
+    ROOT,
+    SUMMARY,
+    baseline_class,
+    example_context,
+    frame,
+)
 from trellum.validation import validate_report
-from trellum.testing.test_chart_header_summaries_browser import _route, _ready
-from trellum.testing.test_doughnut_summaries import BASELINE, ROOT, SUMMARY, baseline_class, example_context, frame
 
 EVIDENCE = Path(os.environ.get('TRELLUM_DOUGHNUT_SUMMARY_EVIDENCE', '/tmp/trellum-doughnut-summaries'))
 

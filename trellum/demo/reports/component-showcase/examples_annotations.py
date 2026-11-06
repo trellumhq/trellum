@@ -4,7 +4,6 @@ import pandas as pd
 
 from trellum.components import DataSource, FilterBar, LineChart, RawHTML
 
-
 ANNOTATIONS = {
     "events": [
         {"date": "2026-07-28", "end_date": "2026-08-05", "label": "Synthetic carry-in window", "type": "event"},

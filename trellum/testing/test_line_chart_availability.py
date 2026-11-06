@@ -1,21 +1,21 @@
 """Opt-in supplied LineChart validity and native vendored-browser presentation."""
 from __future__ import annotations
 
-import dataclasses
 import base64
+import dataclasses
+import hashlib
 import importlib.util
 import inspect
-import hashlib
 import json
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-import pandas as pd
 import orjson
+import pandas as pd
 import pytest
 
 from trellum.assets import load_css, load_js

@@ -47,7 +47,7 @@ def baseline_class(name):
         ["git", "show", f"{BASELINE}:trellum/components/charts/{file}"], cwd=ROOT, text=True)
     module = types.ModuleType(f"_summary_baseline_{name}")
     sys.modules[module.__name__] = module
-    exec(compile(source, f"baseline/{file}", "exec"), module.__dict__)
+    exec(compile(source, f"baseline/{file}", "exec"), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return getattr(module, name)
 
 

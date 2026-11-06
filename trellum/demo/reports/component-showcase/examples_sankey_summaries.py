@@ -73,7 +73,8 @@ def add_sections(ctx):
         Grid(columns=3, min_width=280, children=[Panel(title=stat, children=[
             paths(df, "Filtered paths " + stat, dataset_id=source, header_summary=declaration(stat))]) for stat in STATS]),
     ])
-    df = edge_facts(); source = "showcase_sankey_summary_boundaries"
+    df = edge_facts()
+    source = "showcase_sankey_summary_boundaries"
     ctx.add_section("Sankey summaries — independent adjacent boundaries", [
         DataSource(source, df), FilterBar(source, df, filters=[{"column": "channel", "type": "toggle"}]),
         RawHTML(html="<p>Independent boundary totals: 100, 50, 15; largest edges: 80, 45, 15; grouped entries: 2 each. These are separate populations. Web: first boundary has no observations, second has weight 5, third has a supplied zero. No combined cohort total is assigned.</p>"),
@@ -81,8 +82,10 @@ def add_sections(ctx):
             Panel(title=stat, children=[edges(df, f"Boundary {i} {stat}", dataset_id=source,
                                             header_summary=declaration(stat, i))]) for stat in STATS])]} for i in (1, 2, 3)]),
     ])
-    q = quantity_facts(); source = "showcase_sankey_summary_quantities"
-    zero = facts().iloc[:1].copy(); zero["players"] = 0
+    q = quantity_facts()
+    source = "showcase_sankey_summary_quantities"
+    zero = facts().iloc[:1].copy()
+    zero["players"] = 0
     ctx.add_section("Sankey summaries — zero empty and unavailable quantities", [
         DataSource(source, q), FilterBar(source, q, filters=[{"column": "selection", "type": "toggle"}]),
         RawHTML(html="<p>Explicit USD quantities include fractional weights, a tiny positive path, a supplied zero, null classification and literal Unavailable. Repeated stage labels keep distinct keys. Exact records and CSV retain raw units and supplied precision. An empty measured population shows a dash for weight reducers; grouped-entry count stays zero.</p>"),

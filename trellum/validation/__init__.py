@@ -18,8 +18,8 @@ from __future__ import annotations
 from typing import Any
 
 from trellum.validation.checks.annotations import _check_annotations
-from trellum.validation.checks.chart_options import _check_chart_options
 from trellum.validation.checks.calendar_coverage import _check_calendar_coverage
+from trellum.validation.checks.chart_options import _check_chart_options
 from trellum.validation.checks.cohort_table import check_cohort_tables
 from trellum.validation.checks.columns import _check_columns
 from trellum.validation.checks.datasource import (
@@ -30,12 +30,12 @@ from trellum.validation.checks.datasource import (
 from trellum.validation.checks.effectiveness import _check_filter_effectiveness
 from trellum.validation.checks.filter_accessibility import _check_filter_labels
 from trellum.validation.checks.live_query import _check_live_queries
+from trellum.validation.checks.metric_views import check_column_formats, check_metric_views
 from trellum.validation.checks.metrics import _check_metrics
-from trellum.validation.checks.metric_views import check_metric_views, check_column_formats
 from trellum.validation.checks.period_comparison import check_period_comparison
 from trellum.validation.checks.rawhtml import _check_rawhtml
-from trellum.validation.checks.scopes import _check_scopes
 from trellum.validation.checks.sankey import check_sankey_charts
+from trellum.validation.checks.scopes import _check_scopes
 from trellum.validation.checks.structural import _check_structural
 from trellum.validation.checks.theme import _check_theme
 from trellum.validation.checks.visibility import _check_toggle_visible

@@ -1,9 +1,9 @@
 """Comparison presentation uses the existing table population and export path."""
 
-from dataclasses import dataclass
 import importlib.util
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 

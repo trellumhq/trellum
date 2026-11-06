@@ -4,10 +4,10 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import json
-from pathlib import Path
 import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -26,7 +26,8 @@ SUMMARY = {'stat': 'sum', 'scope': 'complete_paths'}
 def examples():
     path = ROOT / 'trellum/demo/reports/component-showcase/examples_sankey_summaries.py'
     spec = importlib.util.spec_from_file_location('sankey_summary_examples', path)
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     return module
 
 
@@ -43,8 +44,9 @@ def render(c):
 
 def baseline_class():
     source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/sankey.py'], cwd=ROOT, text=True)
-    module = types.ModuleType('_sankey_summary_baseline'); sys.modules[module.__name__] = module
-    exec(compile(source, 'baseline/sankey.py', 'exec'), module.__dict__)
+    module = types.ModuleType('_sankey_summary_baseline')
+    sys.modules[module.__name__] = module
+    exec(compile(source, 'baseline/sankey.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return module.SankeyChart
 
 
@@ -83,10 +85,14 @@ BAD = [False, True, [], (), 'sum', 1, {},
 
 @pytest.mark.parametrize('declaration', BAD)
 def test_reject_constructor_mutated_config_render_and_actual_shared_dispatch(declaration, tmp_path):
-    with pytest.raises(ValueError, match='header_summary'): chart(header_summary=declaration)
-    c = chart(static=True); c.header_summary = declaration
-    with pytest.raises(ValueError, match='header_summary'): c.config()
-    with pytest.raises(ValueError, match='header_summary'): render(c)
+    with pytest.raises(ValueError, match='header_summary'):
+        chart(header_summary=declaration)
+    c = chart(static=True)
+    c.header_summary = declaration
+    with pytest.raises(ValueError, match='header_summary'):
+        c.config()
+    with pytest.raises(ValueError, match='header_summary'):
+        render(c)
     ctx = ReportContext(config={'name':'Mutated Sankey'},slug='bad-summary',output_dir=str(tmp_path))
     ctx.add_section('Declared summary', [c])
     result = validate_report(ctx)
@@ -104,9 +110,12 @@ def test_exact_ordered_boundary_keys(extra):
     declaration = {'stat':'sum','scope':'adjacent_boundary',**extra}
     with pytest.raises(ValueError, match='header_summary'):
         e.edges(e.edge_facts(), 'Boundary', header_summary=declaration)
-    c = e.edges(e.edge_facts(), 'Boundary'); c.header_summary = declaration
-    with pytest.raises(ValueError, match='header_summary'): c.config()
-    with pytest.raises(ValueError, match='header_summary'): render(c)
+    c = e.edges(e.edge_facts(), 'Boundary')
+    c.header_summary = declaration
+    with pytest.raises(ValueError, match='header_summary'):
+        c.config()
+    with pytest.raises(ValueError, match='header_summary'):
+        render(c)
 
 
 @pytest.mark.parametrize('mode', ['paths','edges'])
@@ -114,7 +123,8 @@ def test_exact_ordered_boundary_keys(extra):
 def test_defaults_formats_no_payload_or_graph_changes(mode, stat):
     e = examples()
     c = chart() if mode == 'paths' else e.edges(e.edge_facts(), 'Edges')
-    off_html, off = render(c); original_graph = c.snapshot(c.df)
+    off_html, off = render(c)
+    original_graph = c.snapshot(c.df)
     declaration = e.declaration(stat, None if mode == 'paths' else 2)
     c.header_summary = declaration
     _, on = render(c)
@@ -130,7 +140,8 @@ def test_defaults_formats_no_payload_or_graph_changes(mode, stat):
 
 
 def test_actual_runtime_graphs_match_independent_oracle_and_unchanged_admission():
-    e = examples(); cases = []
+    e = examples()
+    cases = []
     for mode, df, column, selections in [('paths',e.facts(),'platform',[None,'iOS','Android','absent']),
                                         ('edges',e.edge_facts(),'channel',[None,'Store','Web','absent'])]:
         c = chart() if mode == 'paths' else e.edges(df,'Edges')
@@ -139,11 +150,13 @@ def test_actual_runtime_graphs_match_independent_oracle_and_unchanged_admission(
             for stat in ('sum','max','count'):
                 for boundary in ([None] if mode == 'paths' else [1,2,3]):
                     c.header_summary = e.declaration(stat,boundary)
-                    cfg = render(c)[1]; cfg['rows'] = c.snapshot(selected)['rows']
+                    cfg = render(c)[1]
+                    cfg['rows'] = c.snapshot(selected)['rows']
                     # Independent oracle: group source facts by their declared identity.
                     grouped = {}
                     for r in selected.to_dict('records'):
-                        if mode == 'edges' and r['from_week'] != f'w{boundary}': continue
+                        if mode == 'edges' and r['from_week'] != f'w{boundary}':
+                            continue
                         key = tuple(r[f'w{i}'] for i in (1,2,3,4)) if mode == 'paths' else (r['from_category'],r['to_category'])
                         grouped[key] = grouped.get(key,0) + r['players']
                     value = len(grouped) if stat == 'count' else None if not grouped else sum(grouped.values()) if stat == 'sum' else max(grouped.values())
@@ -163,12 +176,15 @@ process.stdout.write(JSON.stringify(outputs));
     # Bad data cannot be admitted even for a count declaration.
     c = chart(header_summary=e.declaration('count'))
     for value in (True,None,-1,float('inf'),2**53):
-        bad = c.df.astype(object); bad.loc[0,'players'] = value
-        with pytest.raises(ValueError): c.snapshot(bad)
+        bad = c.df.astype(object)
+        bad.loc[0,'players'] = value
+        with pytest.raises(ValueError):
+            c.snapshot(bad)
 
 
 def test_native_examples_diagnostics(tmp_path):
     ctx = example_context(tmp_path)
-    details = compute_details(ctx); result = validate_report(ctx,details=details)
+    details = compute_details(ctx)
+    result = validate_report(ctx,details=details)
     assert [(c.id,c.message) for c in result.checks if c.level in {'warn','fail'}] == []
     assert len(ctx.sections) == 4

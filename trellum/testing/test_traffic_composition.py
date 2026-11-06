@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -13,8 +13,8 @@ import pytest
 from trellum.components import LineChart, RenderContext, StackedBar, Toggle
 from trellum.components.charts.bar import stack_option_problems
 from trellum.themes import THEME_REGISTRY
-from trellum.validation.checks.visibility import _check_toggle_visible
 from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.checks.visibility import _check_toggle_visible
 from trellum.validation.result import ValidationResult
 
 ROOT = Path(__file__).resolve().parents[2]

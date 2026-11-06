@@ -1,18 +1,19 @@
 """Bounded UTC calendar-period projection over delivered snapshot facts."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date
-import re
 import json
 import math
+import re
+from dataclasses import dataclass, field
+from datetime import date
 from types import SimpleNamespace
 
 import pandas as pd
 
 from trellum.assets import load_js
 from trellum.components.base import Component, RenderContext
-from trellum.components.metric_views import validate_definition as metric_definition, validate_source as metric_source
+from trellum.components.metric_views import validate_definition as metric_definition
+from trellum.components.metric_views import validate_source as metric_source
 
 _KEY = re.compile(r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
 ROW_COLUMNS = ['metric', 'name', 'group', 'A', 'B', 'change', 'A_reason', 'B_reason', 'change_reason',
@@ -78,7 +79,8 @@ def validate_definition(view):
     if not isinstance(view.groups, dict) or not 1 <= len(view.groups) <= 8:
         raise ValueError('PeriodComparison requires 1–8 authored groups')
     for key, label in view.groups.items():
-        _key(key); _text(label)
+        _key(key)
+        _text(label)
     if not isinstance(view.metrics, dict) or not 1 <= len(view.metrics) <= 32:
         raise ValueError('PeriodComparison requires 1–32 metrics')
     allowed = {'definition', 'name', 'group', 'direction', 'format', 'precision', 'change_measure', 'change_precision', 'daily'}

@@ -11,20 +11,22 @@ import pytest
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
-from trellum.testing.test_period_comparison import example_context, oracle
 from trellum.testing.test_chart_header_summaries_browser import _route
 from trellum.testing.test_marketing_composition_browser import download_csv
+from trellum.testing.test_period_comparison import example_context, oracle
+from trellum.validation import validate_report
 
 EVIDENCE = Path(os.environ.get('TRELLUM_PERIOD_EVIDENCE', '/tmp/trellum-period-comparison'))
 
 
 def build(output):
     ctx, module = example_context(output)
-    details = compute_details(ctx); result = validate_report(ctx, details=details)
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
     issues = [(c.id,c.level,c.section,c.message) for c in result.checks if c.level in {'warn','fail'}]
     assert issues == [], issues
-    render_report(ctx, str(output), auto_refresh=False); copy_vendor_tree(output)
+    render_report(ctx, str(output), auto_refresh=False)
+    copy_vendor_tree(output)
     delivered = json.loads((output/'data.json').read_text())
     assert len(delivered['_ds_'+module.SOURCE]['_data']) == 184
     assert not any('_ds_'+o.id in delivered for o in module.projection().outputs)
@@ -58,7 +60,8 @@ def check_oracle(page, m, preset, platform):
     actual=rows(page,m.RESULT)
     expected={s:oracle(*m.PRESETS[preset][s],platform) for s in ('A','B')}
     for row in actual:
-        for side in ('A','B'): assert row[side] == pytest.approx(expected[side][row['metric']])
+        for side in ('A','B'):
+            assert row[side] == pytest.approx(expected[side][row['metric']])
         a,b=expected['A'][row['metric']],expected['B'][row['metric']]
         assert row['change'] == pytest.approx((a-b)*100 if row['metric']=='click_conversion' else (a-b)/b)
 
@@ -71,10 +74,12 @@ def test_native_periods_controls_csv_hover_theme_capture(tmp_path,width):
         browser=pw.chromium.launch(headless=True)
         try:
             page=browser.new_page(viewport={'width':width,'height':900},device_scale_factor=1)
-            page.set_default_timeout(12000); errors=[]
+            page.set_default_timeout(12000)
+            errors=[]
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.on('console',lambda msg:errors.append(msg.text) if msg.type=='error' else None)
-            _route(page,tmp_path); page.goto('http://period-comparison.test/index.html',wait_until='networkidle')
+            _route(page,tmp_path)
+            page.goto('http://period-comparison.test/index.html',wait_until='networkidle')
             page.wait_for_function('id=>fw.filterEngine.isReady(id)',arg=m.RESULT)
             section=page.locator('#sec-period-comparison')
             assert page.get_by_role('tab',name='Flat comparison',exact=True).get_attribute('aria-selected')=='true'
@@ -91,13 +96,15 @@ def test_native_periods_controls_csv_hover_theme_capture(tmp_path,width):
             table.scroll_into_view_if_needed()
             exported=download_csv(page,table,EVIDENCE/f'all-nine-{width}.csv')
             assert len(exported)==9 and float(exported[0]['A'])==14384
-            ready_charts(page); before=chart_state(page)
+            ready_charts(page)
+            before=chart_state(page)
             assert len(before)==4 and all(c['height']==220 for c in before)
             assert before[0]['values'][1][-1] is None and len(before[0]['labels'])==31
             page.mouse.move(0,0)
             off_pixels=[n.screenshot() for n in page.locator('canvas:visible').all()]
             page.get_by_role('tab',name='Original dates on',exact=True).click()
-            ready_charts(page); assert chart_state(page)==before
+            ready_charts(page)
+            assert chart_state(page)==before
             page.mouse.move(0,0)
             assert [n.screenshot() for n in page.locator('canvas:visible').all()]==off_pixels
             assert '2026-09-30' in section.get_by_text('B: 2026-09-01',exact=False).inner_text()
@@ -122,23 +129,29 @@ def test_native_periods_controls_csv_hover_theme_capture(tmp_path,width):
             assert len(group_tables)==4
             for i,(table,count) in enumerate(zip(group_tables,[3,2,2,2])):
                 table.scroll_into_view_if_needed()
-                exported=download_csv(page,table,EVIDENCE/f'group-{i}-{width}.csv'); assert len(exported)==count
+                exported=download_csv(page,table,EVIDENCE/f'group-{i}-{width}.csv')
+                assert len(exported)==count
                 if width==390:
                     assert table.evaluate('n=>n.scrollWidth>n.clientWidth')
-                    table.evaluate('n=>n.scrollLeft=n.scrollWidth'); assert table.evaluate('n=>n.scrollLeft')>0
+                    table.evaluate('n=>n.scrollLeft=n.scrollWidth')
+                    assert table.evaluate('n=>n.scrollLeft')>0
                     table.evaluate('n=>n.scrollLeft=0')
             page.get_by_text('All metrics CSV',exact=True).click()
             all_table=page.locator('.fw-table-scroll:visible').last
             all_table.scroll_into_view_if_needed()
             assert len(download_csv(page,all_table,EVIDENCE/f'all-nine-grouped-{width}.csv'))==9
             # Chart CSV keeps existing label + plotted series schema and blank outside-period value.
-            canvas=page.locator('canvas:visible').first; canvas.scroll_into_view_if_needed()
-            with page.expect_download() as info: page.locator('[data-csv-chart="'+canvas.get_attribute('id')+'"]').click()
-            csv_path=EVIDENCE/f'daily-cost-{width}.csv'; info.value.save_as(str(csv_path))
+            canvas=page.locator('canvas:visible').first
+            canvas.scroll_into_view_if_needed()
+            with page.expect_download() as info:
+                page.locator('[data-csv-chart="'+canvas.get_attribute('id')+'"]').click()
+            csv_path=EVIDENCE/f'daily-cost-{width}.csv'
+            info.value.save_as(str(csv_path))
             plotted=list(csv.DictReader(io.StringIO(csv_path.read_text(encoding='utf-8-sig'))))
             assert len(plotted)==31 and plotted[-1]['B']=='' and float(plotted[10]['A'])==444 and float(plotted[10]['B'])==364
             # Existing native keyboard navigation keeps selection and state.
-            page.get_by_role('tab',name='Grouped comparison',exact=True).focus(); page.keyboard.press('ArrowLeft')
+            page.get_by_role('tab',name='Grouped comparison',exact=True).focus()
+            page.keyboard.press('ArrowLeft')
             assert page.get_by_role('tab',name='Flat comparison',exact=True).get_attribute('aria-selected')=='true'
             section.get_by_role('button',name='iOS',exact=True).click()
             page.locator('[data-toggle-id="'+m.PERIOD+'"]').get_by_role('button',name='WoW',exact=True).click()
@@ -158,9 +171,11 @@ def test_native_periods_controls_csv_hover_theme_capture(tmp_path,width):
             search=source_table.locator('xpath=preceding-sibling::div[1]').locator('input.fw-table-search')
             search.fill('2026-10-22')
             page.wait_for_function('id=>document.querySelectorAll("#"+id+" tbody tr").length===1',arg=source_table.get_attribute('id'))
-            check_oracle(page,m,'WoW','iOS');search.fill('')
+            check_oracle(page,m,'WoW','iOS')
+            search.fill('')
             for theme in ('trellum light','trellum dark'):
-                page.locator('#fwThemeSelect').select_option(theme); ready_charts(page)
+                page.locator('#fwThemeSelect').select_option(theme)
+                ready_charts(page)
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
                 section.screenshot(path=str(EVIDENCE/f'{width}-{theme.split()[-1]}.png'))
                 snapshot=section.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
@@ -168,10 +183,12 @@ def test_native_periods_controls_csv_hover_theme_capture(tmp_path,width):
                 (EVIDENCE/f'native-section-{width}-{theme.split()[-1]}.json').write_text(json.dumps(snapshot,indent=2))
             if width==1280:
                 for ext,fn in [('png','exportPNG'),('pdf','exportPDF')]:
-                    with page.expect_download(timeout=60000) as info: page.evaluate(f'fw.{fn}()')
+                    with page.expect_download(timeout=60000) as info:
+                        page.evaluate(f'fw.{fn}()')
                     info.value.save_as(str(EVIDENCE/f'native-report.{ext}'))
             assert errors==[],errors
-        finally: browser.close()
+        finally:
+            browser.close()
 
 
 def test_period_lifecycle_replacements_and_capture_readiness(tmp_path):
@@ -180,11 +197,14 @@ def test_period_lifecycle_replacements_and_capture_readiness(tmp_path):
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         try:
-            page=browser.new_page();_route(page,tmp_path);page.goto('http://period-lifecycle.test/index.html',wait_until='networkidle')
+            page=browser.new_page()
+            _route(page,tmp_path)
+            page.goto('http://period-lifecycle.test/index.html',wait_until='networkidle')
             page.wait_for_function('id=>fw.filterEngine.isReady(id)',arg=m.RESULT)
             ready_charts(page)
             before=page.evaluate('fw.filterEngine._lifecycleListeners.size')
-            for _ in range(3): page.evaluate('renderAll()')
+            for _ in range(3):
+                page.evaluate('renderAll()')
             assert page.evaluate('fw.filterEngine._lifecycleListeners.size')==before
             state=page.evaluate('''async args=>{
                 const e=fw.filterEngine;e.removeDataset(args.source);
@@ -228,11 +248,13 @@ def test_period_lifecycle_replacements_and_capture_readiness(tmp_path):
             page.locator('#sec-period-comparison').evaluate('n=>n.remove()')
             page.wait_for_function('()=>fw.filterEngine._lifecycleListeners.size===0')
             assert not page.evaluate('id=>fw.filterEngine.isReady(id)',m.RESULT)
-        finally: browser.close()
+        finally:
+            browser.close()
 
 
 def test_native_scope_reentry_has_one_owned_projection(tmp_path):
     from playwright.sync_api import sync_playwright
+
     from trellum.report import ReportContext
     _, m = example_context(tmp_path)
     original=m.facts()
@@ -241,10 +263,13 @@ def test_native_scope_reentry_has_one_owned_projection(tmp_path):
     scopes={}
     for scope,factor in [('period_a',1),('period_b',3)]:
         ctx.set_scope(scope,label=scope)
-        m.SOURCE=scope+'_facts';m.RESULT=scope+'_comparison'
+        m.SOURCE=scope+'_facts'
+        m.RESULT=scope+'_comparison'
         # Native scope reports share one structural HTML/control shell.
-        m.PERIOD='scope_period';m.CONTEXT='scope_context'
-        frame=original.copy();frame['cost']*=factor
+        m.PERIOD='scope_period'
+        m.CONTEXT='scope_context'
+        frame=original.copy()
+        frame['cost']*=factor
         m.facts=lambda frame=frame:frame
         m.add_sections(ctx)
         from trellum.components import ScopedDataSource
@@ -252,13 +277,17 @@ def test_native_scope_reentry_has_one_owned_projection(tmp_path):
         components.insert(1,ScopedDataSource(scope+'_subset',m.SOURCE))
         next(c for c in components if c.__class__.__name__=='PeriodComparison').parent=scope+'_subset'
         scopes[scope]=(m.RESULT,14384*factor)
-    details=compute_details(ctx);result=validate_report(ctx,details=details)
+    details=compute_details(ctx)
+    result=validate_report(ctx,details=details)
     assert [(c.id,c.message) for c in result.checks if c.level in {'warn','fail'}]==[]
-    render_report(ctx,str(tmp_path),auto_refresh=False);copy_vendor_tree(tmp_path)
+    render_report(ctx,str(tmp_path),auto_refresh=False)
+    copy_vendor_tree(tmp_path)
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         try:
-            page=browser.new_page();_route(page,tmp_path);page.goto('http://period-scopes.test/index.html',wait_until='networkidle')
+            page=browser.new_page()
+            _route(page,tmp_path)
+            page.goto('http://period-scopes.test/index.html',wait_until='networkidle')
             counts=[]
             for scope in ('period_b','period_a','period_b','period_a'):
                 page.get_by_role('button',name=scope,exact=True).click()
@@ -268,4 +297,5 @@ def test_native_scope_reentry_has_one_owned_projection(tmp_path):
                 assert page.evaluate('id=>_fwPeriodComparison.status(id).ready',dataset)
                 counts.append(page.evaluate('fw.filterEngine._lifecycleListeners.size'))
             assert len(set(counts))==1
-        finally:browser.close()
+        finally:
+            browser.close()

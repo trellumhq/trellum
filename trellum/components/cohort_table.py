@@ -1,12 +1,12 @@
 """Bounded, authored cohort snapshots; no aggregation or maturity inference."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field, KW_ONLY
-from datetime import datetime
 import json
 import math
-from numbers import Integral, Real
 import re
+from dataclasses import KW_ONLY, dataclass, field
+from datetime import datetime
+from numbers import Integral, Real
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np

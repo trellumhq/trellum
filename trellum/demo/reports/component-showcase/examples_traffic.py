@@ -3,8 +3,17 @@
 import pandas as pd
 
 from trellum.components import (
-    DataSource, DataTable, DoughnutChart, FilterBar, Grid, KpiRow, Panel,
-    RawHTML, Section, StackedBar, Toggle,
+    DataSource,
+    DataTable,
+    DoughnutChart,
+    FilterBar,
+    Grid,
+    KpiRow,
+    Panel,
+    RawHTML,
+    Section,
+    StackedBar,
+    Toggle,
 )
 
 BREAKDOWNS = {"Channel": "channel", "New/Returning": "user_type", "Inactivity": "inactivity"}

@@ -1,8 +1,11 @@
 """MetricView declarations, snapshot admission and MiniKpi result references."""
-from trellum.components.metric_views import (
-    MetricView, snapshot_parent, validate_binding, validate_definition,
-)
 from trellum.components.kpis import MiniKpi
+from trellum.components.metric_views import (
+    MetricView,
+    snapshot_parent,
+    validate_binding,
+    validate_definition,
+)
 from trellum.validation.walk import _walk_components
 
 
@@ -45,8 +48,8 @@ def check_metric_views(ctx, result):
 
 def check_column_formats(comps, result):
     """Dedicated mutation check; central validator dispatch can call this hook."""
-    from trellum.components.tables import DataTable
     from trellum.components._table_column_formats import column_formats_config
+    from trellum.components.tables import DataTable
     for comp, section in comps:
         if not isinstance(comp, DataTable):
             continue

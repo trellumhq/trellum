@@ -1,16 +1,16 @@
 """Optional totals: strict declarations, exact decimal inputs and native paint."""
 
-from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP, localcontext
 import base64
 import importlib.util
 import json
 import os
-from pathlib import Path
 import random
 import subprocess
 import sys
 import types
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, localcontext
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import pandas as pd
@@ -533,7 +533,7 @@ def _baseline_module():
         return None
     module = types.ModuleType("_table_totals_baseline")
     sys.modules[module.__name__] = module
-    exec(compile(result.stdout, f"{BASELINE}/tables.py", "exec"), module.__dict__)
+    exec(compile(result.stdout, f"{BASELINE}/tables.py", "exec"), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     for loader, suffix in (("load_css", "css"), ("load_js", "js")):
         real = getattr(module, loader)
         content = subprocess.check_output(["git", "show", f"{BASELINE}:trellum/static/{suffix}/components/data_table.{suffix}"], cwd=ROOT, text=True)

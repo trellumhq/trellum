@@ -1,8 +1,8 @@
 """Combo-only axis context and legends, using genuine report artifacts."""
 from __future__ import annotations
 
-import dataclasses
 import csv
+import dataclasses
 import importlib.util
 import inspect
 import json
@@ -228,7 +228,8 @@ def _check_browser(tmp_path, width):
             page.evaluate("""id=>window._comboButton=document.querySelector('#'+id+'-combo-context [data-axis=y] button')""", live_id)
             left.focus()
             left.press("Space")
-            visibility = lambda: page.evaluate("id=>window._chartInstances[id].data.datasets.map((_,i)=>window._chartInstances[id].isDatasetVisible(i))", live_id)
+            def visibility():
+                return page.evaluate("id=>window._chartInstances[id].data.datasets.map((_,i)=>window._chartInstances[id].isDatasetVisible(i))", live_id)
             assert visibility() == [False, False, True, True]
             assert page.evaluate("document.activeElement===window._comboButton && window._comboButton.isConnected")
             left.press("Enter")

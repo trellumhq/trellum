@@ -1,7 +1,7 @@
 """Painted status roles, author overrides and native theme/filter lifecycle."""
-from dataclasses import replace
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 

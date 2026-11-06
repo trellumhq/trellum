@@ -8,17 +8,25 @@ import inspect
 import json
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import pandas as pd
 import pytest
 
 from trellum.assets import load_css, load_js
-from trellum.components import (AreaChart, BarChart, ComboChart, DataSource, FilterBar,
-                                LineChart, RenderContext, StackedBar)
+from trellum.components import (
+    AreaChart,
+    BarChart,
+    ComboChart,
+    DataSource,
+    FilterBar,
+    LineChart,
+    RenderContext,
+    StackedBar,
+)
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
@@ -286,8 +294,8 @@ def _geometry(state):
 
 
 def _browser(tmp_path, width):
-    from playwright.sync_api import sync_playwright
     from PIL import Image, ImageChops
+    from playwright.sync_api import sync_playwright
     current, baseline = tmp_path / "current", tmp_path / "baseline"
     _build(current, regressions=True)
     _build(baseline, baseline=True, regressions=True)

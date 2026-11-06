@@ -9,14 +9,14 @@ import pandas as pd
 
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
+from trellum.components.charts._treemap_summary import (
+    treemap_static_summary_guard,
+    treemap_summary_config,
+)
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,
     _validate_header_context,
-)
-from trellum.components.charts._treemap_summary import (
-    treemap_static_summary_guard,
-    treemap_summary_config,
 )
 
 

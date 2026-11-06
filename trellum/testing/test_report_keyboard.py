@@ -7,8 +7,8 @@ import csv
 import importlib.util
 import json
 import mimetypes
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import pandas as pd

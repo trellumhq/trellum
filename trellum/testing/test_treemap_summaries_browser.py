@@ -17,10 +17,17 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
-from trellum.testing.test_chart_header_summaries_browser import _route, _ready
+from trellum.testing.test_chart_header_summaries_browser import _ready, _route
 from trellum.testing.test_doughnut_summaries_browser import _csv, _day, _settle
-from trellum.testing.test_treemap_summaries import BASELINE, ROOT, SUMMARY, baseline_class, example_context, frame
+from trellum.testing.test_treemap_summaries import (
+    BASELINE,
+    ROOT,
+    SUMMARY,
+    baseline_class,
+    example_context,
+    frame,
+)
+from trellum.validation import validate_report
 
 EVIDENCE = Path(os.environ.get('TRELLUM_TREEMAP_SUMMARY_EVIDENCE', '/tmp/trellum-treemap-summaries'))
 
@@ -134,7 +141,8 @@ def test_native_summaries_filters_details_lifecycle_and_exports(tmp_path, width)
             page.on('console', lambda msg: errors.append(msg.text) if msg.type == 'error' else None)
             _route(page, tmp_path)
             page.goto('http://treemap-summary.test/index.html', wait_until='networkidle')
-            _ready(page); _settle(page)
+            _ready(page)
+            _settle(page)
             ids = [_id(page, 'Filtered treemap ' + stat) for stat in ('sum', 'count', 'mean', 'min', 'max')]
             section = _section(page, ids[0])
             independent = _id(page, 'Treemap categorical context')
@@ -155,7 +163,8 @@ def test_native_summaries_filters_details_lifecycle_and_exports(tmp_path, width)
             assert _values(page, [_id(page, 'Format ' + fmt) for fmt in formats]) == ['225', '$225.00', '22500.00%', '225', '225', '225']
             assert _values(page, [_id(page, 'Override ' + fmt) for fmt in formats]) == ['225', '$225.00', '22500.00%', '225.00x', '225 chips', '225']
             root = _root(page, ids[0])
-            root.locator('summary').click(); root.locator('summary').focus()
+            root.locator('summary').click()
+            root.locator('summary').focus()
             _day(section, '2026-08-01')
             section.get_by_role('button', name='iOS', exact=True).click()
             expected = ['$100.00', '4', '$25.00', '$10.00', '$40.00']
@@ -168,7 +177,9 @@ def test_native_summaries_filters_details_lifecycle_and_exports(tmp_path, width)
             assert {r['platform'] for r in source} == {'iOS'} and {r['day'] for r in source} == {'2026-08-01'}
             page.wait_for_function("location.search.includes('iOS')")
             selected_url = page.url
-            page.reload(wait_until='networkidle'); _ready(page); _settle(page)
+            page.reload(wait_until='networkidle')
+            _ready(page)
+            _settle(page)
             # Existing shared URL writer scans all date bars for presets: the
             # independent bar's All preset supersedes this custom range. Keep
             # this retained limitation explicit, then test supported range URL
@@ -179,7 +190,8 @@ def test_native_summaries_filters_details_lifecycle_and_exports(tmp_path, width)
             params = dict(parse_qsl(parts.query))
             params['showcase_treemap_summary_leaves.day'] = '2026-08-01..2026-08-01'
             page.goto(urlunsplit(parts._replace(query=urlencode(params))), wait_until='networkidle')
-            _ready(page); _settle(page)
+            _ready(page)
+            _settle(page)
             assert _values(page, ids) == expected
             edge = [_id(page, 'Treemap eligibility ' + stat) for stat in ('min', 'mean', 'count')]
             edge_section = _section(page, edge[0])
@@ -207,20 +219,24 @@ def test_native_summaries_filters_details_lifecycle_and_exports(tmp_path, width)
             assert _values(page, edge) == ['—', '—', '0']
             page.evaluate("fw.filterEngine.clearFilter('showcase_treemap_summary_eligibility','empty')")
             edge_section.get_by_role('tab', name='Reveal treemap', exact=True).click()
-            _ready(page); _settle(page)
+            _ready(page)
+            _settle(page)
             revealed = _id(page, 'Revealed treemap with long wrapping title')
             assert _values(page, [revealed]) == ['$900.00']
             assert '<safe>' in _box(page, revealed).inner_text() and _box(page, revealed).locator('safe').count() == 0
             assert _values(page, [_id(page, 'Empty treemap numeric'), _id(page, 'Empty treemap count')]) == ['—', '0']
             for theme in ('trellum light', 'trellum dark'):
-                page.locator('#fwThemeSelect').select_option(theme); _ready(page); _settle(page)
+                page.locator('#fwThemeSelect').select_option(theme)
+                _ready(page)
+                _settle(page)
                 assert _values(page, ids) == expected and _values(page, [independent]) == ['$225.00']
                 assert _plot(page, off) == _plot(page, on)
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
                 for loc, label in ((section, 'filtered'), (_section(page, off), 'pair'),
                     (edge_section, 'eligibility'), (_section(page, independent), 'context'), (_box(page, revealed), 'long-label')):
                     _capture(page, loc, EVIDENCE / f'{width}-{theme.split()[-1]}-{label}.png')
-            page.evaluate('renderAll();renderAll()'); _ready(page)
+            page.evaluate('renderAll();renderAll()')
+            _ready(page)
             assert _values(page, ids) == expected
             lifecycle = page.evaluate('''id=>{const cfg=_reportData.components[id],s=cfg.header_summary;
                 const canvas=document.getElementById(id);canvas.setAttribute('aria-describedby',canvas.getAttribute('aria-describedby')+' unrelated');
@@ -255,7 +271,8 @@ def test_native_summaries_filters_details_lifecycle_and_exports(tmp_path, width)
                 assert _csv(page, _root(page, independent), EVIDENCE / f'bound-{enabled}-{width}.csv') == before
             page.evaluate('id=>_fwRenderers.treemap(id,_reportData.components[id])', independent)
             # A view window, hover or details disclosure cannot redefine leaves.
-            root = _root(page, ids[0]); root.locator('summary').click()
+            root = _root(page, ids[0])
+            root.locator('summary').click()
             assert _values(page, ids) == expected
             root.locator('canvas').scroll_into_view_if_needed()
             point = page.evaluate('''id=>{const c=_chartInstances[id];
@@ -303,7 +320,8 @@ def test_owned_resources_stay_bounded_across_replacements_and_detach(tmp_path):
         try:
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             _route(page, tmp_path)
-            page.goto('http://treemap-resources.test/index.html', wait_until='networkidle'); _ready(page)
+            page.goto('http://treemap-resources.test/index.html', wait_until='networkidle')
+            _ready(page)
             cid = _id(page, 'Treemap categorical context')
             resources = page.evaluate('''id=>{
                 const cfg=_reportData.components[id],canvas=document.getElementById(id);
@@ -349,7 +367,8 @@ def test_actual_baseline_off_pixels_geometry_details_colors_and_csv(tmp_path, wi
 
     outputs = []
     for name in ('baseline', 'current'):
-        output = tmp_path / name; output.mkdir()
+        output = tmp_path / name
+        output.mkdir()
         cls = baseline_class() if name == 'baseline' else TreemapChart
         df = frame()
         ctx = ReportContext(config={'name': 'Treemap baseline', 'studio': 'test', 'category': 'Test',
@@ -372,7 +391,8 @@ def test_actual_baseline_off_pixels_geometry_details_colors_and_csv(tmp_path, wi
                 for file in [output / 'index.html', *output.rglob('*.js'), *output.rglob('*.css')]:
                     text = file.read_text()
                     if current in text:
-                        file.write_text(text.replace(current, historical)); replaced = True
+                        file.write_text(text.replace(current, historical))
+                        replaced = True
                 assert replaced
         outputs.append(output)
     with sync_playwright() as pw:
@@ -382,9 +402,13 @@ def test_actual_baseline_off_pixels_geometry_details_colors_and_csv(tmp_path, wi
             for name, output in zip(('baseline', 'current'), outputs):
                 page = browser.new_page(viewport={'width': width, 'height': 900}, device_scale_factor=1)
                 _route(page, output)
-                page.goto('http://treemap-baseline.test/index.html', wait_until='networkidle'); _ready(page)
+                page.goto('http://treemap-baseline.test/index.html', wait_until='networkidle')
+                _ready(page)
                 for theme in ('trellum light', 'trellum dark'):
-                    page.locator('#fwThemeSelect').select_option(theme); _ready(page); _settle(page); page.mouse.move(0, 0)
+                    page.locator('#fwThemeSelect').select_option(theme)
+                    _ready(page)
+                    _settle(page)
+                    page.mouse.move(0, 0)
                     ids = [_id(page, title) for title in ('Static', 'Bound')]
                     plots = [_plot(page, cid) for cid in ids]
                     pixels = [page.locator('#' + cid).evaluate('el=>el.toDataURL()') for cid in ids]

@@ -1,18 +1,19 @@
 """Strict snapshot definitions and real-engine lifecycle/reducer checks."""
 from __future__ import annotations
+
 import inspect
 import json
-from decimal import Decimal
-from pathlib import Path
 import subprocess
 import sys
 import types
+from decimal import Decimal
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from trellum.assets import load_js
-from trellum.components import DataSource, ScopedDataSource, FilterBar, MiniKpi, RenderContext
+from trellum.components import DataSource, FilterBar, MiniKpi, RenderContext, ScopedDataSource
 from trellum.components.metric_views import MetricView, validate_source
 from trellum.report import ReportContext
 from trellum.themes import DEFAULT_THEME
@@ -98,8 +99,9 @@ def test_binding_rejects_ambiguity(binding, value):
 
 def test_static_mini_exact_baseline_and_keyword_only():
     source = subprocess.check_output(['git', 'show', '1c0c49710c5d073a78f83ab069fd517cd49c1632:trellum/components/kpis.py'], cwd=ROOT, text=True)
-    module = types.ModuleType('_metric_mini_baseline'); sys.modules[module.__name__] = module
-    exec(source, module.__dict__)
+    module = types.ModuleType('_metric_mini_baseline')
+    sys.modules[module.__name__] = module
+    exec(source, module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     for stacked in (False, True):
         a, b = RenderContext(DEFAULT_THEME), RenderContext(DEFAULT_THEME)
         args = ('Cost', 1234.5, 'currency', None)
@@ -111,7 +113,8 @@ def test_static_mini_exact_baseline_and_keyword_only():
 
 
 def test_public_component_and_shared_validator_dispatch(tmp_path):
-    from trellum.components import DataTable, MetricView as PublicMetricView
+    from trellum.components import DataTable
+    from trellum.components import MetricView as PublicMetricView
     from trellum.validation import validate_report
 
     assert PublicMetricView is MetricView
@@ -136,20 +139,28 @@ def test_validator_rejects_parent_contract(kind, tmp_path):
     source = DataSource('facts', frame)
     metric = view()
     components = [source, metric]
-    if kind == 'missing': metric.parent = 'absent'
-    if kind == 'chained': components += [view(id='next', parent='result')]
-    if kind == 'chunked': source.chunk_by = 'month'
-    if kind == 'scope-chain': components = [source, ScopedDataSource('a','facts'),ScopedDataSource('b','a'),view(parent='b')]
-    if kind == 'later': components.reverse()
-    if kind == 'bad-column': source.df = frame.drop(columns=['cost'])
+    if kind == 'missing':
+        metric.parent = 'absent'
+    if kind == 'chained':
+        components += [view(id='next', parent='result')]
+    if kind == 'chunked':
+        source.chunk_by = 'month'
+    if kind == 'scope-chain':
+        components = [source, ScopedDataSource('a','facts'),ScopedDataSource('b','a'),view(parent='b')]
+    if kind == 'later':
+        components.reverse()
+    if kind == 'bad-column':
+        source.df = frame.drop(columns=['cost'])
     if kind in ('live', 'propagated-live', 'late-propagated-live'):
         live = LiveDataSource('live', 'q', frame)
         fb = FilterBar('live',frame,filters=[],propagate_to={'facts':{'country':'country'}})
         components = [live, view(parent='live')] if kind == 'live' else [live, source, fb, metric]
-        if kind == 'late-propagated-live': components = [source, metric, live, fb]
+        if kind == 'late-propagated-live':
+            components = [source, metric, live, fb]
     ctx = ReportContext(config={'name':'Test'}, slug='test', output_dir=str(tmp_path))
     ctx.add_section('Test',components)
-    result = ValidationResult(slug='test'); check_metric_views(ctx,result)
+    result = ValidationResult(slug='test')
+    check_metric_views(ctx,result)
     assert any(c.id == 'metric-view-invalid' for c in result.checks)
 
 
@@ -219,19 +230,23 @@ def test_binding_reference_validator(target,group,metric,tmp_path):
     frame=pd.DataFrame([{'country':'GB','cost':2,'installs':1}])
     ctx=ReportContext(config={'name':'Test'},slug='test',output_dir=str(tmp_path))
     ctx.add_section('Binding',[DataSource('facts',frame),view(),MiniKpi('Cost',binding={'dataset_id':target,'group':group,'metric':metric})])
-    result=ValidationResult(slug='test');check_metric_views(ctx,result)
+    result=ValidationResult(slug='test')
+    check_metric_views(ctx,result)
     assert [c.id for c in result.checks]==['mini-kpi-binding-invalid']
 
 
 def test_mutated_definition_and_conflicting_source_schema(tmp_path):
     ctx=ReportContext(config={'name':'Test'},slug='test',output_dir=str(tmp_path))
     source=DataSource('facts',pd.DataFrame([[1,2]],columns=['cost','cost']))
-    metric=view();ctx.add_section('Schema',[source,metric])
-    result=ValidationResult(slug='test');check_metric_views(ctx,result)
+    metric=view()
+    ctx.add_section('Schema',[source,metric])
+    result=ValidationResult(slug='test')
+    check_metric_views(ctx,result)
     assert 'unique' in result.checks[0].message
     source.df=pd.DataFrame([{'country':'GB','cost':2,'installs':1}])
     metric.metrics={'x':{'agg':'ratio','numerator':'cost','denominator':'installs','expression':'x'}}
-    result=ValidationResult(slug='test');check_metric_views(ctx,result)
+    result=ValidationResult(slug='test')
+    check_metric_views(ctx,result)
     assert 'exact' in result.checks[0].message
 
 

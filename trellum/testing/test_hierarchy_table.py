@@ -1,8 +1,8 @@
 """Hierarchy admission, source scope and generated-report diagnostics."""
 
-from decimal import Decimal
 import importlib.util
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -117,7 +117,9 @@ def test_invalid_declarations(kwargs):
 
 @pytest.mark.parametrize('value', [None, '', 12, False, ['x']])
 def test_invalid_record_identity(value):
-    df = frame(); df['id'] = df['id'].astype(object); df.at[0,'id'] = value
+    df = frame()
+    df['id'] = df['id'].astype(object)
+    df.at[0,'id'] = value
     with pytest.raises(ValueError, match='record_id'):
         table(df)
 
@@ -152,7 +154,8 @@ def test_effective_source_checks_full_shape_ids_and_live_ancestry(scoped):
     t = table(dataset_id='child' if scoped else 'root')
     def check(source, extras=()):
         sources = {'root':source}
-        if scoped: sources['child'] = ScopedDataSource('child', parent='root')
+        if scoped:
+            sources['child'] = ScopedDataSource('child', parent='root')
         result = ValidationResult('hierarchy')
         check_hierarchy_tables([(t,'Hierarchy'),*extras], sources, result)
         return result
@@ -163,10 +166,12 @@ def test_effective_source_checks_full_shape_ids_and_live_ancestry(scoped):
     assert check(LiveDataSource('root',query='q',df=df)).summary['fail'] == 1
     live = LiveDataSource('live',query='q',df=df)
     sources = {'root':DataSource('root',df), 'live':live, 'mid':DataSource('mid',df)}
-    if scoped: sources['child'] = ScopedDataSource('child',parent='root')
+    if scoped:
+        sources['child'] = ScopedDataSource('child',parent='root')
     comps = [(t,'Hierarchy'), (FilterBar('live',df,filters=[],propagate_to={'mid':{'source':'source'}}),'Live'),
              (FilterBar('mid',df,filters=[],propagate_to={'root':{'source':'source'}}),'Mid')]
-    result = ValidationResult('hierarchy'); check_hierarchy_tables(comps,sources,result)
+    result = ValidationResult('hierarchy')
+    check_hierarchy_tables(comps,sources,result)
     assert result.summary['fail'] == 1 and 'live ancestry' in str(result.to_dict())
 
 
@@ -174,24 +179,35 @@ def test_effective_source_checks_full_shape_ids_and_live_ancestry(scoped):
 def test_source_bounds_are_admitted_before_tree_expansion():
     df = frame().iloc[[0]].copy()
     cases = []
-    facts = pd.concat([df]*50001,ignore_index=True); facts['id'] = [str(i) for i in range(len(facts))]
+    facts = pd.concat([df]*50001,ignore_index=True)
+    facts['id'] = [str(i) for i in range(len(facts))]
     cases.append((facts,'50,000'))
-    nodes = pd.concat([df]*2000,ignore_index=True); nodes['id'] = [str(i) for i in range(len(nodes))]; nodes['source'] = nodes['id']
+    nodes = pd.concat([df]*2000,ignore_index=True)
+    nodes['id'] = [str(i) for i in range(len(nodes))]
+    nodes['source'] = nodes['id']
     cases.append((nodes,'2,000'))
-    columns = pd.concat([df]*33,ignore_index=True); columns['id'] = [str(i) for i in range(len(columns))]; columns['month'] = columns['id']
+    columns = pd.concat([df]*33,ignore_index=True)
+    columns['id'] = [str(i) for i in range(len(columns))]
+    columns['month'] = columns['id']
     cases.append((columns,'32 column'))
-    cells = pd.concat([df]*1940,ignore_index=True); cells['id'] = [str(i) for i in range(len(cells))]
-    cells['platform'] = cells['id']; cells['month'] = [str(i%32) for i in range(len(cells))]
+    cells = pd.concat([df]*1940,ignore_index=True)
+    cells['id'] = [str(i) for i in range(len(cells))]
+    cells['platform'] = cells['id']
+    cells['month'] = [str(i%32) for i in range(len(cells))]
     cases.append((cells,'64,000'))
-    payload = pd.concat([df]*10000,ignore_index=True); payload['id'] = [str(i) for i in range(len(payload))]; payload['source'] = 'x'*1024
+    payload = pd.concat([df]*10000,ignore_index=True)
+    payload['id'] = [str(i) for i in range(len(payload))]
+    payload['source'] = 'x'*1024
     cases.append((payload,'8 MiB'))
     for population, reason in cases:
-        with pytest.raises(ValueError,match=reason): table(population)
+        with pytest.raises(ValueError,match=reason):
+            table(population)
 
 
 @pytest.mark.parametrize('value',[Decimal('1.23'),10**100,-(2**64)])
 def test_bound_values_outside_existing_source_serializer_refuse_with_static_guidance(value):
-    df = frame(); df['value'] = pd.Series([value,0,0],dtype=object)
+    df = frame()
+    df['value'] = pd.Series([value,0,0],dtype=object)
     t = table(df,dataset_id='root')
     result = ValidationResult('hierarchy')
     check_hierarchy_tables([(t,'Hierarchy')],{'root':DataSource('root',df)},result)

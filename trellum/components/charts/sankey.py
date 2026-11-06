@@ -12,8 +12,8 @@ import pandas as pd
 
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
-from trellum.components.charts.base import _ChartBase, _header_context_html, _title_html
 from trellum.components.charts._sankey_summary import sankey_summary_config
+from trellum.components.charts.base import _ChartBase, _header_context_html, _title_html
 
 MAX_ROWS = 10_000
 MAX_NODES = 200

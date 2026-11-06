@@ -13,13 +13,20 @@ from urllib.parse import unquote, urlparse
 import pandas as pd
 import pytest
 
-from trellum.components import BarChart, DataSource, FilterBar, ScopedDataSource, TabGroup, TreemapChart
+from trellum.components import (
+    BarChart,
+    DataSource,
+    FilterBar,
+    ScopedDataSource,
+    TabGroup,
+    TreemapChart,
+)
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
 from trellum.testing.test_sankey_chart import chart, examples
+from trellum.validation import validate_report
 
 EVIDENCE = Path(os.environ.get("TRELLUM_SANKEY_EVIDENCE", "/tmp/trellum-sankey-evidence"))
 IDENTITY_TITLE = "Typed identities " + "unbroken" * 60
@@ -35,7 +42,8 @@ def _build(output, *, standalone=False):
     if standalone:
         ctx.add_section("Only Sankey", [chart(static=True, title="Only Sankey")])
     else:
-        e = examples(); e.add_sections(ctx)
+        e = examples()
+        e.add_sections(ctx)
         ctx.add_section("Sankey lifecycle", [
             DataSource("sankey_scope_base", e.paths_frame()),
             ScopedDataSource("sankey_scope_child",parent="sankey_scope_base"),
@@ -127,7 +135,8 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
             _route(page,tmp_path)
             page.goto('http://sankey-native.test/index.html',wait_until='networkidle')
             page.evaluate('document.fonts.ready')
-            main = _root(page,'Weekly supplied player paths'); _ready(main)
+            main = _root(page,'Weekly supplied player paths')
+            _ready(main)
             cid = main.locator('canvas').get_attribute('id')
             graph = _graph(page,main)
             assert graph['total'] == 1000 and graph['boundaries'] == [1000]*3
@@ -177,7 +186,8 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
             page.screenshot(path=str(EVIDENCE / f'pointer-tooltip-{width}.png'))
             page.mouse.move(0,0)
 
-            special = _root(page,'Unavailable, no purchase and one player'); _ready(special)
+            special = _root(page,'Unavailable, no purchase and one player')
+            _ready(special)
             sg = _graph(page,special)
             assert sg['total'] == 1000
             assert any(n['category'] is None for n in sg['nodes'])
@@ -194,22 +204,26 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
             assert any(r['stage_2_availability'] == 'unavailable' for r in special_rows)
             assert any(r['stage_2_category'] == 'Unavailable' and r['stage_2_availability'] == 'observed' for r in special_rows)
 
-            edge = _root(page,'Independent adjacent populations'); _ready(edge)
+            edge = _root(page,'Independent adjacent populations')
+            _ready(edge)
             assert _graph(page,edge)['boundaries'] == [100,50,15] and _graph(page,edge)['total'] is None
             expect(edge.locator('.fw-sankey-population')).to_contain_text('complete paths are not supplied')
             edge.locator('summary').click()
             edge_rows = _csv(page,edge)
             assert len(edge_rows) == 6 and {r['record_type'] for r in edge_rows} == {'adjacent_edge'}
             assert any(r['weight'] == '0' for r in edge_rows)
-            zero = _root(page,'Supplied zero-weight path'); _ready(zero,'zero')
+            zero = _root(page,'Supplied zero-weight path')
+            _ready(zero,'zero')
             assert zero.locator('tbody tr').count() == 1 and len(_csv(page,zero)) == 1
             assert zero.locator('.fw-sankey-records').evaluate('e=>getComputedStyle(e).display') == 'none'
             _ready(_root(page,'No supplied paths'),'empty')
 
-            visible = _root(page,'Scoped visible'); _ready(visible)
+            visible = _root(page,'Scoped visible')
+            _ready(visible)
             life_section = visible.locator('xpath=ancestor::div[contains(@class,"fw-section")][1]')
             life_section.get_by_role('tab',name='Reveal paths',exact=True).click()
-            revealed = _root(page,'Scoped revealed'); _ready(revealed)
+            revealed = _root(page,'Scoped revealed')
+            _ready(revealed)
             assert revealed.locator('canvas').bounding_box()['height'] > 200
             life_section.get_by_role('button',name='iOS',exact=True).click()
             expect(revealed.locator('.fw-sankey-population')).to_contain_text('500 players')
@@ -218,9 +232,11 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
             _ready(visible)
             expect(visible.locator('.fw-sankey-population')).to_contain_text('500 players')
             # Re-entry and renderAll preserve summary focus, disclosure and subscription cardinality.
-            main.scroll_into_view_if_needed(); main.locator('summary').focus()
+            main.scroll_into_view_if_needed()
+            main.locator('summary').focus()
             for _ in range(3):
-                page.evaluate('renderAll()'); _ready(main)
+                page.evaluate('renderAll()')
+                _ready(main)
             assert main.locator('details').get_attribute('open') is not None
             expect(main.locator('summary')).to_be_focused()
             assert page.evaluate("_fwFilterEngine._subscribers.showcase_sankey_paths.filter(s=>s.id===document.querySelector('canvas[data-fw-title=\"Weekly supplied player paths\"]').id).length") == 1
@@ -247,7 +263,8 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
             }""",cid)
             _ready(main)
 
-            identity = _root(page,IDENTITY_TITLE); _ready(identity)
+            identity = _root(page,IDENTITY_TITLE)
+            _ready(identity)
             identity.locator('summary').click()
             expect(identity.locator('.fw-sankey-records')).to_contain_text('__proto__')
             assert identity.locator('img,script').count() == 0
@@ -270,7 +287,9 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
                     page.set_viewport_size({'width':width,'height':900})
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             if width == 390:
-                scroll = main.locator('.fw-sankey-scroll'); scroll.scroll_into_view_if_needed(); scroll.focus()
+                scroll = main.locator('.fw-sankey-scroll')
+                scroll.scroll_into_view_if_needed()
+                scroll.focus()
                 assert scroll.evaluate('e=>e.scrollWidth > e.clientWidth')
                 page.keyboard.press('ArrowRight')
                 page.wait_for_function("id=>document.getElementById(id).closest('.fw-sankey-scroll').scrollLeft>0",arg=cid)
@@ -309,7 +328,8 @@ def test_standalone_sankey_only_csv_has_no_generic_chart_handler(tmp_path):
             page = browser.new_page(viewport={"width":1280,"height":900})
             _route(page,tmp_path)
             page.goto('http://sankey-only.test/index.html',wait_until='networkidle')
-            root = _root(page,'Only Sankey'); _ready(root)
+            root = _root(page,'Only Sankey')
+            _ready(root)
             rows = _csv(page,root)
             assert len(rows) == 8 and sum(int(r['weight']) for r in rows) == 1000
             assert len(rows[0]) == 21
@@ -327,7 +347,8 @@ def test_runtime_invalid_schema_values_and_unready_injection_clear_geometry(tmp_
             page = browser.new_page()
             _route(page,tmp_path)
             page.goto('http://sankey-injection.test/index.html',wait_until='networkidle')
-            root = _root(page,'Only Sankey'); _ready(root)
+            root = _root(page,'Only Sankey')
+            _ready(root)
             cid = root.locator('canvas').get_attribute('id')
             # Completed empty/zero states capture without a Chart.js instance.
             for zero in (False, True):
@@ -378,7 +399,8 @@ def test_runtime_source_bound_before_graph_creation(tmp_path):
             page = browser.new_page()
             _route(page,tmp_path)
             page.goto('http://sankey-bound.test/index.html',wait_until='networkidle')
-            root = _root(page,'Only Sankey'); _ready(root)
+            root = _root(page,'Only Sankey')
+            _ready(root)
             cid = root.locator('canvas').get_attribute('id')
             page.evaluate("""id=>{
                 const cfg=structuredClone(window._reportData.components[id]);

@@ -7,17 +7,17 @@ import inspect
 import json
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
 import sys
 import types
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import pandas as pd
 import pytest
 
 from trellum.assets import load_js
-from trellum.components import BarChart, StackedBar, RenderContext
+from trellum.components import BarChart, RenderContext, StackedBar
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
@@ -125,7 +125,7 @@ def _report(output, baseline=False):
         source = subprocess.check_output(['git', 'show', BASELINE + ':trellum/components/charts/bar.py'], text=True)
         module = types.ModuleType('_bar_labels_actual_baseline')
         sys.modules[module.__name__] = module
-        exec(compile(source, '<git baseline bar.py>', 'exec'), module.__dict__)
+        exec(compile(source, '<git baseline bar.py>', 'exec'), module.__dict__)  # noqa: S102 - Trusted maintainer-selected Git baseline for compatibility proof.
         for section in ctx.sections:
             for i, chart in enumerate(section['components']):
                 if isinstance(chart, (BarChart, StackedBar)):
@@ -400,6 +400,7 @@ def test_raw_label_eligibility_guards_and_population_checks():
 
 def test_live_raw_eligibility_with_actual_filters_and_normalization(tmp_path):
     from playwright.sync_api import expect, sync_playwright
+
     from trellum.components import DataSource, FilterBar, Toggle, Visible
     frame = pd.DataFrame([
         {'case': case, 'x': x, 'source': source, 'amount': amount}
@@ -476,6 +477,7 @@ def test_live_raw_eligibility_with_actual_filters_and_normalization(tmp_path):
 
 def test_tagged_stack_preserves_workspace_leases(tmp_path):
     from playwright.sync_api import sync_playwright
+
     from trellum.components import DataSource, FilterBar
     frame = pd.DataFrame({'x': ['A', 'A', 'B', 'B'], 'source': ['One', 'Two'] * 2,
                           'platform': ['Web', 'Mobile'] * 2, 'value': [25, 15, 30, 20]})

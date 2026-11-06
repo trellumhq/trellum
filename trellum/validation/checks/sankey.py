@@ -9,7 +9,12 @@ def check_sankey_charts(comps, ds_map, result):
     ``comps`` follows the validator's (component, section) convention. Call
     after collecting ``ds_map`` and before applying suppressions.
     """
-    from trellum.components.filterable import DataSource, FilterBar, LiveDataSource, ScopedDataSource
+    from trellum.components.filterable import (
+        DataSource,
+        FilterBar,
+        LiveDataSource,
+        ScopedDataSource,
+    )
 
     def ancestry(ds_id):
         seen = set()

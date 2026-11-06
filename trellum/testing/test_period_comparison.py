@@ -1,25 +1,26 @@
 """Independent UTC arithmetic oracle and native projection admission."""
 import importlib.util
 import json
+import subprocess
 from datetime import date, timedelta
 from pathlib import Path
-import subprocess
 
 import pytest
 
 from trellum.assets import load_js
+from trellum.components.period_comparison import validate_definition, validate_source
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.validation import validate_report
 from trellum.validation.checks.period_comparison import check_period_comparison
-from trellum.components.period_comparison import validate_definition, validate_source
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def example_context(output):
     spec = importlib.util.spec_from_file_location('examples_period', ROOT/'trellum/demo/reports/component-showcase/examples_period_comparison.py')
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     ctx = ReportContext(config={'name': 'Period comparison', 'studio': 'test', 'category': 'Test',
         'description': 'Complete independent synthetic UTC daily activity, explicit inclusive periods and selected platforms.'},
         slug='period-comparison', output_dir=str(output))
@@ -51,11 +52,15 @@ def oracle(start, end, platform=None):
         current = day.year == 2026 and day.month == 10
         u = (100 if current else 80) + day.day
         if platform != 'Android':
-            totals['cost'] += 2*u; totals['installs'] += u
-            totals['revenue'] += (3 if current else 2.5)*u; totals['clicks'] += (5 if current else 6)*u
+            totals['cost'] += 2*u
+            totals['installs'] += u
+            totals['revenue'] += (3 if current else 2.5)*u
+            totals['clicks'] += (5 if current else 6)*u
         if platform != 'iOS':
-            totals['cost'] += 2*u; totals['installs'] += 2*u
-            totals['revenue'] += (4 if current else 3)*u; totals['clicks'] += (8 if current else 10)*u
+            totals['cost'] += 2*u
+            totals['installs'] += 2*u
+            totals['revenue'] += (4 if current else 3)*u
+            totals['clicks'] += (8 if current else 10)*u
         day += timedelta(days=1)
     return {'cost': totals['cost'], 'daily_cost': totals['cost']/count, 'cpi': totals['cost']/totals['installs'],
             'conversions': totals['installs'], 'daily_conversions': totals['installs']/count,
@@ -66,14 +71,17 @@ def oracle(start, end, platform=None):
 @pytest.mark.parametrize('platform', [None, 'iOS', 'Android'])
 @pytest.mark.parametrize('preset', ['WoW', 'MoM', 'YoY'])
 def test_all_metrics_deltas_daily_vectors(tmp_path, platform, preset):
-    _, m = example_context(tmp_path); cfg = config(m)
+    _, m = example_context(tmp_path)
+    cfg = config(m)
     rows = m.facts().to_dict('records')
-    if platform: rows = [r for r in rows if r['platform'] == platform]
+    if platform:
+        rows = [r for r in rows if r['platform'] == platform]
     out = node('console.log(JSON.stringify(_fwPeriodComparison.derive('+json.dumps(rows)+','+json.dumps(cfg)+','+json.dumps(preset)+',"")));')
     a, b = [oracle(*m.PRESETS[preset][side], platform) for side in ('A', 'B')]
     for row in out[m.RESULT]:
         key = row['metric']
-        assert row['A'] == pytest.approx(a[key]); assert row['B'] == pytest.approx(b[key])
+        assert row['A'] == pytest.approx(a[key])
+        assert row['B'] == pytest.approx(b[key])
         expected = (a[key]-b[key])*100 if key == 'click_conversion' else (a[key]-b[key])/b[key]
         assert row['change'] == pytest.approx(expected)
         assert not row['A_reason'] and not row['B_reason'] and not row['change_reason']
@@ -82,7 +90,8 @@ def test_all_metrics_deltas_daily_vectors(tmp_path, platform, preset):
     for i, row in enumerate(daily):
         assert row['day'] == i+1
         for side in ('A', 'B'):
-            start, end = map(date.fromisoformat, m.PRESETS[preset][side]); original = start + timedelta(days=i)
+            start, end = map(date.fromisoformat, m.PRESETS[preset][side])
+            original = start + timedelta(days=i)
             for key in ('cost', 'conversions', 'revenue', 'recovery'):
                 if original > end:
                     assert row[key+'_'+side] is None and row[key+'_'+side+'_state'] == 'outside-period'
@@ -97,7 +106,8 @@ def test_all_metrics_deltas_daily_vectors(tmp_path, platform, preset):
 
 def test_native_diagnostics_and_schemas(tmp_path):
     ctx, m = example_context(tmp_path)
-    details = compute_details(ctx); result = validate_report(ctx, details=details)
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
     assert 'period-comparison' in result.groups_run
     assert [(c.id, c.message) for c in result.checks if c.level in {'warn', 'fail'}] == []
     assert details['totals']['total_rows'] == 184
@@ -109,12 +119,17 @@ def test_native_diagnostics_and_schemas(tmp_path):
 @pytest.mark.parametrize('window', [['2026-02-29','2026-03-01'], ['2026-10-02','2026-10-01'],
     ['2026-01-01','2027-01-02'], ['2026-01-01T00:00:00Z','2026-01-02']])
 def test_strict_daily_windows(tmp_path, window):
-    _, m = example_context(tmp_path); v = m.projection(); v.presets = {'Bad': {'A': window, 'B': window}}; v.default='Bad'
-    with pytest.raises(ValueError): validate_definition(v)
+    _, m = example_context(tmp_path)
+    v = m.projection()
+    v.presets = {'Bad': {'A': window, 'B': window}}
+    v.default='Bad'
+    with pytest.raises(ValueError):
+        validate_definition(v)
 
 
 def test_leap_window_and_unavailable_siblings(tmp_path):
-    _, m = example_context(tmp_path); cfg = config(m)
+    _, m = example_context(tmp_path)
+    cfg = config(m)
     cfg['presets'] = {'Leap': {'A':['2024-02-28','2024-02-29'], 'B':['2023-02-28','2023-03-01']}}
     cfg['default'] = 'Leap'
     rows = [{'date': d, 'cost': 0 if d.startswith('2023') else 2, 'installs': 1, 'revenue': None, 'clicks': 2}
@@ -130,10 +145,14 @@ def test_leap_window_and_unavailable_siblings(tmp_path):
 
 @pytest.mark.heavy
 def test_complete_source_bounds(tmp_path):
-    _, m = example_context(tmp_path); v = m.projection(); r = m.facts().to_dict('records')[0]
+    _, m = example_context(tmp_path)
+    v = m.projection()
+    r = m.facts().to_dict('records')[0]
     validate_source(v, [r]*10000, r)
-    with pytest.raises(ValueError, match='10,000'): validate_source(v, [r]*10001, r)
-    v.date_column = 'date'; rows = [{**r, 'date':'2026-10-01', 'cost': 1}]*10000
+    with pytest.raises(ValueError, match='10,000'):
+        validate_source(v, [r]*10001, r)
+    v.date_column = 'date'
+    rows = [{**r, 'date':'2026-10-01', 'cost': 1}]*10000
     # A long declared numeric-column name contributes bytes to relevant payload too.
     v.metrics = {'wide': {**v.metrics['cost'], 'definition':{'agg':'sum', 'column':'x'*128}}}
     rows = [{'date':'2026-10-01', 'x'*128:1}]*10000
@@ -157,9 +176,12 @@ def test_invalid_limits_group_partitions_schema_and_precision(tmp_path):
         lambda v:v.metrics['cost'].update(unknown='expression'),
         lambda v:v.metrics['cost']['definition'].update(agg='expression'),
     ):
-        v=copy.deepcopy(m.projection());mutation(v)
-        with pytest.raises(ValueError):validate_definition(v)
-    v=m.projection();row=m.facts().to_dict('records')[0]
+        v=copy.deepcopy(m.projection())
+        mutation(v)
+        with pytest.raises(ValueError):
+            validate_definition(v)
+    v=m.projection()
+    row=m.facts().to_dict('records')[0]
     for invalid in (Decimal('1.1'), '1', True, 2**53):
         with pytest.raises(ValueError,match='native|unsafe'):
             validate_source(v,[{**row,'cost':invalid}],row)
@@ -168,8 +190,9 @@ def test_invalid_limits_group_partitions_schema_and_precision(tmp_path):
 
 
 def test_native_order_collision_chaining_and_ambiguous_context(tmp_path):
-    from trellum.components import DataSource, Toggle, LineChart
     import pandas as pd
+
+    from trellum.components import DataSource, LineChart, Toggle
     _,m=example_context(tmp_path)
     # Public dispatch must reject malformed native source/control declarations.
     for components in (
@@ -178,12 +201,14 @@ def test_native_order_collision_chaining_and_ambiguous_context(tmp_path):
         [DataSource(m.SOURCE,m.facts()),Toggle(m.PERIOD,list(m.PRESETS),'MoM'),m.projection(),DataSource(m.RESULT+'_daily',m.facts())],
     ):
         ctx=ReportContext(config={'name':'Admission'},slug='admission',output_dir=str(tmp_path))
-        ctx.add_section('Admission',components);result=validate_report(ctx, details=compute_details(ctx))
+        ctx.add_section('Admission',components)
+        result=validate_report(ctx, details=compute_details(ctx))
         assert any(c.level=='fail' and c.id.startswith('period-comparison') for c in result.checks)
     frame=pd.DataFrame({'x':[1,1],'v':[1,2],'date':['2026-10-01','2026-10-02'],'window':['A','A']})
     line=LineChart(frame,'x','v',dataset_id='facts',point_context=[{'series':0,'date_column':'date','window_column':'window'}])
     ctx=ReportContext(config={'name':'Ambiguous'},slug='ambiguous',output_dir=str(tmp_path))
-    ctx.add_section('Admission',[DataSource('facts',frame),line]);result=validate_report(ctx, details=compute_details(ctx))
+    ctx.add_section('Admission',[DataSource('facts',frame),line])
+    result=validate_report(ctx, details=compute_details(ctx))
     assert any(c.id=='line-chart-point-context-invalid' for c in result.checks)
 
 

@@ -12,10 +12,9 @@ import pytest
 from trellum.assets import load_js
 from trellum.components import DataSource, DoughnutChart, FilterBar, LineChart, StackedBar
 from trellum.components.base import RenderContext
-from trellum.report import ReportContext
 from trellum.rendering.html_builder import render_report
+from trellum.report import ReportContext
 from trellum.themes import DEFAULT_THEME
-
 
 DECLARATION = {"domain": "acquisition", "column": "channel", "slots": {"UA": 0, "Retargeting": 2}}
 FRAME = pd.DataFrame({"day": ["2026-09-01", "2026-09-02"], "channel": ["UA", "Retargeting"], "value": [21, 17]})

@@ -11,7 +11,8 @@ import pandas as pd
 from trellum.components.base import RenderContext
 from trellum.components.charts._header_summary import header_summary_config
 from trellum.components.charts._stacked_summary import (
-    stacked_summary_config, stacked_summary_input_reason,
+    stacked_summary_config,
+    stacked_summary_input_reason,
 )
 from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
@@ -505,7 +506,9 @@ class ComboChart(_ChartBase):
 
     def render_html(self, ctx: RenderContext) -> str:
         from trellum.components.charts._combo_summary import (
-            combo_summary_config, combo_summary_html, combo_summary_input_reason,
+            combo_summary_config,
+            combo_summary_html,
+            combo_summary_input_reason,
         )
         summary_config = combo_summary_config(self)
         month_config = _month_context_config(self)

@@ -1,19 +1,19 @@
 """Production registrar, cleanup, capture admission and baseline geometry."""
 from __future__ import annotations
-import importlib.util
-import json
+
 import subprocess
 import sys
 import types
 
 import pytest
-from trellum.components import MiniKpi, KpiRow, Panel
+
+from trellum.components import KpiRow, MiniKpi, Panel
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
-from trellum.testing.test_metric_views import ROOT
-from trellum.testing.test_marketing_composition_browser import build, rows, SOURCE, RESULT, EVIDENCE
 from trellum.testing.test_chart_header_summaries_browser import _route
+from trellum.testing.test_marketing_composition_browser import EVIDENCE, RESULT, SOURCE, build
+from trellum.testing.test_metric_views import ROOT
 
 
 def test_native_registrar_cleanup_rebinding_and_capture_admission(tmp_path):
@@ -69,41 +69,52 @@ def test_native_registrar_cleanup_rebinding_and_capture_admission(tmp_path):
             page.locator('#sec-marketing-geography').evaluate('el=>el.remove()')
             page.wait_for_function('()=>fw.filterEngine._lifecycleListeners.size===0')
             assert page.evaluate('id=>(fw.filterEngine._subscribers[id]||[]).filter(s=>s.id.includes(":metric-view")).length',SOURCE)==0
-        finally: browser.close()
+        finally:
+            browser.close()
 
 
 @pytest.mark.parametrize('width',[1280,pytest.param(390,marks=pytest.mark.heavy)])
 def test_static_mini_and_kpi_row_baseline_geometry_pixels(tmp_path,width):
     from playwright.sync_api import sync_playwright
     source=subprocess.check_output(['git','show','1c0c49710c5d073a78f83ab069fd517cd49c1632:trellum/components/kpis.py'],cwd=ROOT,text=True)
-    module=types.ModuleType('_metric_browser_baseline');sys.modules[module.__name__]=module;exec(source,module.__dict__)
+    module=types.ModuleType('_metric_browser_baseline')
+    sys.modules[module.__name__]=module
+    exec(source,module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     outputs=[]
     for name,mini,row in [('baseline',module.MiniKpi,module.KpiRow),('current',MiniKpi,KpiRow)]:
-        output=tmp_path/name;output.mkdir()
+        output=tmp_path/name
+        output.mkdir()
         ctx=ReportContext(config={'name':'Static parity','studio':'test','category':'Test'},slug='static-parity',output_dir=str(output))
         ctx.add_section('Existing layout',[Panel([mini('Supplied',1234.5,'currency'),mini('Stacked',12.5,'percent',stacked=True)]),
             row([{'label':'One','value':10},{'label':'Two','value':20},{'label':'Three','value':30}])])
-        render_report(ctx,str(output),auto_refresh=False);copy_vendor_tree(output);outputs.append(output)
+        render_report(ctx,str(output),auto_refresh=False)
+        copy_vendor_tree(output)
+        outputs.append(output)
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         try:
-            shots=[];geometry=[]
+            shots=[]
+            geometry=[]
             for name,output in zip(('baseline','current'),outputs):
                 page=browser.new_page(viewport={'width':width,'height':900},device_scale_factor=1)
-                _route(page,output);page.goto('http://metric-static.test/index.html',wait_until='networkidle')
-                page.wait_for_function('()=>document.querySelector(".fw-mini-val")');page.evaluate('document.fonts.ready')
+                _route(page,output)
+                page.goto('http://metric-static.test/index.html',wait_until='networkidle')
+                page.wait_for_function('()=>document.querySelector(".fw-mini-val")')
+                page.evaluate('document.fonts.ready')
                 geometry.append(page.locator('.fw-mini-kpi,.fw-kpi-card').evaluate_all('nodes=>nodes.map(n=>{let r=n.getBoundingClientRect();return [r.x,r.y,r.width,r.height]})'))
                 shots.append(page.locator('#sec-existing-layout').screenshot(path=str(EVIDENCE/f'static-{width}-{name}.png')))
                 page.close()
             assert geometry[0]==geometry[1]
             assert shots[0]==shots[1]
-        finally: browser.close()
+        finally:
+            browser.close()
 
 
 def test_native_scope_switches_replace_owned_registrars(tmp_path):
     import pandas as pd
     from playwright.sync_api import sync_playwright
-    from trellum.components import DataSource, FilterBar, ScopedDataSource, DataTable
+
+    from trellum.components import DataSource, DataTable, FilterBar, ScopedDataSource
     from trellum.components.metric_views import MetricView
     from trellum.reporting.diagnostics import compute_details
     from trellum.validation import validate_report
@@ -117,13 +128,16 @@ def test_native_scope_switches_replace_owned_registrars(tmp_path):
             FilterBar(scope+'_scoped',frame,filters=[{'column':'country','type':'toggle'}]),view,
             MiniKpi('Cost',binding={'dataset_id':view.id,'group':'all','metric':'cost'}),
             DataTable(view.empty_frame(),'Scope rows',dataset_id=view.id)])
-    result=validate_report(ctx,details=compute_details(ctx));check_metric_views(ctx,result)
+    result=validate_report(ctx,details=compute_details(ctx))
+    check_metric_views(ctx,result)
     assert [(c.id,c.message) for c in result.checks if c.level in {'warn','fail'}]==[]
-    render_report(ctx,str(tmp_path),auto_refresh=False);copy_vendor_tree(tmp_path)
+    render_report(ctx,str(tmp_path),auto_refresh=False)
+    copy_vendor_tree(tmp_path)
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         try:
-            page=browser.new_page();_route(page,tmp_path)
+            page=browser.new_page()
+            _route(page,tmp_path)
             page.goto('http://metric-scopes.test/index.html',wait_until='networkidle')
             page.wait_for_function('()=>document.querySelector(".fw-mini-val")?.textContent==="30"')
             for scope,expected in [('scope_b','90'),('scope_a','30'),('scope_b','90'),('scope_a','30')]:
@@ -135,4 +149,5 @@ def test_native_scope_switches_replace_owned_registrars(tmp_path):
             page.evaluate('renderAll();renderAll()')
             assert page.locator('.fw-mini-val').inner_text()=='10'
             assert page.evaluate('fw.filterEngine._lifecycleListeners.size')==2
-        finally: browser.close()
+        finally:
+            browser.close()

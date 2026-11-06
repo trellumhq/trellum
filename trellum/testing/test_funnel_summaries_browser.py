@@ -16,12 +16,18 @@ from trellum.components import BarChart, DataSource, FilterBar, FunnelChart, Tab
 from trellum.components.charts._funnel_summary import funnel_option_problems
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
-from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
 from trellum.report import ReportContext
-from trellum.testing.test_chart_header_summaries_browser import _route, _ready
+from trellum.reporting.diagnostics import compute_details
+from trellum.testing.test_chart_header_summaries_browser import _ready, _route
 from trellum.testing.test_doughnut_summaries_browser import _csv, _day, _settle
-from trellum.testing.test_funnel_summaries import BASELINE, ROOT, SUMMARY, baseline_class, example_context, frame
+from trellum.testing.test_funnel_summaries import (
+    BASELINE,
+    ROOT,
+    baseline_class,
+    example_context,
+    frame,
+)
+from trellum.validation import validate_report
 
 EVIDENCE = Path(os.environ.get('TRELLUM_FUNNEL_SUMMARY_EVIDENCE', '/tmp/trellum-funnel-summaries'))
 
@@ -272,7 +278,8 @@ def test_actual_baseline_off_pixels_geometry_data_csv(tmp_path, width):
                 for file in [output / 'index.html', *output.rglob('*.js'), *output.rglob('*.css')]:
                     text = file.read_text()
                     if current in text:
-                        file.write_text(text.replace(current, historical)); replaced = True
+                        file.write_text(text.replace(current, historical))
+                        replaced = True
                 assert replaced
         roots.append(output)
     EVIDENCE.mkdir(parents=True, exist_ok=True)
@@ -287,7 +294,9 @@ def test_actual_baseline_off_pixels_geometry_data_csv(tmp_path, width):
                 _ready(page)
                 for theme in ('trellum light', 'trellum dark'):
                     page.locator('#fwThemeSelect').select_option(theme)
-                    _ready(page); _settle(page); page.mouse.move(0, 0)
+                    _ready(page)
+                    _settle(page)
+                    page.mouse.move(0, 0)
                     geometry = [_plot(page, _id(page, title)) for title in ('Static', 'Bound')]
                     image = page.locator('.fw-section').screenshot(path=str(EVIDENCE / f'opt-out-{name}-{width}-{theme.split()[-1]}.png'), animations='disabled')
                     csv = [_csv(page, _container(page, _id(page, title)), EVIDENCE / f'baseline-{name}-{title}-{width}-{theme.split()[-1]}.csv') for title in ('Static', 'Bound')]

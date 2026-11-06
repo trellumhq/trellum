@@ -5,8 +5,17 @@ from datetime import date, timedelta
 import pandas as pd
 
 from trellum.components import (
-    BarChart, DataSource, DoughnutChart, FilterBar, Grid, KpiRow, LineChart,
-    Panel, RawHTML, Section, StackedBar,
+    BarChart,
+    DataSource,
+    DoughnutChart,
+    FilterBar,
+    Grid,
+    KpiRow,
+    LineChart,
+    Panel,
+    RawHTML,
+    Section,
+    StackedBar,
 )
 
 DATASET_ID = "showcase_overview_daily"

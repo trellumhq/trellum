@@ -1,7 +1,16 @@
 """Native, deterministic cell-entry summaries with section-local filters."""
 import pandas as pd
 
-from trellum.components import DataSource, DataTable, FilterBar, Grid, HeatmapChart, Panel, RawHTML, TabGroup
+from trellum.components import (
+    DataSource,
+    DataTable,
+    FilterBar,
+    Grid,
+    HeatmapChart,
+    Panel,
+    RawHTML,
+    TabGroup,
+)
 
 
 def facts():
@@ -76,7 +85,8 @@ def add_sections(ctx):
                          header_context="Supplied units · independently authored context" if normalize else None)
         ]) for name, normalize in (("Global", None), ("Row-relative", "row"))]),
     ])
-    edge = edge_facts(); source = "showcase_heatmap_summary_eligibility"
+    edge = edge_facts()
+    source = "showcase_heatmap_summary_eligibility"
     ctx.add_section("Heatmap summaries — missing, zero and input eligibility", [
         *_filters(source, edge, cases=True),
         RawHTML(html="<p>Select one case. Absent and zero has three observed entries and one truly absent coordinate. Null, string and boolean values retain legacy plot coercions but withhold numeric summaries; count remains an entry count. drop_empty keeps a cell only when both coordinate groups have positive cells, so zero-only and negative-only groups may disappear. The original-input guard includes invalid values in groups later dropped. Signed finite values are eligible. Fractional rates demonstrate an unweighted percent mean; additive rate sums are rejected. Summary arithmetic does not certify missingness, coordinate identity or upstream precision.</p>"),

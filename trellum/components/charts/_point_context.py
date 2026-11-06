@@ -1,9 +1,9 @@
 """Strict per-series original-date context for ordinary wide LineChart points."""
 from __future__ import annotations
 
-from trellum.components.period_comparison import iso_day
-from trellum.components.base import Component
 from trellum.assets import load_js
+from trellum.components.base import Component
+from trellum.components.period_comparison import iso_day
 
 
 class _LinePointContextAssets(Component):
@@ -34,7 +34,8 @@ def point_context_config(chart, ctx=None):
                    [i for i, label in enumerate(captions) if label == ref] if isinstance(ref, str) else [])
         if len(matches) != 1 or matches[0] in seen or captions.count(captions[matches[0]]) != 1:
             raise ValueError('LineChart point_context must identify each target series unambiguously once')
-        index = matches[0]; seen.add(index)
+        index = matches[0]
+        seen.add(index)
         if chart.dataset_id:
             if set(rule) != {'series', 'date_column', 'window_column'} or any(
                 not isinstance(rule[k], str) or not rule[k].strip() for k in ('date_column', 'window_column')):

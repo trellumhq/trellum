@@ -1,22 +1,31 @@
 """Optional authored chart header context keeps default chart output stable."""
 from __future__ import annotations
 
+import importlib.util
 import inspect
 from dataclasses import replace
-import importlib.util
-from pathlib import Path
 from html import escape
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from trellum.components import (
-    AreaChart, BarChart, ComboChart, DoughnutChart, FunnelChart, HeatmapChart,
-    LineChart, RenderContext, ScatterChart, StackedBar, TreemapChart,
+    AreaChart,
+    BarChart,
+    ComboChart,
+    DoughnutChart,
+    FunnelChart,
+    HeatmapChart,
+    LineChart,
+    RenderContext,
+    ScatterChart,
+    StackedBar,
+    TreemapChart,
 )
-from trellum.themes import DefaultTheme
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
+from trellum.themes import DefaultTheme
 from trellum.validation import validate_report
 
 

@@ -1,6 +1,6 @@
 """PivotTable presentation preserves its values while adding optional freezing."""
-from dataclasses import dataclass
 import importlib.util
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -8,8 +8,8 @@ import pytest
 
 from trellum.components import PivotTable
 from trellum.components.base import RenderContext
-from trellum.report import ReportContext
 from trellum.rendering.html_builder import render_report
+from trellum.report import ReportContext
 from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
 
@@ -99,6 +99,7 @@ def _serve(page, root):
 def test_pivot_real_chromium(tmp_path, width):
     import csv
     import os
+
     from playwright.sync_api import sync_playwright
 
     _build_browser_report(tmp_path)

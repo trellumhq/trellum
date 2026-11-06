@@ -1,19 +1,21 @@
 """Strict StackedBar declarations, original eligibility and native examples."""
 from __future__ import annotations
 
-from dataclasses import replace
 import importlib.util
 import inspect
-from pathlib import Path
 import subprocess
 import sys
+from dataclasses import replace
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from trellum.components import RenderContext, StackedBar
 from trellum.components.charts._stacked_summary import (
-    stacked_summary_config, stacked_summary_input_reason, stacked_summary_option_problems,
+    stacked_summary_config,
+    stacked_summary_input_reason,
+    stacked_summary_option_problems,
 )
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
@@ -30,7 +32,8 @@ SUMMARY = {'stat': 'sum', 'scope': 'absolute_series', 'series': 'UA'}
 
 def module(path, name):
     spec = importlib.util.spec_from_file_location(name, path)
-    result = importlib.util.module_from_spec(spec); sys.modules[name] = result
+    result = importlib.util.module_from_spec(spec)
+    sys.modules[name] = result
     spec.loader.exec_module(result)
     return result
 
@@ -81,7 +84,8 @@ def test_keyword_only_actual_baseline_html_payload(tmp_path):
     html, cfg = render(chart(header_summary=SUMMARY))
     assert 'Legacy title' not in html  # Preserve the legacy static omitted title.
     assert cfg['stacked_summary_input_reason'] == ''
-    summary = cfg.pop('stacked_summary'); cfg.pop('stacked_summary_input_reason')
+    summary = cfg.pop('stacked_summary')
+    cfg.pop('stacked_summary_input_reason')
     assert cfg == render(chart())[1]
     assert summary['label'] == 'Total · UA'
     assert 'header_summary' not in cfg
@@ -98,7 +102,8 @@ for name, values in {'stat': [[], {}, True, None, 'median'], 'scope': [[], {}, T
 def test_strict_construction_render_and_pure_mutation_diagnostics(bad):
     with pytest.raises(ValueError, match='StackedBar header_summary'):
         chart(header_summary=bad)
-    comp = chart(); comp.header_summary = bad
+    comp = chart()
+    comp.header_summary = bad
     assert stacked_summary_option_problems(comp)[0][0] == 'chart-summary-invalid'
     result = ValidationResult(slug='stacked-summary')
     _check_chart_options([(comp, 'Stacks')], result)
@@ -152,7 +157,8 @@ def test_static_summary_only_guards_its_selected_series():
 
 
 def test_native_examples_oracle_and_zero_diagnostics(tmp_path):
-    teaching = examples(); frame = teaching.facts()
+    teaching = examples()
+    frame = teaching.facts()
     assert len(frame) == 12 and frame.events.sum() == 540
     assert frame.groupby('channel').events.sum().to_dict() == {'Organic': 270, 'RT': 180, 'UA': 90}
     assert frame[frame.channel.eq('UA')].groupby('day').events.sum().tolist() == [30, 60]

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import pandas as pd
 
 from trellum.assets import load_css, load_js
+from trellum.components.base import Component, RenderContext
 from trellum.components.charts._heatmap_summary import (
     heatmap_input_reason,
     heatmap_summary_config,
 )
-from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,

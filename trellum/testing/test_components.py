@@ -455,6 +455,7 @@ def test_mini_kpi_stacked_and_safe_dom_renderer():
 def test_kpi_showcase_module_adds_sections_to_report_context(tmp_path):
     import importlib.util
     from pathlib import Path
+
     from trellum.report import ReportContext
 
     module_path = (Path(__file__).parents[1] / "demo/reports/component-showcase"

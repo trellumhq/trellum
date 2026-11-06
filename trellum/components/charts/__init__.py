@@ -13,8 +13,8 @@ from trellum.components.charts.doughnut import DoughnutChart
 from trellum.components.charts.funnel import FunnelChart
 from trellum.components.charts.heatmap import HeatmapChart
 from trellum.components.charts.line_area import AreaChart, LineChart
-from trellum.components.charts.scatter import ScatterChart
 from trellum.components.charts.sankey import SankeyChart
+from trellum.components.charts.scatter import ScatterChart
 from trellum.components.charts.treemap import TreemapChart
 
 __all__ = [

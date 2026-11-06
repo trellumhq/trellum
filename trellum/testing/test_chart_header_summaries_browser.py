@@ -9,7 +9,6 @@ import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-import pandas as pd
 import pytest
 
 from trellum.components import AreaChart, BarChart, Grid, TabGroup
@@ -17,11 +16,15 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
-
 from trellum.testing.test_chart_header_summaries import (
-    BASELINE, ROOT, SUMMARY, baseline_class, example_context, frame,
+    BASELINE,
+    ROOT,
+    SUMMARY,
+    baseline_class,
+    example_context,
+    frame,
 )
+from trellum.validation import validate_report
 
 
 def _build(output):

@@ -1,18 +1,18 @@
 """Native vendored captures retain computed report paint in a private clone."""
 
 import base64
-from io import BytesIO
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
+from io import BytesIO
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import pandas as pd
-from PIL import Image
 import pytest
+from PIL import Image
 
 from trellum.components import ComparisonTable, DataTable, KpiCard, PivotTable, RawHTML
 from trellum.rendering.html_builder import render_report

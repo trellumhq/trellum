@@ -8,9 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from trellum.components import DataSource, FilterBar, LiveDataSource, ScopedDataSource
+from trellum.components import DataSource, FilterBar, LiveDataSource, SankeyChart, ScopedDataSource
 from trellum.components.base import RenderContext
-from trellum.components import SankeyChart
 from trellum.components.charts.sankey import SAFE_INTEGER
 from trellum.themes import DEFAULT_THEME
 from trellum.validation.checks.sankey import check_sankey_charts
@@ -78,7 +77,8 @@ def test_quantity_counts_aggregation_and_ambiguity():
             chart(df, weight_kind="quantity")
     stages = [{"key": f"w{i}", "label": "Repeated label"} for i in range(1,5)]
     a = pd.DataFrame([["Low","Mid","Mid","Low",1], ["High","Mid","Mid","High",1]], columns=["w1","w2","w3","w4","players"])
-    b = a.copy(); b["w4"] = ["High","Low"]
+    b = a.copy()
+    b["w4"] = ["High","Low"]
     am, bm = chart(a, stages=stages).snapshot(a), chart(b, stages=stages).snapshot(b)
     assert am["edges"] == bm["edges"] and am["paths"] != bm["paths"]
 
@@ -87,24 +87,29 @@ def test_quantity_counts_aggregation_and_ambiguity():
 def test_edges_require_adjacent_declared_stages(from_stage, to_stage):
     df = examples().edges_frame().astype(object)
     df.loc[0, ["from_week","to_week"]] = [from_stage,to_stage]
-    with pytest.raises(ValueError): edge_chart(df)
+    with pytest.raises(ValueError):
+        edge_chart(df)
 
 
 def test_edges_unbalanced_zeros_and_null_are_exact():
-    c = edge_chart(); graph = c.snapshot(c.df)
+    c = edge_chart()
+    graph = c.snapshot(c.df)
     assert graph["total"] is None and graph["paths"] == {}
     assert graph["boundaries"] == [100,50,15]
     assert graph["edges"][(2,"Purchase","No purchase")] == 0
     assert graph["edges"][(1,"Consider",None)] == 5
-    with pytest.raises(ValueError): edge_chart(source=None)
-    with pytest.raises(ValueError): edge_chart(target="from_category")
+    with pytest.raises(ValueError):
+        edge_chart(source=None)
+    with pytest.raises(ValueError):
+        edge_chart(target="from_category")
 
 
 @pytest.mark.parametrize("category", [True, 0, [], {"label":"A"}, "", " ", "a"*513])
 def test_reject_non_scalar_or_blank_categories(category):
     df = examples().paths_frame().astype(object)
     df.at[0,"w1"] = category
-    with pytest.raises(ValueError): chart(df)
+    with pytest.raises(ValueError):
+        chart(df)
 
 
 def test_typed_identity_unavailable_literal_and_escaping():
@@ -118,7 +123,8 @@ def test_typed_identity_unavailable_literal_and_escaping():
     assert "<script>bad()" not in markup and "<img src=x" not in markup
     assert "&lt;img" in markup and "&lt;script&gt;" in markup
     df.loc[0,"players"] = None
-    with pytest.raises(ValueError): c.render_html(RenderContext(DEFAULT_THEME))
+    with pytest.raises(ValueError):
+        c.render_html(RenderContext(DEFAULT_THEME))
 
 
 @pytest.mark.heavy
@@ -165,12 +171,16 @@ def test_effective_source_scopes_mutation_and_validator():
     ds.df.loc[0,"players"] = -1
     check_sankey_charts([(c,"Scoped")],ds_map,result)
     assert result.summary["fail"] == 1
-    invalid = df.copy(); invalid["players"] = "10"
+    invalid = df.copy()
+    invalid["players"] = "10"
     DataSource("base",invalid).render_html(ctx)
-    with pytest.raises(ValueError): c.render_html(ctx)
-    with pytest.raises(ValueError): chart(dataset_id="absent").render_html(ctx)
+    with pytest.raises(ValueError):
+        c.render_html(ctx)
+    with pytest.raises(ValueError):
+        chart(dataset_id="absent").render_html(ctx)
     c.height = False
-    with pytest.raises(ValueError): c.render_html(ctx)
+    with pytest.raises(ValueError):
+        c.render_html(ctx)
 
 
 def test_live_chunked_and_live_connected_sources_rejected():
@@ -190,4 +200,5 @@ def test_live_chunked_and_live_connected_sources_rejected():
     ds.render_html(ctx)
     ctx.register("live",{"type":"live_data_source","dataset_id":"live"})
     fb.render_html(ctx)
-    with pytest.raises(ValueError,match="live-connected"): c.render_html(ctx)
+    with pytest.raises(ValueError,match="live-connected"):
+        c.render_html(ctx)

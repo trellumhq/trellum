@@ -38,7 +38,7 @@ def baseline_class():
     source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/funnel.py'], cwd=ROOT, text=True)
     module = types.ModuleType('_funnel_summary_baseline')
     sys.modules[module.__name__] = module
-    exec(compile(source, 'baseline/funnel.py', 'exec'), module.__dict__)
+    exec(compile(source, 'baseline/funnel.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return module.FunnelChart
 
 
@@ -161,7 +161,8 @@ const out={duplicates:probe(['Completed','Completed','Opened'],[10,20,50]),
 process.stdout.write(JSON.stringify(out));
 '''
     out = json.loads(subprocess.check_output(['node', '-e', script], text=True))
-    values = lambda results: [v['value'] for v in results]
+    def values(results):
+        return [v['value'] for v in results]
     assert values(out['duplicates']) == [None, 50, 3]
     assert 'ambiguous' in out['duplicates'][0]['reason']
     assert values(out['valid']) == [20, 100, 2]

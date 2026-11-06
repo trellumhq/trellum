@@ -39,7 +39,7 @@ def baseline_class():
     source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/doughnut.py'], cwd=ROOT, text=True)
     module = types.ModuleType('_doughnut_summary_baseline')
     sys.modules[module.__name__] = module
-    exec(compile(source, 'baseline/doughnut.py', 'exec'), module.__dict__)
+    exec(compile(source, 'baseline/doughnut.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return module.DoughnutChart
 
 

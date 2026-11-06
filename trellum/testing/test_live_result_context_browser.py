@@ -1,13 +1,13 @@
 """Native binder and consumers; intercepted local transport, no DOM renderer."""
 from __future__ import annotations
 
-import json
 import base64
-from io import BytesIO
+import json
 import mimetypes
 import os
-from pathlib import Path
 import sqlite3
+from io import BytesIO
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest

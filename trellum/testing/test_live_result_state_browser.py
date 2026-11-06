@@ -5,15 +5,15 @@ transport edge cases live in test_live_result_state.py, not a report renderer.
 """
 from __future__ import annotations
 
-from contextlib import ExitStack
 import json
 import mimetypes
 import os
-from pathlib import Path
 import sqlite3
 import subprocess
-from urllib.parse import urlparse
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -82,7 +82,8 @@ def build_report(output, *, baseline=False, scoped=False, line_presentation=Fals
                 names = ['runtime/live_query.js', 'runtime/filter_engine.js', 'components/live_data_source.js']
                 sources = {name: subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/{name}'], cwd=ROOT, text=True)
                            for name in names}
-                historical = lambda name: sources[name] if name in sources else load_js(name)
+                def historical(name):
+                    return sources[name] if name in sources else load_js(name)
                 stack.enter_context(patch('trellum.rendering.js_runtime.load_js', historical))
                 stack.enter_context(patch('trellum.components.live_filterable.load_js', historical))
             render_report(ctx, str(output), auto_refresh=False)
@@ -411,8 +412,8 @@ def test_native_missing_snapshot_is_unavailable_not_empty(reports, browser):
 @pytest.mark.heavy
 def test_native_http_streamed_body_stale_selection_and_transport_deadline(reports, browser):
     """Real fetch/Response.json streaming; virtual time advances only the deadline."""
-    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
     import threading
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
     release = threading.Event()
     started = threading.Event()

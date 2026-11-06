@@ -1,7 +1,7 @@
 """Deterministic production binder regressions; native rendering is tested separately."""
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 

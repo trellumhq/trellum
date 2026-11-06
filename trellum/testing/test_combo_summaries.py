@@ -1,18 +1,22 @@
 """Strict Combo declarations, historical opt-out parity and native diagnostics."""
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import importlib.util
 import inspect
-from pathlib import Path
 import subprocess
 import sys
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from trellum.components import ComboChart, RenderContext
-from trellum.components.charts._combo_summary import combo_summary_config, combo_summary_input_reason, combo_summary_option_problems
+from trellum.components.charts._combo_summary import (
+    combo_summary_config,
+    combo_summary_input_reason,
+    combo_summary_option_problems,
+)
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DefaultTheme
@@ -28,7 +32,8 @@ SUMMARY = {'stat': 'sum', 'scope': 'axis_series', 'axis': 'left', 'series': 'Dai
 
 def module(path, name):
     spec = importlib.util.spec_from_file_location(name, path)
-    result = importlib.util.module_from_spec(spec); sys.modules[name] = result
+    result = importlib.util.module_from_spec(spec)
+    sys.modules[name] = result
     spec.loader.exec_module(result)
     return result
 
@@ -97,14 +102,17 @@ for name, values in {'stat': [[], {}, True, None, 'median'], 'scope': [[], {}, T
 
 @pytest.mark.parametrize('bad', BAD)
 def test_construction_render_and_pure_mutation_validation(bad):
-    with pytest.raises(ValueError, match='ComboChart header_summary'): chart(header_summary=bad)
-    comp = chart(); comp.header_summary = bad
+    with pytest.raises(ValueError, match='ComboChart header_summary'):
+        chart(header_summary=bad)
+    comp = chart()
+    comp.header_summary = bad
     assert combo_summary_option_problems(comp)[0][0] == 'chart-summary-invalid'
     result = ValidationResult(slug='mutated-combo')
     _check_chart_options([(comp, 'Combo')], result)
     assert [(c.id, c.level, c.component, c.section) for c in result.checks] == [
         ('chart-summary-invalid', 'fail', 'ComboChart', 'Combo')]
-    with pytest.raises(ValueError, match='ComboChart header_summary'): render(comp)
+    with pytest.raises(ValueError, match='ComboChart header_summary'):
+        render(comp)
 
 
 @pytest.mark.parametrize('axis', ['left', 'right'])
@@ -119,8 +127,10 @@ def test_actual_formats_and_declared_sum_guard(axis, bound, declared):
     for fmt in ('number', 'currency', 'percent', 'chips', 'ratio', 'plain'):
         option = {**SUMMARY, 'axis': axis, 'format': fmt}
         if fmt in ('percent', 'ratio') or declared in ('percent', 'ratio'):
-            with pytest.raises(ValueError, match='sum is undefined'): replace(comp, header_summary=option)
-        else: assert combo_summary_config(replace(comp, header_summary=option))['combo_summary']['format'] == fmt
+            with pytest.raises(ValueError, match='sum is undefined'):
+                replace(comp, header_summary=option)
+        else:
+            assert combo_summary_config(replace(comp, header_summary=option))['combo_summary']['format'] == fmt
 
 
 @pytest.mark.parametrize('value,valid', [(0, True), (-1, True), (.25, True), (None, False), ('10', False), (True, False),
@@ -135,7 +145,8 @@ def test_raw_static_selected_guard(value, valid):
 
 def test_static_final_caption_mapping_truncation_ambiguity_and_escaping():
     comp = chart(header_summary=SUMMARY)
-    comp.df['other'] = [None, None]; comp.bar_cols.append('other')
+    comp.df['other'] = [None, None]
+    comp.bar_cols.append('other')
     assert combo_summary_input_reason(comp) == ''  # zip truncates unrelated source
     comp.bar_labels = ['Other']
     assert combo_summary_input_reason(comp) == ''  # unavailable identity, diagnosed later
@@ -149,7 +160,8 @@ def test_static_final_caption_mapping_truncation_ambiguity_and_escaping():
 
 
 def test_native_examples_oracle_and_zero_diagnostics(tmp_path):
-    teaching = examples(); frame = teaching.facts()
+    teaching = examples()
+    frame = teaching.facts()
     assert len(frame) == 4
     grouped = frame.groupby('day').sum(numeric_only=True)
     assert grouped.spend.tolist() == [30, 60] and grouped.orders.tolist() == [9, 18]
@@ -159,4 +171,5 @@ def test_native_examples_oracle_and_zero_diagnostics(tmp_path):
     ctx = context(tmp_path)
     assert len(ctx.sections) == 4
     assert len({comp.dataset_id for comp, _ in _all_components(ctx) if type(comp).__name__ == 'FilterBar'}) == 4
-    validate(ctx); ctx.close_connections()
+    validate(ctx)
+    ctx.close_connections()

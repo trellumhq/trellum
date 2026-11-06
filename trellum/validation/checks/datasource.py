@@ -39,7 +39,6 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         LiveDataSource,
         ScopedDataSource,
     )
-
     from trellum.components.metric_views import MetricView
     from trellum.components.period_comparison import PeriodComparison, PeriodResult
 
@@ -67,8 +66,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         elif isinstance(comp, FilterBar):
             fb_list.append((comp, sec))
 
-    from trellum.validation.checks.table_drill_down import check_table_drill_down
     from trellum.validation.checks.hierarchy_table import check_hierarchy_tables
+    from trellum.validation.checks.table_drill_down import check_table_drill_down
 
     check_table_drill_down(comps, ds_map, result)
     check_hierarchy_tables(comps, ds_map, result)

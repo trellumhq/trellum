@@ -2,7 +2,15 @@
 
 import pandas as pd
 
-from trellum.components import DataSource, DataTable, FilterBar, KpiRow, LineChart, RawHTML, ScopedDataSource
+from trellum.components import (
+    DataSource,
+    DataTable,
+    FilterBar,
+    KpiRow,
+    LineChart,
+    RawHTML,
+    ScopedDataSource,
+)
 
 BASE = "table_drill_facts"
 CAMPAIGNS = "table_drill_campaigns"

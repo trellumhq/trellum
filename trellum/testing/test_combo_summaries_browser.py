@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import base64
-from contextlib import ExitStack
 import csv
 import io
 import json
 import math
 import os
-from pathlib import Path
 import subprocess
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -19,7 +19,8 @@ from trellum.components import ComboChart, DataSource, FilterBar
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.testing.test_combo_summaries import BASELINE, ROOT, context, examples, module, validate
-from trellum.testing.test_traffic_composition_browser import browser, open_report, state, capture
+from trellum.testing.test_traffic_composition_browser import browser as browser
+from trellum.testing.test_traffic_composition_browser import capture, open_report, state
 
 
 def build(output, mode='on', scoped=False):
@@ -40,11 +41,13 @@ def build(output, mode='on', scoped=False):
     if scoped:
         for scope in ('First', 'Second'):
             ctx.set_scope(scope)
-            frame = teaching.facts(); ds = 'combo_scope_' + scope.lower()
+            frame = teaching.facts()
+            ds = 'combo_scope_' + scope.lower()
             ctx.add_section(scope, [DataSource(ds, frame),
                 FilterBar(ds, frame, filters=[{'column': 'platform', 'type': 'toggle'}]),
                 teaching.live(frame, ds, scope + ' combo', header_summary=teaching.summary())])
-    else: teaching.add_sections(ctx)
+    else:
+        teaching.add_sections(ctx)
     details, validation = validate(ctx)
     (output / 'diagnostics.json').write_text(json.dumps(details, indent=2, default=str))
     (output / 'validation.json').write_text(json.dumps(validation.to_dict(), indent=2))
@@ -53,13 +56,15 @@ def build(output, mode='on', scoped=False):
             js = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/components/chart_base.js'], cwd=ROOT, text=True)
             patches.enter_context(patch('trellum.components.charts.base.load_js', lambda name: js if name == 'components/chart_base.js' else load_js(name)))
         render_report(ctx, str(output), auto_refresh=False)
-    copy_vendor_tree(output); ctx.close_connections()
+    copy_vendor_tree(output)
+    ctx.close_connections()
 
 
 @pytest.fixture(scope='module')
 def reports(tmp_path_factory):
     root = Path(os.environ.get('TRELLUM_COMBO_SUMMARY_EVIDENCE', str(tmp_path_factory.mktemp('combo-summaries'))))
-    for mode in ('on', 'off', 'baseline'): build(root / mode, mode)
+    for mode in ('on', 'off', 'baseline'):
+        build(root / mode, mode)
     build(root / 'scoped', scoped=True)
     return root
 
@@ -82,8 +87,10 @@ def region(page, index):
 
 
 def csv_download(target, path):
-    cid = target.get_attribute('id'); page = target.page
-    with page.expect_download() as download: page.locator('[data-csv-chart="' + cid + '"]').click(force=True)
+    cid = target.get_attribute('id')
+    page = target.page
+    with page.expect_download() as download:
+        page.locator('[data-csv-chart="' + cid + '"]').click(force=True)
     download.value.save_as(path)
     rows = list(csv.reader(io.StringIO(path.read_text(encoding='utf-8-sig'))))
     actual = state(target)
@@ -98,13 +105,16 @@ def csv_download(target, path):
 def test_native_historical_off_pixels_plot_geometry_formats_csv_and_captures(reports, browser, width):
     pages = []
     try:
-        for mode in ('baseline', 'off', 'on'): pages.append(open_report(browser, reports / mode, width=width))
+        for mode in ('baseline', 'off', 'on'):
+            pages.append(open_report(browser, reports / mode, width=width))
         baseline, off, on = [entry[0] for entry in pages]
         payloads = [json.loads((reports / mode / 'data.json').read_text()) for mode in ('baseline', 'off')]
-        for payload in payloads: payload.pop('_freshness', None)
+        for payload in payloads:
+            payload.pop('_freshness', None)
         assert payloads[0] == payloads[1]
         for theme in ('trellum light', 'trellum dark'):
-            for page, _, _ in pages: page.locator('#fwThemeSelect').select_option(theme)
+            for page, _, _ in pages:
+                page.locator('#fwThemeSelect').select_option(theme)
             for index in (0, 2):
                 a = capture(region(baseline, index), reports / f'baseline-{index}-{width}-{theme.split()[-1]}.png')
                 b = capture(region(off, index), reports / f'off-{index}-{width}-{theme.split()[-1]}.png')
@@ -143,15 +153,18 @@ def test_native_historical_off_pixels_plot_geometry_formats_csv_and_captures(rep
         # Native section/report capture includes all DOM, while raw canvas excludes the header.
         capture(region(on, 2), reports / f'native-section-{width}.png')
         for method, extension in (('exportPNG', 'png'), ('exportPDF', 'pdf')):
-            with on.expect_download(timeout=60000) as download: on.evaluate('method=>fw[method]()', method)
+            with on.expect_download(timeout=60000) as download:
+                on.evaluate('method=>fw[method]()', method)
             download.value.save_as(reports / f'native-report-{width}.{extension}')
         raw = canvas(on, 'Context left').evaluate('el=>el.toDataURL().split(",")[1]')
         (reports / f'raw-canvas-{width}.png').write_bytes(base64.b64decode(raw))
         subprocess.run(['pdftoppm', '-f', '1', '-singlefile', '-scale-to', '1600', '-png',
             str(reports / f'native-report-{width}.pdf'), str(reports / f'native-pdf-first-{width}')], check=True, capture_output=True)
-        for _, errors, failed in pages: assert not errors + failed
+        for _, errors, failed in pages:
+            assert not errors + failed
     finally:
-        for page, _, _ in pages: page.close()
+        for page, _, _ in pages:
+            page.close()
 
 
 def test_native_independent_filters_url_nearest_legend_zoom_and_scope(reports, browser):
@@ -177,7 +190,8 @@ def test_native_independent_filters_url_nearest_legend_zoom_and_scope(reports, b
         controls.get_by_role('button', name='iOS', exact=True).click()
         controls.locator('.fw-date-trigger').click()
         controls.locator('input[data-edge="max"]').fill('2026-08-01')
-        controls.locator('input[data-edge="max"]').press('Tab'); page.keyboard.press('Escape')
+        controls.locator('input[data-edge="max"]').press('Tab')
+        page.keyboard.press('Escape')
         assert value(left) == '$10.00' and value(right) == '3'
         assert value(canvas(page, 'Spend sum')) == '$90.00'
         # Incoming scoped URLs are supported. Existing global date-preset
@@ -187,9 +201,11 @@ def test_native_independent_filters_url_nearest_legend_zoom_and_scope(reports, b
             assert value(canvas(page, title)) == '—'
         page.evaluate('''()=>{for(const suffix of ['missing','string','bool','unsafe'])
             fw.filterEngine.setFilter('combo_summary_eligibility_'+suffix,'valid-day','day','equals','2026-08-02')}''')
-        for suffix in ('missing', 'string', 'bool', 'unsafe'): assert value(canvas(page, 'Eligibility ' + suffix)) == '$60.00'
+        for suffix in ('missing', 'string', 'bool', 'unsafe'):
+            assert value(canvas(page, 'Eligibility ' + suffix)) == '$60.00'
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
     serialized = {}
     for mode in ('baseline', 'off', 'on'):
         page, errors, failed = open_report(browser, reports / mode, query=url)
@@ -202,7 +218,8 @@ def test_native_independent_filters_url_nearest_legend_zoom_and_scope(reports, b
                 assert value(canvas(page, 'Spend sum')) == '$90.00'
             serialized[mode] = page.evaluate('window._fwUrlSync.parse()')
             assert not errors + failed
-        finally: page.close()
+        finally:
+            page.close()
     assert serialized['baseline'] == serialized['off'] == serialized['on']
     assert serialized['on']['combo_summary_context.day'] == 'All'
     (reports / 'retained-url-limit.json').write_text(json.dumps(serialized, indent=2))
@@ -216,7 +233,8 @@ def test_native_independent_filters_url_nearest_legend_zoom_and_scope(reports, b
         cid = canvas(page, 'First combo').get_attribute('id')
         assert page.evaluate('id=>(fw.filterEngine._subscribers.combo_scope_first||[]).filter(s=>s.id===id).length', cid) == 1
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 def test_actual_runtime_reducers_cancellation_eligibility_and_identity(reports, browser):
@@ -253,7 +271,8 @@ def test_actual_runtime_reducers_cancellation_eligibility_and_identity(reports, 
         assert all(result['invalid']) and all(result[k] for k in ('unsafeResult', 'empty', 'last', 'duplicate', 'missing', 'selected', 'fallback'))
         assert result['mean'] == result['min'] == 2 ** 53 - 1 and result['right'] == 90
         assert result['unselected'] == ''
-        target = canvas(page, 'Spend sum'); cid = target.get_attribute('id')
+        target = canvas(page, 'Spend sum')
+        cid = target.get_attribute('id')
         for fmt, expected in [('number', '90'), ('currency', '$90.00'), ('percent', '9000.00%'),
                               ('chips', '90 chips'), ('ratio', '90.00x'), ('plain', '90')]:
             # Format affects only the header; construction tests reject a sum
@@ -264,13 +283,16 @@ def test_actual_runtime_reducers_cancellation_eligibility_and_identity(reports, 
                 {'id': cid, 'fmt': fmt, 'stat': stat})
             assert value(target) == ({'percent': '4500.00%', 'ratio': '45.00x'}.get(fmt, expected))
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 def test_native_source_config_canvas_option_adoption_removal_and_owned_handlers(reports, browser):
     page, errors, failed = open_report(browser, reports / 'on')
     try:
-        target = canvas(page, 'Context left'); cid = target.get_attribute('id'); ds = 'combo_summary_context'
+        target = canvas(page, 'Context left')
+        cid = target.get_attribute('id')
+        ds = 'combo_summary_context'
         args = {'id': cid, 'ds': ds}
         original_tokens = target.get_attribute('aria-describedby').split()
         assert {cid + '-header-context', cid + '-combo-context', cid + '-month-context', cid + '-combo-summary-scope'} == set(original_tokens)
@@ -319,13 +341,15 @@ def test_native_source_config_canvas_option_adoption_removal_and_owned_handlers(
         assert page.locator('#' + cid + '-combo-summary-scope').count() == 0
         assert value(canvas(page, 'Context right')) == '27'
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 def test_native_static_adoption_and_owned_cleanup(reports, browser):
     page, errors, failed = open_report(browser, reports / 'off')
     try:
-        target = canvas(page, 'Static on'); cid = target.get_attribute('id')
+        target = canvas(page, 'Static on')
+        cid = target.get_attribute('id')
         page.evaluate('''id=>{const cfg=window._reportData.components[id];cfg.combo_summary={stat:'last',scope:'axis_series',axis:'left',series:'Daily total',label:'Last shown',format:'plain'};
             window._fwRenderers.chart(id,cfg)}''', cid)
         assert value(target) == '30'
@@ -341,14 +365,16 @@ def test_native_static_adoption_and_owned_cleanup(reports, browser):
         page.evaluate('id=>document.getElementById(id).remove()', cid)
         page.wait_for_function('id=>!document.getElementById(id+"-combo-summary-scope")', arg=cid)
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 @pytest.mark.heavy
 def test_owned_hidden_tab_and_reentry_resources(reports, browser):
     page, errors, failed = open_report(browser, reports / 'on')
     try:
-        target = canvas(page, 'Spend sum'); cid = target.get_attribute('id')
+        target = canvas(page, 'Spend sum')
+        cid = target.get_attribute('id')
         before = page.evaluate('fw.filterEngine._lifecycleListeners.size')
         page.evaluate('''id=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));
             for(let i=0;i<25;i++)window._fwRenderers.chart(id,window._reportData.components[id]);
@@ -364,4 +390,5 @@ def test_owned_hidden_tab_and_reentry_resources(reports, browser):
         assert page.locator('html').evaluate('el=>el.scrollWidth <= window.innerWidth')
         target.locator('..').locator('..').screenshot(path=str(reports / 'phone-long-summary.png'))
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()

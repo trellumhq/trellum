@@ -10,7 +10,8 @@ from urllib.parse import unquote, urlparse
 
 import pytest
 
-from trellum.testing.test_player_overview_compact import TRENDS, player_builds  # noqa: F401
+from trellum.testing.test_player_overview_compact import TRENDS  # noqa: F401
+from trellum.testing.test_player_overview_compact import player_builds as player_builds
 
 
 def _serve(route, outputs, missing):

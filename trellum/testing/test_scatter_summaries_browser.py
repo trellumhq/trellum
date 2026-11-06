@@ -20,10 +20,17 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
-from trellum.testing.test_chart_header_summaries_browser import _route, _ready
+from trellum.testing.test_chart_header_summaries_browser import _ready, _route
 from trellum.testing.test_doughnut_summaries_browser import _csv, _day, _settle
-from trellum.testing.test_scatter_summaries import BASELINE, ROOT, SUMMARY, baseline_class, example_context, frame
+from trellum.testing.test_scatter_summaries import (
+    BASELINE,
+    ROOT,
+    SUMMARY,
+    baseline_class,
+    example_context,
+    frame,
+)
+from trellum.validation import validate_report
 
 EVIDENCE = Path(os.environ.get('TRELLUM_SCATTER_SUMMARY_EVIDENCE', '/tmp/trellum-scatter-summaries'))
 
@@ -134,7 +141,8 @@ def test_native_scatter_summaries_filters_lifecycle_and_exports(tmp_path, width)
             page.on('console', lambda message: errors.append(message.text) if message.type == 'error' else None)
             _route(page, tmp_path)
             page.goto('http://scatter-summary.test/index.html', wait_until='networkidle')
-            _ready(page); _settle(page)
+            _ready(page)
+            _settle(page)
             titles = ['Filtered ' + s for s in ('mean x', 'mean y', 'min x', 'min y', 'max x', 'max y', 'count entries')]
             ids = [_id(page, title) for title in titles]
             independent = _id(page, 'Bubble context and summary')
@@ -212,7 +220,8 @@ def test_native_scatter_summaries_filters_lifecycle_and_exports(tmp_path, width)
             assert '<safe>' in _box(page, revealed).inner_text()
             for theme in ('trellum light', 'trellum dark'):
                 page.locator('#fwThemeSelect').select_option(theme)
-                _ready(page); _settle(page)
+                _ready(page)
+                _settle(page)
                 assert _values(page, ids) == expected
                 assert _values(page, [independent]) == ['$22.50']
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -220,7 +229,8 @@ def test_native_scatter_summaries_filters_lifecycle_and_exports(tmp_path, width)
                                    (eligibility, 'eligibility'), (_box(page, revealed), 'long-label'),
                                    (_section(page, independent), 'bubble')):
                     loc.screenshot(path=str(EVIDENCE / f'{width}-{theme.split()[-1]}-{label}.png'))
-            page.evaluate('renderAll();renderAll()'); _ready(page)
+            page.evaluate('renderAll();renderAll()')
+            _ready(page)
             assert _values(page, ids) == expected
             lifecycle = page.evaluate('''id=>{
                 const cfg=_reportData.components[id], canvas=document.getElementById(id), summary=cfg.header_summary;
@@ -325,7 +335,8 @@ def test_actual_baseline_off_pixels_geometry_data_csv(tmp_path, width):
                 for file in [output / 'index.html', *output.rglob('*.js'), *output.rglob('*.css')]:
                     text = file.read_text()
                     if current in text:
-                        file.write_text(text.replace(current, historical)); replaced = True
+                        file.write_text(text.replace(current, historical))
+                        replaced = True
                 assert replaced
         roots.append(output)
     with sync_playwright() as pw:
@@ -335,10 +346,13 @@ def test_actual_baseline_off_pixels_geometry_data_csv(tmp_path, width):
             for name, output in zip(('baseline', 'current'), roots):
                 page = browser.new_page(viewport={'width': width, 'height': 900}, device_scale_factor=1)
                 _route(page, output)
-                page.goto('http://scatter-baseline.test/index.html', wait_until='networkidle'); _ready(page)
+                page.goto('http://scatter-baseline.test/index.html', wait_until='networkidle')
+                _ready(page)
                 for theme in ('trellum light', 'trellum dark'):
                     page.locator('#fwThemeSelect').select_option(theme)
-                    _ready(page); _settle(page); page.mouse.move(0, 0)
+                    _ready(page)
+                    _settle(page)
+                    page.mouse.move(0, 0)
                     geometry = [_plot(page, _id(page, title)) for title in ('Static', 'Bound')]
                     page.locator('.fw-section').screenshot(path=str(EVIDENCE / f'opt-out-{name}-{width}-{theme.split()[-1]}.png'), animations='disabled')
                     exports = [_csv(page, _container(page, _id(page, title)), EVIDENCE / f'baseline-{name}-{title}-{width}-{theme.split()[-1]}.csv') for title in ('Static', 'Bound')]

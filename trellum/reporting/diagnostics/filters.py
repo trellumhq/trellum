@@ -139,9 +139,9 @@ def _compute_view_matrix(
 ) -> list[ChartFilterRow]:
     """Build filter-coverage rows for one view (flat or one scope's sections)."""
     from trellum.components.filterable import DataSource, FilterBar, ScopedDataSource
+    from trellum.components.layout import RawHTML
     from trellum.components.metric_views import MetricView
     from trellum.components.period_comparison import PeriodComparison
-    from trellum.components.layout import RawHTML
 
     pairs = _walk_view(sections)
 

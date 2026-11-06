@@ -1,5 +1,6 @@
 """Native generated Marketing reports, real controls, CSV and capture evidence."""
 from __future__ import annotations
+
 import base64
 import csv
 import io
@@ -13,11 +14,11 @@ from trellum.components import DataSource, MiniKpi, Panel
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.reporting.diagnostics import compute_details
+from trellum.testing.test_chart_header_summaries_browser import _route
+from trellum.testing.test_doughnut_summaries_browser import _day
+from trellum.testing.test_marketing_composition import example_context
 from trellum.validation import validate_report
 from trellum.validation.checks.metric_views import check_metric_views
-from trellum.testing.test_chart_header_summaries_browser import _route
-from trellum.testing.test_marketing_composition import example_context
-from trellum.testing.test_doughnut_summaries_browser import _day
 
 EVIDENCE=Path(os.environ.get('TRELLUM_METRIC_VIEW_EVIDENCE','/tmp/trellum-metric-views'))
 SOURCE='showcase_marketing_facts'
@@ -33,11 +34,13 @@ def build(output):
     from trellum.validation.checks.metric_views import check_column_formats
     from trellum.validation.walk import _all_components
     details=compute_details(ctx)
-    validation=validate_report(ctx,details=details);check_metric_views(ctx,validation)
+    validation=validate_report(ctx,details=details)
+    check_metric_views(ctx,validation)
     check_column_formats(_all_components(ctx),validation)
     issues=[(c.id,c.level,c.component,c.section,c.message) for c in validation.checks if c.level in {'warn','fail'}]
     assert issues==[],issues
-    render_report(ctx,str(output),auto_refresh=False);copy_vendor_tree(output)
+    render_report(ctx,str(output),auto_refresh=False)
+    copy_vendor_tree(output)
     delivered=json.loads((output/'data.json').read_text())
     assert len(delivered['_ds_'+SOURCE]['_data'])==16
     assert '_ds_'+RESULT not in delivered
@@ -120,7 +123,8 @@ def test_native_marketing_controls_parity_csv_capture_and_replacement(tmp_path,w
             assert minis(page)['installs']=='2,520' and minis(page)['d30_recovery']=='108.75%'
             assert minis(page,'uk')['installs']=='720'
             section=page.locator('.fw-section[data-fw-section-title="Marketing geography"]')
-            if not section.count(): section=page.locator('.fw-section').filter(has=page.get_by_role('tab',name='Geography panels',exact=True)).first
+            if not section.count():
+                section=page.locator('.fw-section').filter(has=page.get_by_role('tab',name='Geography panels',exact=True)).first
             section.get_by_role('button',name='iOS',exact=True).click()
             _day(section,'2026-08-26')
             assert rows(page)[0]['installs']==560 and rows(page)[0]['cost']==960 and rows(page)[0]['d30_revenue']==1044
@@ -141,7 +145,8 @@ def test_native_marketing_controls_parity_csv_capture_and_replacement(tmp_path,w
             page.wait_for_function('id=>document.querySelectorAll("#"+id+" tbody tr").length===4',arg=summary.get_attribute('id'))
             filtered=download_csv(page,summary,EVIDENCE/f'filtered-{width}.csv')
             assert sorted(float(r['installs']) for r in filtered)==[160,200,480,560]
-            page.get_by_role('tab',name='Geography panels',exact=True).click();wait_panels(page)
+            page.get_by_role('tab',name='Geography panels',exact=True).click()
+            wait_panels(page)
             # Real zeros, incomplete sibling and zero denominator, through real source replacement.
             original=module.facts().to_dict('records')
             for replacement,expected_cost,expected_cpi in [
@@ -168,11 +173,13 @@ def test_native_marketing_controls_parity_csv_capture_and_replacement(tmp_path,w
             assert rows(page)[0]['installs']==1680
             _day(section,'2026-08-26')
             assert rows(page)[0]['installs']==1120
-            page.evaluate('renderAll();renderAll()');wait_panels(page)
+            page.evaluate('renderAll();renderAll()')
+            wait_panels(page)
             # Native controls retain their date value on rerender (day 2).
             assert rows(page)[0]['installs']==1120
             for theme in ('trellum light','trellum dark'):
-                page.locator('#fwThemeSelect').select_option(theme);wait_panels(page)
+                page.locator('#fwThemeSelect').select_option(theme)
+                wait_panels(page)
                 assert minis(page)['installs']=='1,120'
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
                 section.screenshot(path=str(EVIDENCE/f'{width}-{theme.split()[-1]}-panels.png'))
@@ -193,16 +200,19 @@ def test_native_marketing_controls_parity_csv_capture_and_replacement(tmp_path,w
             (EVIDENCE/f'native-section-panels-{width}.png').write_bytes(base64.b64decode(snapshot['image']['data_base64']))
             if width==1280:
                 for ext,fn in [('png','exportPNG'),('pdf','exportPDF')]:
-                    with page.expect_download(timeout=60000) as info: page.evaluate(f'fw.{fn}()')
+                    with page.expect_download(timeout=60000) as info:
+                        page.evaluate(f'fw.{fn}()')
                     info.value.save_as(str(EVIDENCE/f'native-report-panels.{ext}'))
                 page.get_by_role('tab',name='Summary table',exact=True).click()
                 snapshot=section.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
                 (EVIDENCE/'native-section-table.png').write_bytes(base64.b64decode(snapshot['image']['data_base64']))
                 for ext,fn in [('png','exportPNG'),('pdf','exportPDF')]:
-                    with page.expect_download(timeout=60000) as info: page.evaluate(f'fw.{fn}()')
+                    with page.expect_download(timeout=60000) as info:
+                        page.evaluate(f'fw.{fn}()')
                     info.value.save_as(str(EVIDENCE/f'native-report-table.{ext}'))
             page.reload(wait_until='networkidle')
             page.wait_for_function('id=>fw.filterEngine.isReady(id)',arg=RESULT)
             assert rows(page)[0]['installs']==1120
             assert errors==[],errors
-        finally: browser.close()
+        finally:
+            browser.close()

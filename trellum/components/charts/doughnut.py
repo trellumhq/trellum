@@ -12,13 +12,13 @@ from trellum.components.base import Component, RenderContext
 from trellum.components.charts._header_summary import doughnut_summary_config
 from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
+    _category_colors_config,
     _ChartBase,
     _clean_list,
-    _header_context_html,
     _context_description_attr,
-    _validate_header_context,
+    _header_context_html,
     _validate_category_colors,
-    _category_colors_config,
+    _validate_header_context,
 )
 
 

@@ -1,11 +1,15 @@
 """Per-native-scope period projection and strict point-context admission."""
-from trellum.components.period_comparison import PeriodComparison, snapshot_parent, validate_definition
-from trellum.components.charts.line_area import LineChart
 from trellum.components.charts._point_context import point_context_config
+from trellum.components.charts.line_area import LineChart
 from trellum.components.controls import Toggle
-from trellum.components.filterable import DataSource, ScopedDataSource, LiveDataSource
+from trellum.components.filterable import DataSource, LiveDataSource, ScopedDataSource
 from trellum.components.metric_views import MetricView
-from trellum.validation.walk import _walk_components, _resolve_ds_columns
+from trellum.components.period_comparison import (
+    PeriodComparison,
+    snapshot_parent,
+    validate_definition,
+)
+from trellum.validation.walk import _resolve_ds_columns, _walk_components
 
 
 def check_period_comparison(ctx, result):

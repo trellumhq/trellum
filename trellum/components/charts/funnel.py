@@ -8,8 +8,8 @@ from typing import Optional
 import pandas as pd
 
 from trellum.assets import load_css, load_js
-from trellum.components.charts._funnel_summary import funnel_summary_config
 from trellum.components.base import Component, RenderContext
+from trellum.components.charts._funnel_summary import funnel_summary_config
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,

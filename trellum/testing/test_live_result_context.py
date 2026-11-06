@@ -1,13 +1,13 @@
 """Public options and genuine native live-result teaching report builds."""
 from __future__ import annotations
 
-from contextlib import ExitStack
 import importlib.util
 import inspect
 import json
-from pathlib import Path
 import sqlite3
 import subprocess
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
@@ -15,8 +15,15 @@ import pytest
 
 from trellum.assets import load_css, load_js
 from trellum.components import (
-    ComparisonTable, DataSource, DataTable, FilterBar, KpiRow, LiveDataSource,
-    Panel, ScopedDataSource, Section,
+    ComparisonTable,
+    DataSource,
+    DataTable,
+    FilterBar,
+    KpiRow,
+    LiveDataSource,
+    Panel,
+    ScopedDataSource,
+    Section,
 )
 from trellum.components.base import RenderContext
 from trellum.data.query import disable_cache, enable_cache
@@ -97,8 +104,10 @@ def build_native(output, *, opt_out=False, historical=False, extra=True):
             if historical:
                 js_names = ['components/kpi_row.js', 'components/data_table.js']
                 before_js = {name: subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/{name}'], cwd=ROOT, text=True) for name in js_names}
-                before_css = lambda name: '' if name == 'components/live_result_context.css' else load_css(name)
-                historical_js = lambda name: '' if name == 'components/live_result_context.js' else before_js.get(name, load_js(name))
+                def before_css(name):
+                    return '' if name == 'components/live_result_context.css' else load_css(name)
+                def historical_js(name):
+                    return '' if name == 'components/live_result_context.js' else before_js.get(name, load_js(name))
                 for module in ['trellum.components.kpis', 'trellum.components.tables']:
                     stack.enter_context(patch(module + '.load_js', historical_js))
                     stack.enter_context(patch(module + '.load_css', before_css))

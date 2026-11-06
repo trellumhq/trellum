@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from trellum.components.base import RenderContext
 from trellum.components import CohortTable
+from trellum.components.base import RenderContext
 from trellum.components.cohort_table import MAX_BYTES
 from trellum.components.filterable import DataSource, FilterBar, LiveDataSource, ScopedDataSource
 from trellum.report import ReportContext

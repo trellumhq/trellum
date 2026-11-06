@@ -1,15 +1,15 @@
 """Exact author targets share the native table population and painted cells."""
 
-from dataclasses import dataclass
-from datetime import date
-from decimal import Decimal
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import types
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import pandas as pd
@@ -326,7 +326,7 @@ def _baseline_module(reference=BASELINE):
         return None
     module = types.ModuleType("_table_shading_baseline")
     sys.modules[module.__name__] = module
-    exec(compile(result.stdout, f"{reference}/tables.py", "exec"), module.__dict__)
+    exec(compile(result.stdout, f"{reference}/tables.py", "exec"), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     for loader, suffix in (("load_css", "css"), ("load_js", "js")):
         real = getattr(module, loader)
         content = subprocess.check_output(["git", "show", f"{reference}:trellum/static/{suffix}/components/data_table.{suffix}"], cwd=ROOT, text=True)
@@ -371,6 +371,7 @@ def test_default_off_matches_actual_dependency_baseline(shading_page, width, ref
     # Whole-panel captures also cover the header. Chromium's SVG button edge
     # antialiasing can differ by one RGB level after a theme transition.
     from io import BytesIO
+
     from PIL import Image, ImageChops
     before, after = (Image.open(BytesIO(c[2])).convert('RGB') for c in captures)
     assert before.size == after.size

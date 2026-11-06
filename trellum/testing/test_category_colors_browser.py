@@ -6,15 +6,15 @@ import importlib.util
 import json
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pandas as pd
 import pytest
 
-from trellum.components import DataSource, DoughnutChart, FilterBar, Grid, LineChart, StackedBar
+from trellum.components import DataSource, DoughnutChart, Grid, LineChart, StackedBar
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
@@ -49,7 +49,7 @@ def _install_baseline():
         for name in ('base', 'line_area', 'bar', 'doughnut'):
             module = importlib.import_module('trellum.components.charts.' + name)
             source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/{name}.py'], cwd=ROOT, text=True)
-            exec(compile(source, f'{BASELINE}/{name}.py', 'exec'), module.__dict__)
+            exec(compile(source, f'{BASELINE}/{name}.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     import trellum.components as components
     import trellum.components.charts as charts
     for name, module in [('LineChart', 'line_area'), ('StackedBar', 'bar'), ('DoughnutChart', 'doughnut')]:

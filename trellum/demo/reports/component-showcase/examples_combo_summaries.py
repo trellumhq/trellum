@@ -64,11 +64,19 @@ def add_sections(ctx):
     dataset = "combo_summary_eligibility"
     variants = {}
     for name, value in (("missing", None), ("string", "10"), ("bool", True), ("unsafe", 2 ** 53)):
-        current = frame.copy(); current["spend"] = current.spend.astype(object); current.loc[0, "spend"] = value
+        current = frame.copy()
+        current["spend"] = current.spend.astype(object)
+        current.loc[0, "spend"] = value
         variants[name] = current
-    zero = frame.iloc[::2].copy(); zero["spend"] = 0; variants["zero"] = zero
-    signed = frame.copy(); signed["spend"] = [-10, 20, -20, 40]; variants["signed"] = signed
-    fraction = frame.copy(); fraction["orders"] = fraction.orders / 100; variants["fraction"] = fraction
+    zero = frame.iloc[::2].copy()
+    zero["spend"] = 0
+    variants["zero"] = zero
+    signed = frame.copy()
+    signed["spend"] = [-10, 20, -20, 40]
+    variants["signed"] = signed
+    fraction = frame.copy()
+    fraction["orders"] = fraction.orders / 100
+    variants["fraction"] = fraction
     sources = {dataset + "_" + name: data for name, data in variants.items()}
     ctx.add_section(TITLES[3], [DataSource(dataset, frame), *[DataSource(key, data) for key, data in sources.items()],
         filters(dataset, frame, propagate_to={key: {"day": "day", "platform": "platform"} for key in sources}),

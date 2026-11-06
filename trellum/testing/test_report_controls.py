@@ -1,11 +1,11 @@
 """Control author APIs, escaping, asset isolation and real showcase validation."""
 
-from dataclasses import dataclass
 import importlib.util
 import inspect
+from dataclasses import dataclass
 from pathlib import Path
 
-from trellum.components import Dropdown, TabGroup, RawHTML
+from trellum.components import Dropdown, RawHTML, TabGroup
 from trellum.components.base import RenderContext
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details

@@ -12,7 +12,7 @@ import pandas as pd
 from trellum.assets import load_css
 from trellum.components.base import RenderContext
 from trellum.components.charts._header_summary import header_summary_config
-from trellum.components.charts._point_context import point_context_config, _LinePointContextAssets
+from trellum.components.charts._point_context import _LinePointContextAssets, point_context_config
 from trellum.components.charts.base import (
     _category_colors_config,
     _chart_container_html,

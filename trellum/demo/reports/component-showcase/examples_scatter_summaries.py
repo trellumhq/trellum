@@ -2,7 +2,16 @@
 
 import pandas as pd
 
-from trellum.components import DataSource, DataTable, FilterBar, Grid, Panel, RawHTML, ScatterChart, TabGroup
+from trellum.components import (
+    DataSource,
+    DataTable,
+    FilterBar,
+    Grid,
+    Panel,
+    RawHTML,
+    ScatterChart,
+    TabGroup,
+)
 
 
 def facts():

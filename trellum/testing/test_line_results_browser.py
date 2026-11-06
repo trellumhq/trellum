@@ -1,15 +1,15 @@
 """Native generated reports: real SQLite snapshots and binder transport."""
 from __future__ import annotations
 
-from contextlib import ExitStack
 import base64
 import importlib.util
 import json
 import os
-from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -21,10 +21,20 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
 from trellum.testing.test_live_result_state_browser import (
-    browser, build_report as build_scope_report, commit, open_report, reply, state, wait_requests,
+    browser as browser,
 )
+from trellum.testing.test_live_result_state_browser import (
+    build_report as build_scope_report,
+)
+from trellum.testing.test_live_result_state_browser import (
+    commit,
+    open_report,
+    reply,
+    state,
+    wait_requests,
+)
+from trellum.validation import validate_report
 
 BASELINE = '98d96192564f87568252c6779481c6234b5b848a'
 ROOT = Path(__file__).resolve().parents[2]

@@ -2,24 +2,25 @@
 from __future__ import annotations
 
 import base64
-from contextlib import ExitStack
 import csv
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from trellum.assets import load_js
-from trellum.components import DataSource, FilterBar, Grid, StackedBar, Toggle
+from trellum.components import DataSource, FilterBar, Grid, StackedBar
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.testing.test_stacked_summaries import BASELINE, ROOT, examples, module, validate
-from trellum.testing.test_traffic_composition_browser import browser, open_report, state, capture
+from trellum.testing.test_traffic_composition_browser import browser as browser
+from trellum.testing.test_traffic_composition_browser import capture, open_report, state
 
 
 def build(output, mode='on', scoped=False):
@@ -41,7 +42,8 @@ def build(output, mode='on', scoped=False):
     if scoped:
         for scope in ('First', 'Second'):
             ctx.set_scope(scope)
-            ds = 'stacked_scope_' + scope.lower(); frame = teaching.facts()
+            ds = 'stacked_scope_' + scope.lower()
+            frame = teaching.facts()
             ctx.add_section(scope, [DataSource(ds, frame), FilterBar(ds, frame, filters=[{'column': 'platform', 'type': 'toggle'}]),
                 Grid(columns=2, children=[StackedBar(frame, 'day', ['events'], scope + series, dataset_id=ds,
                     stack_by='channel', value_format='number', stack_by_options=teaching.BREAKDOWNS,
@@ -56,7 +58,8 @@ def build(output, mode='on', scoped=False):
             js = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/components/chart_base.js'], cwd=ROOT, text=True)
             patches.enter_context(patch('trellum.components.charts.base.load_js', lambda name: js if name == 'components/chart_base.js' else load_js(name)))
         render_report(ctx, str(output), auto_refresh=False)
-    copy_vendor_tree(output); ctx.close_connections()
+    copy_vendor_tree(output)
+    ctx.close_connections()
 
 
 @pytest.fixture(scope='module')
@@ -86,7 +89,8 @@ def region(page, index):
 
 
 def csv_download(target, path):
-    cid = target.get_attribute('id'); page = target.page
+    cid = target.get_attribute('id')
+    page = target.page
     with page.expect_download() as download:
         page.locator('[data-csv-chart="' + cid + '"]').click(force=True)
     download.value.save_as(path)
@@ -109,7 +113,8 @@ def test_native_baseline_pixels_geometry_payload_modes_csv_and_captures(reports,
         baseline, off, on = [entry[0] for entry in pages]
         # Actual checkpoint Python and JS, not a same-runtime opt-out surrogate.
         payloads = [json.loads((reports / mode / 'data.json').read_text()) for mode in ('baseline', 'off')]
-        for payload in payloads: payload.pop('_freshness', None)
+        for payload in payloads:
+            payload.pop('_freshness', None)
         assert payloads[0] == payloads[1]
         for theme in ('trellum light', 'trellum dark'):
             for page, _, _ in pages:
@@ -151,7 +156,8 @@ def test_native_baseline_pixels_geometry_payload_modes_csv_and_captures(reports,
         for _, errors, failed in pages:
             assert not errors + failed
     finally:
-        for page, _, _ in pages: page.close()
+        for page, _, _ in pages:
+            page.close()
 
 
 def test_native_filters_url_local_shared_hidden_series_and_scope(reports, browser):
@@ -173,7 +179,8 @@ def test_native_filters_url_local_shared_hidden_series_and_scope(reports, browse
         controls.get_by_role('button', name='iOS', exact=True).click()
         controls.locator('.fw-date-trigger').click()
         controls.locator('input[data-edge="max"]').fill('2026-08-01')
-        controls.locator('input[data-edge="max"]').press('Tab'); page.keyboard.press('Escape')
+        controls.locator('input[data-edge="max"]').press('Tab')
+        page.keyboard.press('Escape')
         assert value(ua) == '10'
         assert value(canvas(page, 'UA sum')) == '90'  # Independent section.
         for title in ('Eligibility null', 'Eligibility string'):
@@ -185,7 +192,8 @@ def test_native_filters_url_local_shared_hidden_series_and_scope(reports, browse
         assert value(canvas(page, 'Eligibility null')) == value(canvas(page, 'Eligibility string')) == '60'
         assert box(canvas(page, 'Eligibility null')).locator('.fw-stacked-summary-reason').count() == 0
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
     page, errors, failed = open_report(browser, reports / 'scoped')
     try:
         assert value(canvas(page, 'FirstUA')) == '90'
@@ -197,7 +205,8 @@ def test_native_filters_url_local_shared_hidden_series_and_scope(reports, browse
         cid = canvas(page, 'FirstUA').get_attribute('id')
         assert page.evaluate('id=>(fw.filterEngine._subscribers.stacked_scope_first||[]).filter(s=>s.id===id).length', cid) == 1
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 def test_real_js_reducer_precision_eligibility_and_exact_identity(reports, browser):
@@ -238,13 +247,16 @@ def test_real_js_reducer_precision_eligibility_and_exact_identity(reports, brows
         assert result['duplicate'] and result['missing'] and result['rawOther']
         assert result['zerosMean'] == 30 and result['raw'] == ''
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 def test_native_source_options_canvas_control_replacement_and_disposal(reports, browser):
     page, errors, failed = open_report(browser, reports / 'on')
     try:
-        target = canvas(page, 'Local UA'); cid = target.get_attribute('id'); ds = 'stacked_summary_controls'
+        target = canvas(page, 'Local UA')
+        cid = target.get_attribute('id')
+        ds = 'stacked_summary_controls'
         args = {'id': cid, 'ds': ds}
         page.evaluate('''a=>{
             window.summaryCfg=window._reportData.components[a.id];
@@ -294,13 +306,15 @@ def test_native_source_options_canvas_control_replacement_and_disposal(reports, 
         page.wait_for_function('a=>(fw.filterEngine._subscribers[a.ds]||[]).filter(s=>s.id===a.id).length===0', arg=args)
         assert page.locator('#' + cid + '-stacked-summary-scope').count() == 0
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()
 
 
 def test_native_static_adoption_accessibility_and_owned_cleanup(reports, browser):
     page, errors, failed = open_report(browser, reports / 'on')
     try:
-        target = canvas(page, 'Static on'); cid = target.get_attribute('id')
+        target = canvas(page, 'Static on')
+        cid = target.get_attribute('id')
         assert value(target) == '90'
         # A static chart keeps its legacy omitted title in either mode.
         assert region(page, 0).locator('.fw-chart-title').all_text_contents() == ['Static section live companion']
@@ -315,14 +329,16 @@ def test_native_static_adoption_accessibility_and_owned_cleanup(reports, browser
         page.evaluate('a=>document.getElementById(a.id).remove()', args)
         page.wait_for_function('id=>!document.getElementById(id+"-stacked-summary-scope")', arg=cid)
         # Owned context tokens remain independent of the summary token.
-        shared = canvas(page, 'Shared UA'); sid = shared.get_attribute('id')
+        shared = canvas(page, 'Shared UA')
+        sid = shared.get_attribute('id')
         assert shared.get_attribute('aria-describedby').split() == [sid + '-header-context', sid + '-stacked-summary-scope']
         page.evaluate('''id=>{
             const cfg=window._reportData.components[id];delete cfg.stacked_summary;window._fwRenderers.chart(id,cfg);
         }''', sid)
         assert shared.get_attribute('aria-describedby') == sid + '-header-context'
         # Adoption on a chart born opt-out uses only its existing owned handlers.
-        local = canvas(page, 'Local UA'); lid = local.get_attribute('id')
+        local = canvas(page, 'Local UA')
+        lid = local.get_attribute('id')
         page.evaluate('''id=>{
             window.summaryDrawCount=0;const create=window._createChart;
             window._createChart=function(...args){if(args[0]===id)window.summaryDrawCount++;return create(...args)};
@@ -342,10 +358,12 @@ def test_native_static_adoption_accessibility_and_owned_cleanup(reports, browser
         local.dispatch_event('dblclick')
         assert page.evaluate('window.summaryZoomResetCount') == 1
         # A changing Other tail is unavailable rather than a fallback to an index.
-        other = canvas(page, 'Exact Other'); oid = other.get_attribute('id')
+        other = canvas(page, 'Exact Other')
+        oid = other.get_attribute('id')
         page.evaluate('''id=>{
             const cfg=window._reportData.components[id];cfg.max_stacks=1;window._fwRenderers.chart(id,cfg);
         }''', oid)
         assert value(other) == '—'
         assert not errors + failed
-    finally: page.close()
+    finally:
+        page.close()

@@ -14,16 +14,18 @@ from trellum.validation.walk import _comp_name
 
 
 def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult) -> None:
-    from trellum.components.charts.line_area import line_option_problems
+    from trellum.components.charts._combo_summary import combo_summary_option_problems
     from trellum.components.charts._funnel_summary import funnel_option_problems
-    from trellum.components.charts._scatter_summary import scatter_option_problems
+    from trellum.components.charts._header_summary import (
+        doughnut_summary_config,
+        header_summary_config,
+    )
     from trellum.components.charts._heatmap_summary import heatmap_option_problems
+    from trellum.components.charts._scatter_summary import scatter_option_problems
     from trellum.components.charts._stacked_summary import stacked_summary_option_problems
     from trellum.components.charts._treemap_summary import treemap_summary_option_problems
-    from trellum.components.charts._combo_summary import combo_summary_option_problems
     from trellum.components.charts.bar import stack_option_problems
-
-    from trellum.components.charts._header_summary import header_summary_config, doughnut_summary_config
+    from trellum.components.charts.line_area import line_option_problems
 
     for comp, sec in comps:
         if _comp_name(comp) == "ComboChart":

@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import base64
 import csv
-from io import BytesIO, StringIO
 import json
 import os
-from pathlib import Path
 import subprocess
+from io import BytesIO, StringIO
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -19,25 +19,35 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
-from trellum.testing.test_chart_header_summaries_browser import _route, _ready
+from trellum.testing.test_chart_header_summaries_browser import _ready, _route
 from trellum.testing.test_doughnut_summaries_browser import _csv, _day, _settle
-from trellum.testing.test_heatmap_summaries import BASELINE, ROOT, baseline_class, example_context, frame, walk
+from trellum.testing.test_heatmap_summaries import (
+    BASELINE,
+    ROOT,
+    baseline_class,
+    example_context,
+    frame,
+    walk,
+)
+from trellum.validation import validate_report
 
 EVIDENCE = Path(os.environ.get('TRELLUM_HEATMAP_SUMMARY_EVIDENCE', '/tmp/trellum-heatmap-summaries'))
 STATS = ('sum', 'mean', 'min', 'max', 'count')
 
 
 def _diagnose(ctx, output):
-    details = compute_details(ctx); result = validate_report(ctx, details=details)
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
     issues = [(c.id,c.level,c.section,c.message) for c in result.checks if c.level in {'warn','fail'}]
     assert issues == [], issues
     for section in ctx.sections:
         for chart in walk(section['components']):
             if isinstance(chart, HeatmapChart):
                 assert heatmap_option_problems(chart) == []
-    render_report(ctx, str(output), auto_refresh=False); copy_vendor_tree(output)
-    result.write(str(output)); EVIDENCE.mkdir(parents=True, exist_ok=True)
+    render_report(ctx, str(output), auto_refresh=False)
+    copy_vendor_tree(output)
+    result.write(str(output))
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
     (EVIDENCE / 'diagnostics.json').write_text(json.dumps({'validation': result.to_dict(), 'details': details}, default=str, indent=2))
 
 
@@ -105,9 +115,12 @@ def test_native_heatmap_summaries_filters_ownership_exports(tmp_path, width):
         browser = pw.chromium.launch(headless=True)
         try:
             page = browser.new_page(viewport={'width':width,'height':900}, device_scale_factor=1)
-            errors=[]; page.on('pageerror',lambda e:errors.append(str(e)))
+            errors=[]
+            page.on('pageerror',lambda e:errors.append(str(e)))
             page.on('console',lambda m:errors.append(m.text) if m.type=='error' else None)
-            _route(page,tmp_path); page.goto('http://heatmap-summary.test/index.html',wait_until='networkidle'); _ready(page)
+            _route(page,tmp_path)
+            page.goto('http://heatmap-summary.test/index.html',wait_until='networkidle')
+            _ready(page)
             ids=[_id(page,'Filtered cells '+stat) for stat in STATS]
             other=[_id(page,name+' cell mean') for name in ('Global','Row-relative')]
             assert _values(page,ids)==['540','135','0.00','270','4']
@@ -139,7 +152,8 @@ def test_native_heatmap_summaries_filters_ownership_exports(tmp_path, width):
             # This is the actual retained limitation: scale domains are not chart.data.labels.
             assert (EVIDENCE/f'on-{width}.csv').read_bytes().decode('utf-8-sig').strip()=='label,Value'
             section=_section(page,ids[0])
-            section.get_by_role('button',name='iOS',exact=True).click(); _day(section,'2026-08-01')
+            section.get_by_role('button',name='iOS',exact=True).click()
+            _day(section,'2026-08-01')
             assert _values(page,ids)==['60','15','0.00','30','4']
             table=section.locator('[data-csv-target]').get_attribute('data-csv-target')
             table_csv=_csv(page,section.locator(f'[data-csv-target="{table}"]').locator('..'),EVIDENCE/f'source-ios-aug1-{width}.csv')
@@ -147,17 +161,20 @@ def test_native_heatmap_summaries_filters_ownership_exports(tmp_path, width):
             assert len(rows)==5 and sum(float(row['units']) for row in rows)==60
             assert {row['day'] for row in rows}=={'2026-08-01'} and {row['platform'] for row in rows}=={'iOS'}
             assert sorted(float(row['units']) for row in rows)==[0,10,12,18,20]
-            section.get_by_role('button',name='Android',exact=True).click(); _day(section,'2026-08-02')
+            section.get_by_role('button',name='Android',exact=True).click()
+            _day(section,'2026-08-02')
             assert _values(page,ids)==['240','60','0.00','120','4']
             assert _values(page,other)==['135','135']
             restored_url=page.url
-            page.reload(wait_until='networkidle'); _ready(page)
+            page.reload(wait_until='networkidle')
+            _ready(page)
             assert _values(page,ids)==['360','90','0.00','180','4'], restored_url
             # Native explicit date URL decoding works independently of the retained
             # multi-bar preset serialization limitation above.
             url=page.evaluate('''()=>{const u=new URL(location.href);
                 u.searchParams.set('showcase_heatmap_summary_reducers.day','2026-08-02..2026-08-02');return u.href}''')
-            page.goto(url,wait_until='networkidle'); _ready(page)
+            page.goto(url,wait_until='networkidle')
+            _ready(page)
             assert _values(page,ids)==['240','60','0.00','120','4']
             section=_section(page,ids[0])
             page.evaluate('id=>{const c=_chartInstances[id];c.options.scales.x.min=0;c.options.scales.x.max=0;c.update("none")}',ids[0])
@@ -198,13 +215,16 @@ def test_native_heatmap_summaries_filters_ownership_exports(tmp_path, width):
                 return {zero:pixel(zero.x+20,zero.y-8),missing:[...colors]}}''',edges[0])
             assert len(raster['missing'])>2 and raster['zero'] not in raster['missing']
             edge_section.get_by_role('tab',name='Rate snapshot',exact=True).click()
-            revealed=_id(page,'Fractional rate mean'); page.locator('#'+revealed).scroll_into_view_if_needed()
+            revealed=_id(page,'Fractional rate mean')
+            page.locator('#'+revealed).scroll_into_view_if_needed()
             page.wait_for_function('id=>!!_chartInstances[id]',arg=revealed)
             assert _values(page,[revealed])==['20.00%']
             assert _box(page,revealed).locator('.fw-chart-summary-label').inner_text()=='Rate <mean> & supplied'
             assert _box(page,revealed).locator('mean').count()==0
             for theme in ('trellum light','trellum dark'):
-                page.locator('#fwThemeSelect').select_option(theme); _ready(page); _settle(page)
+                page.locator('#fwThemeSelect').select_option(theme)
+                _ready(page)
+                _settle(page)
                 assert _values(page,ids)==['240','60','0.00','120','4']
                 assert _values(page,other)==['135','135']
                 assert _plot(page,off)==_plot(page,on)
@@ -214,7 +234,8 @@ def test_native_heatmap_summaries_filters_ownership_exports(tmp_path, width):
                 # Existing capture removes sticky chrome without altering the report renderer.
                 pair_capture=_section(page,off).evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
                 (EVIDENCE/f'native-pair-{width}-{theme.split()[-1]}.png').write_bytes(base64.b64decode(pair_capture['image']['data_base64']))
-            page.evaluate('renderAll();renderAll()'); _ready(page)
+            page.evaluate('renderAll();renderAll()')
+            _ready(page)
             assert _values(page,ids)==['240','60','0.00','120','4']
             # Canvas/config/source replacement, opt-out and re-entry own only local tokens.
             lifecycle=page.evaluate('''id=>{
@@ -243,7 +264,8 @@ def test_native_heatmap_summaries_filters_ownership_exports(tmp_path, width):
             (EVIDENCE/f'native-section-{width}.png').write_bytes(base64.b64decode(snap['image']['data_base64']))
             if width==1280:
                 for ext,fn in (('png','exportPNG'),('pdf','exportPDF')):
-                    with page.expect_download(timeout=60000) as download: page.evaluate(f'fw.{fn}()')
+                    with page.expect_download(timeout=60000) as download:
+                        page.evaluate(f'fw.{fn}()')
                     download.value.save_as(str(EVIDENCE/f'native-report.{ext}'))
             # Source replacement uses currently delivered rows, not stale chart data.
             page.evaluate("_fwFilterEngine.setLiveRows('showcase_heatmap_summary_normalization',['day','platform','x','y','units'],[['2026-08-01','iOS','09','Mon',8]])")
@@ -265,24 +287,32 @@ def test_historical_baseline_off_pixels_cells_key_geometry_csv(tmp_path,width):
 
     roots=[]
     for name in ('baseline','current'):
-        output=tmp_path/name; output.mkdir(); cls=baseline_class() if name=='baseline' else HeatmapChart
-        df=frame(); df.loc[2,'y']='two'
+        output=tmp_path/name
+        output.mkdir()
+        cls=baseline_class() if name=='baseline' else HeatmapChart
+        df=frame()
+        df.loc[2,'y']='two'
         ctx=ReportContext(config={'name':'Heatmap baseline','studio':'test','category':'Test',
             'description':'Supplied static and bound quantities for exact default heatmap compatibility.'},slug='baseline',output_dir=str(output))
         ctx.add_section('Default heatmaps',[DataSource('baseline_source',df),
             FilterBar('baseline_source',df,filters=[{'column':'y','type':'toggle'}]),
             cls(df,'x','y','v','Static',static=True),cls(df,'x','y','v','Bound',dataset_id='baseline_source'),
             BarChart(df,'x','v','CSV delegate',static=True),DataTable(df,'Raw source rows · units',dataset_id='baseline_source')])
-        result=validate_report(ctx,details=compute_details(ctx)); assert result.summary['warn']==result.summary['fail']==0,result.to_dict()
-        render_report(ctx,str(output),auto_refresh=False);copy_vendor_tree(output)
+        result=validate_report(ctx,details=compute_details(ctx))
+        assert result.summary['warn']==result.summary['fail']==0,result.to_dict()
+        render_report(ctx,str(output),auto_refresh=False)
+        copy_vendor_tree(output)
         if name=='baseline':
             for asset in ('js','css'):
                 relative=f'trellum/static/{asset}/components/heatmap.{asset}'
-                current=(ROOT/relative).read_text(); historical=subprocess.check_output(['git','show',f'{BASELINE}:{relative}'],cwd=ROOT,text=True)
+                current=(ROOT/relative).read_text()
+                historical=subprocess.check_output(['git','show',f'{BASELINE}:{relative}'],cwd=ROOT,text=True)
                 replaced=False
                 for file in [output/'index.html',*output.rglob('*.js'),*output.rglob('*.css')]:
                     text=file.read_text()
-                    if current in text: file.write_text(text.replace(current,historical));replaced=True
+                    if current in text:
+                        file.write_text(text.replace(current,historical))
+                        replaced=True
                 assert replaced
         roots.append(output)
     EVIDENCE.mkdir(parents=True,exist_ok=True)
@@ -292,16 +322,23 @@ def test_historical_baseline_off_pixels_cells_key_geometry_csv(tmp_path,width):
             results={}
             for name,output in zip(('baseline','current'),roots):
                 page=browser.new_page(viewport={'width':width,'height':900},device_scale_factor=1)
-                _route(page,output);page.goto('http://heatmap-baseline.test/index.html',wait_until='networkidle');_ready(page)
+                _route(page,output)
+                page.goto('http://heatmap-baseline.test/index.html',wait_until='networkidle')
+                _ready(page)
                 for theme in ('trellum light','trellum dark'):
-                    page.locator('#fwThemeSelect').select_option(theme);_ready(page);_settle(page);page.mouse.move(0,0)
+                    page.locator('#fwThemeSelect').select_option(theme)
+                    _ready(page)
+                    _settle(page)
+                    page.mouse.move(0,0)
                     geometry=[_plot(page,_id(page,title)) for title in ('Static','Bound')]
                     image=page.locator('.fw-section').screenshot(path=str(EVIDENCE/f'opt-out-{name}-{width}-{theme.split()[-1]}.png'),animations='disabled')
                     data=[_chart_csv(page,_id(page,title),f'baseline-{name}-{title}-{width}-{theme.split()[-1]}.csv') for title in ('Static','Bound')]
                     results[name,theme]=(geometry,Image.open(BytesIO(image)).convert('RGBA').tobytes(),data)
                 page.close()
-            for theme in ('trellum light','trellum dark'): assert results['baseline',theme]==results['current',theme]
-        finally: browser.close()
+            for theme in ('trellum light','trellum dark'):
+                assert results['baseline',theme]==results['current',theme]
+        finally:
+            browser.close()
 
 
 @pytest.mark.heavy
@@ -312,8 +349,10 @@ def test_repeated_heatmap_ownership_and_sparse_resources(tmp_path):
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         try:
-            page=browser.new_page(viewport={'width':1280,'height':900});_route(page,tmp_path)
-            page.goto('http://heatmap-resources.test/index.html',wait_until='networkidle');_ready(page)
+            page=browser.new_page(viewport={'width':1280,'height':900})
+            _route(page,tmp_path)
+            page.goto('http://heatmap-resources.test/index.html',wait_until='networkidle')
+            _ready(page)
             cid=_id(page,'Filtered cells count')
             result=page.evaluate('''id=>{const cfg=_reportData.components[id];
                 const oldAdd=window.addEventListener,oldRemove=window.removeEventListener;let adds=0,removes=0;
@@ -335,4 +374,5 @@ def test_repeated_heatmap_ownership_and_sparse_resources(tmp_path):
             assert page.evaluate('id=>Object.values(_fwFilterEngine._subscribers).flat().filter(s=>s.id===id).length',cid)==1
             page.evaluate("window.dispatchEvent(new Event('pagehide'))")
             assert page.evaluate('Object.keys(_fwMetricDrawLeases).length')==0
-        finally: browser.close()
+        finally:
+            browser.close()

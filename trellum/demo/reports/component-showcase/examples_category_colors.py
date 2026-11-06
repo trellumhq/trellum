@@ -2,8 +2,15 @@
 
 import pandas as pd
 
-from trellum.components import DataSource, DoughnutChart, FilterBar, Grid, LineChart, RawHTML, StackedBar
-
+from trellum.components import (
+    DataSource,
+    DoughnutChart,
+    FilterBar,
+    Grid,
+    LineChart,
+    RawHTML,
+    StackedBar,
+)
 
 ACQUISITION = {"domain": "acquisition", "column": "channel", "slots": {"UA": 0, "Retargeting": 2}}
 

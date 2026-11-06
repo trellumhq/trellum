@@ -13,7 +13,10 @@ import pandas as pd
 import pytest
 
 from trellum.components import RenderContext, ScatterChart
-from trellum.components.charts._scatter_summary import scatter_option_problems, scatter_summary_config
+from trellum.components.charts._scatter_summary import (
+    scatter_option_problems,
+    scatter_summary_config,
+)
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME
@@ -41,7 +44,7 @@ def baseline_class():
     source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/scatter.py'], cwd=ROOT, text=True)
     module = types.ModuleType('_scatter_summary_baseline')
     sys.modules[module.__name__] = module
-    exec(compile(source, 'baseline/scatter.py', 'exec'), module.__dict__)
+    exec(compile(source, 'baseline/scatter.py', 'exec'), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     return module.ScatterChart
 
 
@@ -149,7 +152,8 @@ process.stdout.write(JSON.stringify({valid:probe([-4,0,4].map(pair)), duplicate:
   axes:['x','y'].map(axis=>['min','max','mean'].map(stat=>_fwScatterSummaryResult([{data:[{x:4,y:5},{x:40,y:60}]}],{stat,axis})))}));
 '''
     out = json.loads(subprocess.check_output(['node', '-e', script], text=True))
-    values = lambda key: [r['value'] for r in out[key]]
+    def values(key):
+        return [r['value'] for r in out[key]]
     assert values('valid') == [-4, 4, 0, 3]
     assert values('duplicate') == [4, 40, 16, 3]
     assert values('zero') == [0, 0, 0, 1]

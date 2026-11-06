@@ -1,27 +1,26 @@
 """Ordinary per-column display; exact raw sort/export and option-off compatibility."""
 from __future__ import annotations
+
 import csv
-from decimal import Decimal
 import inspect
 import io
-import json
-from pathlib import Path
 import subprocess
 import sys
 import types
+from decimal import Decimal
 
 import pandas as pd
 import pytest
 
-from trellum.components import DataSource, DataTable, MiniKpi, ComparisonTable, RenderContext
-from trellum.validation.checks.metric_views import check_column_formats
-from trellum.rendering.html_builder import render_report
+from trellum.components import ComparisonTable, DataSource, DataTable, MiniKpi, RenderContext
 from trellum.rendering.cdn import copy_vendor_tree
+from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
-from trellum.themes import DEFAULT_THEME
-from trellum.validation.result import ValidationResult
-from trellum.testing.test_metric_views import ROOT
 from trellum.testing.test_chart_header_summaries_browser import _route
+from trellum.testing.test_metric_views import ROOT
+from trellum.themes import DEFAULT_THEME
+from trellum.validation.checks.metric_views import check_column_formats
+from trellum.validation.result import ValidationResult
 
 
 def registered(table):
@@ -38,10 +37,12 @@ def test_strict_definition_and_mutation(option):
     frame=pd.DataFrame({'x':[1]})
     with pytest.raises(ValueError,match='column_formats'):
         DataTable(frame,'Bad',column_formats=option)
-    table=DataTable(frame,'Mutated');table.column_formats=option
+    table=DataTable(frame,'Mutated')
+    table.column_formats=option
     with pytest.raises(ValueError,match='column_formats'):
         registered(table)
-    result=ValidationResult(slug='formats');check_column_formats([(table,'Mutated')],result)
+    result=ValidationResult(slug='formats')
+    check_column_formats([(table,'Mutated')],result)
     assert [c.id for c in result.checks]==['datatable-column-formats-invalid']
 
 
@@ -50,7 +51,8 @@ def test_keyword_only_known_columns_copy_and_unsafe_integer():
     with pytest.raises(ValueError,match='displayed'):
         DataTable(frame,'Hidden',columns=['x'],column_formats={'hidden':{'format':'number'}})
     option={'x':{'format':'currency','precision':2}}
-    table=DataTable(frame,'Copied',column_formats=option);option['x']['precision']=True
+    table=DataTable(frame,'Copied',column_formats=option)
+    option['x']['precision']=True
     assert registered(table)[1]['columnFormats']=={'x':{'format':'currency','precision':2}}
     assert inspect.signature(DataTable).parameters['column_formats'].kind==inspect.Parameter.KEYWORD_ONLY
     with pytest.raises(TypeError,match='column_formats'):
@@ -64,7 +66,9 @@ def test_keyword_only_known_columns_copy_and_unsafe_integer():
 @pytest.mark.parametrize('bound',[False,True])
 def test_exact_option_off_baseline_markup_payload_and_positions(bound):
     source=subprocess.check_output(['git','show','1c0c49710c5d073a78f83ab069fd517cd49c1632:trellum/components/tables.py'],cwd=ROOT,text=True)
-    module=types.ModuleType('_column_formats_baseline');sys.modules[module.__name__]=module;exec(source,module.__dict__)
+    module=types.ModuleType('_column_formats_baseline')
+    sys.modules[module.__name__]=module
+    exec(source,module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     frame=pd.DataFrame({'label':['A','B'],'value':[1.234,0]})
     args=(frame,'Legacy',20,True,None,'facts' if bound else None,False,None,None,True,None)
     baseline=registered(module.DataTable(*args))
@@ -81,7 +85,8 @@ def test_native_formatted_search_numeric_sort_raw_csv_and_mini_parity(tmp_path,b
         'recovery':pd.Series([1.0875,0.125,0,float('inf'),'<em>literal</em>','True'],dtype=object)})
     option={'amount':{'format':'currency','precision':2},'recovery':{'format':'percent','precision':2}}
     # Decimal is delivered as exact text, as ordinary DataSource does not support Decimal serialization.
-    source_frame=frame.copy();source_frame.loc[5,'amount']=str(frame.loc[5,'amount'])
+    source_frame=frame.copy()
+    source_frame.loc[5,'amount']=str(frame.loc[5,'amount'])
     ctx=ReportContext(config={'name':'Column formats','studio':'test','category':'Test',
         'description':'Synthetic numeric and exact textual cells verify ordinary table display without changing raw CSV values.'},slug='column-formats',output_dir=str(tmp_path))
     ctx.add_section('Formatting',[*([DataSource('facts',source_frame)] if bound else []),
@@ -89,11 +94,13 @@ def test_native_formatted_search_numeric_sort_raw_csv_and_mini_parity(tmp_path,b
                   searchable=True,sortable=True,column_formats=option),
         MiniKpi('CPI',12/7,'currency',full_number=True,precision=2),
         MiniKpi('Recovery',1.0875,'percent',full_number=True,precision=2)])
-    render_report(ctx,str(tmp_path),auto_refresh=False);copy_vendor_tree(tmp_path)
+    render_report(ctx,str(tmp_path),auto_refresh=False)
+    copy_vendor_tree(tmp_path)
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         try:
-            page=browser.new_page();_route(page,tmp_path)
+            page=browser.new_page()
+            _route(page,tmp_path)
             page.goto('http://table-formats.test/index.html',wait_until='networkidle')
             table=page.locator('.fw-table-scroll').first
             page.wait_for_function('()=>document.querySelectorAll("tbody tr").length===6')
@@ -106,17 +113,23 @@ def test_native_formatted_search_numeric_sort_raw_csv_and_mini_parity(tmp_path,b
             assert cells[5][1]=='1.234567890123456789' and cells[5][2] in ('true','True')
             assert table.locator('em,safe').count()==0
             # Displayed percentage drives search; raw numeric fraction remains in the matching CSV.
-            search=page.locator('input.fw-table-search');search.fill('108.75%')
+            search=page.locator('input.fw-table-search')
+            search.fill('108.75%')
             page.wait_for_function('()=>document.querySelectorAll("tbody tr").length===1')
-            with page.expect_download() as info: page.get_by_title('Download CSV').click()
-            path=tmp_path/'matching.csv';info.value.save_as(str(path))
+            with page.expect_download() as info:
+                page.get_by_title('Download CSV').click()
+            path=tmp_path/'matching.csv'
+            info.value.save_as(str(path))
             exported=list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8-sig'))))
             assert len(exported)==1 and float(exported[0]['amount'])==pytest.approx(12/7)
             assert float(exported[0]['recovery'])==1.0875
-            search.fill('');page.wait_for_function('()=>document.querySelectorAll("tbody tr").length===6')
+            search.fill('')
+            page.wait_for_function('()=>document.querySelectorAll("tbody tr").length===6')
             table.locator('thead th').nth(2).click()
-            with page.expect_download() as info: page.get_by_title('Download CSV').click()
-            path=tmp_path/'sorted.csv';info.value.save_as(str(path))
+            with page.expect_download() as info:
+                page.get_by_title('Download CSV').click()
+            path=tmp_path/'sorted.csv'
+            info.value.save_as(str(path))
             exported=list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8-sig'))))
             # Mixed text does not acquire numeric identity; native raw numeric-only columns sort numerically below.
             assert next(r for r in exported if r['label']=='Decimal')['amount']=='1.234567890123456789'
@@ -125,12 +138,15 @@ def test_native_formatted_search_numeric_sort_raw_csv_and_mini_parity(tmp_path,b
             if bound:
                 page.evaluate("fw.filterEngine.init('facts',[{label:'Low',amount:2,recovery:0.2},{label:'High',amount:10,recovery:0.1}]);fw.filterEngine.notify('facts')")
             table.locator('thead th').nth(1).click()
-            with page.expect_download() as info: page.get_by_title('Download CSV').click()
-            path=tmp_path/'numeric-sort.csv';info.value.save_as(str(path))
+            with page.expect_download() as info:
+                page.get_by_title('Download CSV').click()
+            path=tmp_path/'numeric-sort.csv'
+            info.value.save_as(str(path))
             exported=list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8-sig'))))
             assert [r['label'] for r in exported]==['High','Low']
             assert [r['amount'] for r in exported]==['10','2']
-        finally: browser.close()
+        finally:
+            browser.close()
 
 
 def test_table_local_helper_parity_and_workspace_comparison_exclusion():
@@ -145,7 +161,8 @@ def test_table_local_helper_parity_and_workspace_comparison_exclusion():
     assert all(a==b for a,b in output)
 
 
-from trellum.testing.test_js_runtime import browser_page, capture_page  # noqa: E402,F401
+from trellum.testing.test_js_runtime import browser_page as browser_page  # noqa: E402,F401
+from trellum.testing.test_js_runtime import capture_page as capture_page
 
 
 def test_formats_preserve_bars_rules_shading_totals_and_exclude_other_tables(capture_page):

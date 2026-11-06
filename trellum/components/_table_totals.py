@@ -1,8 +1,8 @@
 """Declarations and typed snapshot inputs for optional DataTable totals."""
 
+import math
 from collections.abc import Mapping
 from decimal import Decimal
-import math
 
 import pandas as pd
 

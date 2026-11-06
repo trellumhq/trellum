@@ -28,7 +28,12 @@ def _check_bound_identity(comp, frame):
 
 def check_hierarchy_tables(comps, ds_map, result):
     """Run after datasource collection, including for hidden/revealed views."""
-    from trellum.components.filterable import DataSource, FilterBar, LiveDataSource, ScopedDataSource
+    from trellum.components.filterable import (
+        DataSource,
+        FilterBar,
+        LiveDataSource,
+        ScopedDataSource,
+    )
 
     graph = {key: set() for key in ds_map}
 

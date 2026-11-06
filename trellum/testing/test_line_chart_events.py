@@ -8,10 +8,10 @@ import inspect
 import json
 import mimetypes
 import os
-from pathlib import Path
 import struct
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import pandas as pd
@@ -23,9 +23,9 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
-from trellum.validation import validate_report
-from trellum.runner.events import local_annotation_events, _weekday_highlight_config
+from trellum.runner.events import _weekday_highlight_config, local_annotation_events
 from trellum.themes import THEME_REGISTRY
+from trellum.validation import validate_report
 
 _ROOT = Path(__file__).resolve().parents[2]
 _BASELINE = "54703deee7d4ad41c84c32a5151fcedf00660453"

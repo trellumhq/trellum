@@ -1,11 +1,24 @@
 """Complete synthetic UTC calendar activity, with independent platform filtering."""
-from datetime import date
 import calendar
+from datetime import date
 
 import pandas as pd
 
-from trellum.components import (ComparisonTable, DataSource, DataTable, FilterBar, Grid, LineChart,
-                                Panel, PeriodComparison, RawHTML, Section, TabGroup, Toggle, Visible)
+from trellum.components import (
+    ComparisonTable,
+    DataSource,
+    DataTable,
+    FilterBar,
+    Grid,
+    LineChart,
+    Panel,
+    PeriodComparison,
+    RawHTML,
+    Section,
+    TabGroup,
+    Toggle,
+    Visible,
+)
 
 SOURCE = 'showcase_period_facts'
 RESULT = 'showcase_period_comparison'

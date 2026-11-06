@@ -44,8 +44,8 @@ def _check_area_chart(width):
     except ImportError:
         pytest.skip("Playwright not installed")
 
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
 
     output = Path(tempfile.mkdtemp(prefix="area-chart-browser-"))
     _report(output)

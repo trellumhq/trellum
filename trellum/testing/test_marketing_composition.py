@@ -1,21 +1,23 @@
 """Independent arithmetic and native diagnostics for the authored example."""
 import importlib.util
+import json
 from pathlib import Path
+
+import pytest
 
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
+from trellum.testing.test_metric_views import node
 from trellum.validation import validate_report
 from trellum.validation.checks.metric_views import check_metric_views
-from trellum.testing.test_metric_views import node
-import json
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def example_context(output):
     spec=importlib.util.spec_from_file_location('examples_marketing',ROOT/'trellum/demo/reports/component-showcase/examples_marketing.py')
-    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    module=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     ctx=ReportContext(config={'name':'Marketing geography','studio':'test','category':'Test',
         'description':'Complete synthetic acquisition-cohort facts; overlapping geography groups.'},slug='marketing-geography',output_dir=str(output))
     module.add_sections(ctx)
@@ -43,6 +45,7 @@ def test_native_marketing_arithmetic_and_diagnostics(tmp_path):
     bound=[r for r in details['filter_matrix'] if r.get('dataset_id')==module.RESULT]
     assert len(bound)==34
     assert all(c['status']=='active' for row in bound for c in row['filters'])
-    result=validate_report(ctx,details=details);check_metric_views(ctx,result)
+    result=validate_report(ctx,details=details)
+    check_metric_views(ctx,result)
     issues=[(c.id,c.level,c.component,c.section,c.message) for c in result.checks if c.level in {'warn','fail'}]
     assert issues==[],issues

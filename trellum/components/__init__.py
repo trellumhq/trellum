@@ -31,11 +31,12 @@ from trellum.components.charts import (
     FunnelChart,
     HeatmapChart,
     LineChart,
-    ScatterChart,
     SankeyChart,
+    ScatterChart,
     StackedBar,
     TreemapChart,
 )
+from trellum.components.cohort_table import CohortTable
 from trellum.components.controls import DateSelector, Dropdown, TabGroup, Toggle
 from trellum.components.filterable import (
     DataSource,
@@ -45,11 +46,10 @@ from trellum.components.filterable import (
 )
 from trellum.components.header import ReportHeader
 from trellum.components.hierarchy_table import HierarchyTable
-from trellum.components.cohort_table import CohortTable
 from trellum.components.kpis import KpiCard, KpiRow, MiniKpi
+from trellum.components.layout import Grid, Panel, RawHTML, Section, SplitPane, Visible
 from trellum.components.metric_views import MetricView
 from trellum.components.period_comparison import PeriodComparison
-from trellum.components.layout import Grid, Panel, RawHTML, Section, SplitPane, Visible
 from trellum.components.report_metadata import ReportMetadata
 from trellum.components.tables import ComparisonTable, DataTable, PivotTable
 

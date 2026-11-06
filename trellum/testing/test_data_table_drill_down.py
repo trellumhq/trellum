@@ -1,21 +1,28 @@
 """Row actions reuse dropdown ownership without changing table populations."""
 
 import base64
-from contextlib import contextmanager
-from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
 import types
+from contextlib import contextmanager
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit
 
 import pandas as pd
 import pytest
 
-from trellum.components import ComparisonTable, DataSource, DataTable, FilterBar, LiveDataSource, ScopedDataSource
+from trellum.components import (
+    ComparisonTable,
+    DataSource,
+    DataTable,
+    FilterBar,
+    LiveDataSource,
+    ScopedDataSource,
+)
 from trellum.components.base import RenderContext
 from trellum.components.filters.dropdown import DropdownFilter
 from trellum.rendering.html_builder import render_report
@@ -519,7 +526,7 @@ def baseline_module():
         pytest.skip(f"Required history object {BASELINE} unavailable; functional drill-down coverage still runs")
     module = types.ModuleType("_drill_baseline")
     sys.modules[module.__name__] = module
-    exec(compile(result.stdout, f"{BASELINE}/tables.py", "exec"), module.__dict__)
+    exec(compile(result.stdout, f"{BASELINE}/tables.py", "exec"), module.__dict__)  # noqa: S102 - Trusted local Git source for exact historical compatibility proof.
     for loader, suffix in (("load_css", "css"), ("load_js", "js")):
         asset = subprocess.run(["git", "show", f"{BASELINE}:trellum/static/{suffix}/components/data_table.{suffix}"], cwd=ROOT,
                                capture_output=True, text=True, check=True).stdout
@@ -693,12 +700,12 @@ def test_measured_zero_retained_in_native_detail_and_no_filter_side_effects(tmp_
 
 def test_native_hidden_tab_mounts_with_current_owner_selection(tmp_path):
     from trellum.components import RawHTML, TabGroup
-    m = examples()
+    fixture_examples = examples()
     def extra(ctx):
         ctx.add_section("Deferred drill actions", [TabGroup([
             {"label": "Overview", "content": [RawHTML(html="<p>Observations in the next tab.</p>")]},
-            {"label": "Drill observations", "content": [DataTable(m.observation_frame(), "Deferred observations", static=True,
-                columns=["Source", "Installs"], drill_down=m.action("source_key", "Source"))]},
+            {"label": "Drill observations", "content": [DataTable(fixture_examples.observation_frame(), "Deferred observations", static=True,
+                columns=["Source", "Installs"], drill_down=fixture_examples.action("source_key", "Source"))]},
         ], id="drill-tabs")])
     with browser_report(tmp_path, extra=extra) as (page, tables, _, m):
         cid = tables["Deferred observations"]

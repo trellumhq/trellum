@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import base64
-from contextlib import ExitStack
 import csv
 import io
 import json
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import unquote, urlparse
 
