@@ -77,6 +77,15 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert [row['Event ID'] for row in rows] == [f'{i + 1:05d}' for i in expected]
             assert table.locator('tbody tr').count() == 10
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="date ranges", exact=True).click()
+            dates = page.locator('[data-fw-ds-id="showcase_dates_daily"].fw-filter-bar')
+            dates.locator('.fw-date-trigger').click()
+            dates.get_by_role("button", name="14D", exact=True).click()
+            assert page.evaluate("window._fwFilterEngine.getFiltered('showcase_dates_daily').length") == 15
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            assert table.locator('tbody tr').count() == 10
+            assert "16 matching" in table.locator('.fw-table-note').inner_text()
+            page.keyboard.press("Escape")
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

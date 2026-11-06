@@ -16,7 +16,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and an optional panel-width-responsive `sidebar` mode. Nested and sibling views
   preserve independent state, URL restoration and chart visibility.
 - A database-free report component showcase in the demo gallery, with interactive
-  charts, layouts, KPI presentation, report controls and table search/export examples.
+  charts, layouts, KPI presentation, report controls, table search/export and
+  date-range examples.
 - `LineChart(height=...)`: the plotting area is 220px (`"balanced"`, the
   default) at every viewport width, with optional `"compact"` (160px) and
   `"roomy"` (320px) sizes. The title is now kept in tile grids. Other charts keep

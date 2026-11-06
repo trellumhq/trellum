@@ -30,9 +30,9 @@ def add_sections(ctx):
         if channel:
             filters.append({"column": "channel", "label": "Channel", "type": "toggle"})
         ctx.add_section(title, [
-            RawHTML(html=f'<p style="margin-bottom:24px">{prose}</p>'),
             DataSource(dataset, frame),
             FilterBar(dataset, frame, filters=filters),
+            RawHTML(html=f'<p style="margin:16px 0">{prose}</p>'),
             DataTable(frame, title="Recorded readings", dataset_id=dataset),
         ])
 
