@@ -118,6 +118,11 @@ class AssistantSession(models.Model):
         return state.setdefault("transcript", [])
 
     @property
+    def visible_transcript(self) -> list:
+        from .answer_review import visible_transcript
+        return visible_transcript(self.transcript)
+
+    @property
     def usage(self) -> dict:
         state = self.state or {}
         return state.setdefault("usage", default_state()["usage"])
@@ -132,7 +137,7 @@ class AssistantSession(models.Model):
             "created_at": self.created_at.timestamp() if self.created_at else None,
             "updated_at": self.updated_at.timestamp() if self.updated_at else None,
             "message_count": sum(
-                1 for m in self.transcript if m.get("role") in ("user", "assistant")
+                1 for m in self.visible_transcript if m.get("role") in ("user", "assistant")
             ),
             "cost_usd": (
                 round(float(self.usage.get("cost_usd", 0.0)), 4)
@@ -147,8 +152,9 @@ class AssistantSession(models.Model):
     def to_full(self) -> dict:
         return {
             **self.to_summary(),
-            "transcript": self.transcript,
+            "transcript": self.visible_transcript,
             "usage": self.usage,
+            "source_pending": (self.state or {}).get("_source_pending"),
         }
 
 
@@ -282,3 +288,6 @@ class ProposedAction(models.Model):
             "result": self.result,
             "expires_at": self.expires_at.isoformat(),
         }
+
+# Separate module keeps source policy records independent of conversation state.
+from .source_models import SourceQuery, SourceReadGrant, SourceExecutionReservation  # noqa: E402,F401
