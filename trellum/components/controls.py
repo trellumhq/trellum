@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape
 from typing import Any, Dict, List, Optional
 
-from trellum.assets import load_css
+from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
 
 
@@ -45,16 +46,15 @@ class Toggle(Component):
 
 @dataclass
 class Dropdown(Component):
-    """Select dropdown control.
+    """Labeled, searchable choice retaining the native select and its events.
 
-    Args:
-        id: Unique identifier.
-        options: List of option labels.
-        default: Initially selected option (defaults to first).
+    ``id``, ``options`` and ``default`` retain their positional contract.
+    ``label`` is keyword-only and defaults to "Choose an option".
     """
     id: str
     options: List[str]
     default: Optional[str] = None
+    label: str = field(default="Choose an option", kw_only=True)
 
     _component_type: str = field(default="dropdown", init=False, repr=False)
 
@@ -66,76 +66,106 @@ class Dropdown(Component):
         opts = []
         for opt in self.options:
             selected = " selected" if opt == self.default else ""
-            opts.append(f'<option value="{opt}"{selected}>{opt}</option>')
-        return f'<select class="fw-dropdown" id="{self.id}">{"".join(opts)}</select>'
-
-    @classmethod
-    def css(cls) -> str:
-        return """\
-.fw-dropdown {
-    padding: 6px 12px;
-    font-size: var(--font-size-small);
-    background: var(--bg-card);
-    color: var(--text-main);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    margin-bottom: var(--spacing-md);
-}"""
-
-
-@dataclass
-class TabGroup(Component):
-    """Tabbed content navigation.
-
-    Args:
-        tabs: List of dicts with ``label`` (str) and ``content`` (list of components).
-        id: Optional unique identifier for state preservation.
-        mode: ``"tabs"`` (default) renders button tabs; ``"dropdown"`` renders a
-              ``<select>`` element with the same show/hide panel behaviour.
-    """
-    tabs: List[Dict[str, Any]]
-    id: Optional[str] = None
-    mode: str = "tabs"
-
-    _component_type: str = field(default="tab_group", init=False, repr=False)
+            text = escape(str(opt), quote=True)
+            opts.append(f'<option value="{text}"{selected}>{text}</option>')
+        disabled = "" if opts else " disabled"
+        if not opts:
+            opts.append('<option value="">No choices available</option>')
+        control_id = escape(str(self.id), quote=True)
+        label = escape(str(self.label), quote=True)
+        return (
+            f'<div class="fw-choice"><label for="{control_id}">{label}</label>'
+            f'<select class="fw-dropdown fw-report-select" id="{control_id}" '
+            f'aria-label="{label}" data-fw-choice{disabled}>{"".join(opts)}</select></div>'
+        )
 
     @classmethod
     def cdn_deps(cls) -> list[str]:
         return ["slim_select_js", "slim_select_css"]
 
-    def render_html(self, ctx: RenderContext) -> str:
-        tab_id = self.id or ctx.next_id()
-        panels = []
-        for i, tab in enumerate(self.tabs):
-            display = "" if i == 0 else ' style="display:none"'
-            content = ctx.render_children(tab.get("content", []))
-            panels.append(f'<div class="fw-tab-panel"{display}>{content}</div>')
-
-        if self.mode == "dropdown":
-            opts = []
-            for i, tab in enumerate(self.tabs):
-                opts.append(f'<option value="{i}">{tab["label"]}</option>')
-            control = (
-                f'<select class="fw-dropdown fw-tab-dropdown" '
-                f'data-tab-id="{tab_id}">{"".join(opts)}</select>'
-            )
-        else:
-            btns = []
-            for i, tab in enumerate(self.tabs):
-                active = " active" if i == 0 else ""
-                btns.append(
-                    f'<button class="fw-tab-btn{active}">{tab["label"]}</button>'
-                )
-            control = (
-                f'<div class="fw-tab-group" data-tab-id="{tab_id}">'
-                f'{"".join(btns)}</div>'
-            )
-
-        return f'{control}\n{"".join(panels)}'
+    @classmethod
+    def client_js(cls) -> str:
+        return load_js("components/report_dropdown.js")
 
     @classmethod
     def css(cls) -> str:
-        return load_css("components/tab_group.css")
+        return load_css("components/report_dropdown.css")
+
+
+@dataclass
+class TabGroup(Component):
+    """Report-local views: underlined tabs, searchable dropdown or sidebar.
+
+    ``tabs``, ``id`` and ``mode`` retain their positional contract. Unknown
+    legacy modes continue to render tabs. ``label`` names the view navigation.
+    The opt-in sidebar becomes a selector when its panel is at most 520px wide.
+    """
+    tabs: List[Dict[str, Any]]
+    id: Optional[str] = None
+    mode: str = "tabs"
+    label: str = field(default="Report view", kw_only=True)
+
+    _component_type: str = field(default="tab_group", init=False, repr=False)
+
+    @classmethod
+    def cdn_deps(cls) -> list[str]:
+        return Dropdown.cdn_deps()
+
+    @classmethod
+    def client_js(cls) -> str:
+        return Dropdown.client_js()
+
+    def render_html(self, ctx: RenderContext) -> str:
+        tab_id = escape(str(self.id or ctx.next_id()), quote=True)
+        label = escape(str(self.label), quote=True)
+        mode = self.mode if self.mode in ("dropdown", "sidebar") else "tabs"
+        panels, buttons, options = [], [], []
+        for i, tab in enumerate(self.tabs):
+            panel_id, button_id = ctx.next_id(), ctx.next_id()
+            text = escape(str(tab["label"]), quote=True)
+            active = " active" if i == 0 else ""
+            display = "" if i == 0 else ' style="display:none"'
+            content = ctx.render_children(tab.get("content", []))
+            panel_label = (f'aria-labelledby="{button_id}"' if mode != "dropdown"
+                           else f'aria-label="{text}"')
+            panels.append(
+                f'<div class="fw-tab-panel" id="{panel_id}" role="tabpanel" '
+                f'{panel_label}{display}>{content}</div>'
+            )
+            buttons.append(
+                f'<button type="button" class="fw-tab-btn{active}" id="{button_id}" '
+                f'role="tab" aria-controls="{panel_id}" aria-selected="{str(i == 0).lower()}" '
+                f'tabindex="{0 if i == 0 else -1}">{text}</button>'
+            )
+            options.append(f'<option value="{i}">{text}</option>')
+        if not self.tabs:
+            return (f'<div class="fw-tab-root" data-tab-mode="{mode}">'
+                    '<p class="fw-tab-empty">No report views available</p></div>')
+        control = ""
+        if mode != "dropdown":
+            orientation = ' aria-orientation="vertical"' if mode == "sidebar" else ""
+            control += (
+                f'<div class="fw-tab-group" data-tab-id="{tab_id}" role="tablist" '
+                f'aria-label="{label}"{orientation}>{"".join(buttons)}</div>'
+            )
+        if mode in ("dropdown", "sidebar"):
+            select_id = ctx.next_id()
+            mirror = ' data-tab-mirror' if mode == "sidebar" else ""
+            control += (
+                f'<div class="fw-choice fw-tab-choice"><label for="{select_id}">{label}</label>'
+                f'<select id="{select_id}" class="fw-tab-dropdown fw-report-select" '
+                f'data-tab-id="{tab_id}" data-fw-choice aria-label="{label}"{mirror}>'
+                f'{"".join(options)}</select></div>'
+            )
+        return (
+            f'<div class="fw-tab-root" data-tab-mode="{mode}">'
+            f'<div class="fw-tab-nav">{control}</div>'
+            f'<div class="fw-tab-panels">{"".join(panels)}</div></div>'
+        )
+
+    @classmethod
+    def css(cls) -> str:
+        return Dropdown.css() + "\n" + load_css("components/tab_group.css")
 
 
 @dataclass

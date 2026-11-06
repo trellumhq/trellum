@@ -3,6 +3,26 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: standalone report choices and views
+
+Rebuilding applies a labeled, searchable, wrapping presentation to standalone
+`Dropdown` controls, and underlined wrapping tabs to ordinary `TabGroup`s. Short
+targets are at least 36px for choices and 35px for a tab row on desktop, and
+44px on phones. Empty choices and groups now explain their empty state.
+
+Constructor positions, native select values/events, public `fw` keys and existing
+state/URL parameter names are preserved. Keyword-only `label` names either
+control. `mode="dropdown"` remains a selector and is now searchable;
+`mode="sidebar"` is a new opt-in panel-width-responsive layout. Unknown legacy
+modes continue to render tabs. Report filter dropdowns retain their presentation.
+
+Custom selectors should account for the new `.fw-choice` label/select wrapper and
+`.fw-tab-root`, `.fw-tab-nav`, `.fw-tab-panels` ownership wrappers. Tab panel
+contents remain intact. Previously generated controls without the new metadata
+retain native standalone selects and the older tab-selector initialization.
+Find authoring sites with `rg 'Dropdown\(|TabGroup\(' reports`; see
+[report controls](report-controls.md) for API and keyboard details.
+
 ## Unreleased: report chart sizes, panel-width layouts and KPI presentation
 
 Existing constructor positional arguments remain accepted. No host API or

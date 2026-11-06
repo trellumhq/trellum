@@ -11,6 +11,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   components, stacked MiniKpi labels, and mobile expansion for filtered KPI rows.
 
 ### Added
+- Standalone report `Dropdown` labels, searchable wrapping choices and disabled
+  empty feedback; underlined wrapping `TabGroup` tabs, searchable view selectors
+  and an optional panel-width-responsive `sidebar` mode. Nested and sibling views
+  preserve independent state, URL restoration and chart visibility.
 - A database-free report component showcase in the demo gallery, with interactive
   LineChart size and filtered-summary examples.
 

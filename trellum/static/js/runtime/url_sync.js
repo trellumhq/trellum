@@ -81,7 +81,7 @@
                 if (val !== tabs[id]) sp.set('tab.' + id, val);
             });
             // Tabs (dropdown mode)
-            document.querySelectorAll('.fw-tab-dropdown[data-tab-id]').forEach(function(sel) {
+            document.querySelectorAll('select.fw-tab-dropdown[data-tab-id]:not([data-tab-mirror])').forEach(function(sel) {
                 var id = sel.dataset.tabId;
                 if (!id || !tabs.hasOwnProperty(id)) return;
                 if (sel.value !== tabs[id]) sp.set('tab.' + id, sel.value);
@@ -210,47 +210,21 @@
             document.querySelectorAll('.fw-tab-group[data-tab-id]').forEach(function(g) {
                 var id = g.dataset.tabId;
                 if (!id) return;
-                var btns = Array.from(g.querySelectorAll('.fw-tab-btn'));
+                var btns = _fwTabButtons(g);
                 var activeBtn = g.querySelector('.fw-tab-btn.active');
                 var defaultVal = activeBtn ? activeBtn.textContent.trim() : '';
                 window._fwUrlSync.registerTab(id, defaultVal);
                 var urlVal = params['tab.' + id];
                 if (urlVal !== undefined) {
-                    var idx = -1;
-                    btns.forEach(function(btn, i) {
-                        if (btn.textContent.trim() === urlVal) {
-                            btns.forEach(function(b) { b.classList.remove('active'); });
-                            btn.classList.add('active');
-                            idx = i;
-                        }
-                    });
-                    if (idx >= 0) {
-                        var panels = g.parentElement.querySelectorAll('.fw-tab-panel');
-                        panels.forEach(function(p, i) { p.style.display = i === idx ? '' : 'none'; });
-                    }
+                    _fwSelectTab(g, btns.findIndex(function(btn) { return btn.textContent.trim() === urlVal; }));
                 }
             });
-            document.querySelectorAll('.fw-tab-dropdown[data-tab-id]').forEach(function(sel) {
+            document.querySelectorAll('select.fw-tab-dropdown[data-tab-id]:not([data-tab-mirror])').forEach(function(sel) {
                 var id = sel.dataset.tabId;
                 if (!id) return;
                 window._fwUrlSync.registerTab(id, sel.value);
                 var urlVal = params['tab.' + id];
-                if (urlVal !== undefined) {
-                    sel.value = urlVal;
-                    var idx = parseInt(urlVal, 10);
-                    if (!isNaN(idx)) {
-                        var wrapper = sel.closest('.ss-main');
-                        var el = (wrapper ? wrapper.parentElement : sel).nextElementSibling;
-                        var pi = 0;
-                        while (el) {
-                            if (el.classList && el.classList.contains('fw-tab-panel')) {
-                                el.style.display = pi === idx ? '' : 'none';
-                                pi++;
-                            }
-                            el = el.nextElementSibling;
-                        }
-                    }
-                }
+                if (urlVal !== undefined) _fwSelectTab(sel, Number(urlVal));
             });
         },
 
