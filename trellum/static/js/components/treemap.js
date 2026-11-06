@@ -212,15 +212,18 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
         });
         var chart = window._chartInstances[id];
         chart._fwThemeManagedFonts = true;
-        if (!context) return; // Older markup safely keeps its canvas renderer.
-        var previous = context.querySelector('details');
-        var wasOpen = previous && previous.open;
         var nodes = chart.data.datasets[0].data;
         var leaves = nodes.filter(function(raw) { return raw.l === groupCols.length - 1; });
         var leafTotal = leaves.reduce(function(sum, raw) { return sum + raw.v; }, 0);
         if (!reason && Math.abs(leafTotal - total) > Math.max(1, total) * 1e-12) {
             reason = 'Shares unavailable: legacy leaves do not cover the supplied population.';
+            // The plugin exposes its leaves only after construction. Remove
+            // any shares painted before that population could be checked.
+            chart.update('none');
         }
+        if (!context) return; // Older markup safely keeps its canvas renderer.
+        var previous = context.querySelector('details');
+        var wasOpen = previous && previous.open;
         context.replaceChildren();
         function text(tag, value, parent, className) {
             var el = document.createElement(tag); el.textContent = value;

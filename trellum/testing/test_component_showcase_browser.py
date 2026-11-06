@@ -160,6 +160,19 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert page.evaluate("id => window._chartInstances[id].data.datasets[0].data.map(d => d.v)",
                                  sparse_heatmap.get_attribute('id')) == [0, 40, 80]
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="treemaps", exact=True).click()
+            treemap_section = page.locator('#sec-treemaps-—-filter-the-complete-population')
+            treemap = treemap_section.locator('canvas')
+            treemap.scroll_into_view_if_needed()
+            page.wait_for_function("id => !!window._chartInstances[id]", arg=treemap.get_attribute('id'))
+            treemap_section.locator('summary').click()
+            treemap_section.get_by_role('button', name='Phone', exact=True).click()
+            expect(treemap_section.locator('tbody tr')).to_have_count(6)
+            assert treemap_section.locator('details').evaluate('el => el.open')
+            assert treemap_section.locator('tbody tr').evaluate_all(
+                'rows => rows.reduce((sum, row) => sum + Number(row.dataset.value), 0)') == 35015
+            assert treemap_section.locator('tbody tr').first.get_attribute('data-path') == '["North","Store"]'
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

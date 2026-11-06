@@ -415,6 +415,29 @@ def test_supplied_population_eligibility_and_legacy_wrapper(tmp_path):
         assert tooltip[0] in {"North › Store", "North › Web"}
         assert "filtered total" in tooltip[1]
         assert tooltip[2] == "point"
+        # An old ungrouped payload has no hierarchy leaves. Once coverage is
+        # known, the final painted frame must agree with its unavailable note.
+        painted = page.evaluate("""id=>{
+            const drawn={}, original=CanvasRenderingContext2D.prototype.fillText;
+            const observer={id:'treemapLastPaint',beforeDraw(c){drawn[c.canvas.id]=[];}};
+            Chart.register(observer);
+            CanvasRenderingContext2D.prototype.fillText=function(text,...args){
+                (drawn[this.canvas.id] ||= []).push(String(text));
+                return original.call(this,text,...args);
+            };
+            try {
+                const cfg={...window._reportData.components[id],group_cols:[],
+                    rows:[{revenue:10},{revenue:20}],show_percentages:true};
+                window._fwRenderers.treemap(id,cfg);
+                return drawn[id];
+            } finally {
+                CanvasRenderingContext2D.prototype.fillText=original;
+                Chart.unregister(observer);
+            }
+        }""", cid)
+        assert "legacy leaves do not cover" in root.locator('.fw-treemap-context').inner_text()
+        assert any("20" in text for text in painted)
+        assert not any("%" in text for text in painted)
         # Rendering into original markup without the new context remains safe.
         page.evaluate("""id=>{const canvas=document.getElementById(id);const host=canvas.closest('.fw-treemap');
             host.replaceWith(...host.childNodes);window._fwRenderers.treemap(id,window._reportData.components[id]);}""", cid)
