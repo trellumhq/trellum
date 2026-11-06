@@ -1,3 +1,57 @@
+/* Header summaries own only their header and canvas description token. */
+function _fwDoughnutSummaryResult(data, original, summary) {
+    if (summary.stat === 'count') return { value: data.length, reason: 'Entry count; independent of amount completeness.' };
+    if (!data.length) return { value: null, reason: 'No categories in the current result.' };
+    if (!original.every(function(v) { return typeof v === 'number' && Number.isFinite(v); })) {
+        return { value: null, reason: 'Incomplete or non-numeric supplied amounts.' };
+    }
+    if (original.some(function(v) { return v < 0; })) return { value: null, reason: 'Signed supplied amounts.' };
+    if (!data.every(function(v) { return typeof v === 'number' && Number.isFinite(v); })) {
+        return { value: null, reason: 'Nonfinite grouped amounts.' };
+    }
+    // Max does not depend on the combined sum fitting in a JavaScript number.
+    var value = summary.stat === 'max' ? data.reduce(function(a, b) { return Math.max(a, b); }, 0)
+        : data.reduce(function(a, b) { return a + b; }, 0);
+    return Number.isFinite(value) ? { value: value, reason: '' }
+        : { value: null, reason: 'Sum exceeds the finite range.' };
+}
+
+function _fwDoughnutSummary(chart, root, cfg, original) {
+    if (!root) return;
+    var canvas = chart.canvas, descriptionId = canvas.id + '-doughnut-summary-scope';
+    var box = root.querySelector('.fw-doughnut-summary');
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) {
+        return t && t !== descriptionId;
+    });
+    if (cfg.header_summary) {
+        if (!box) {
+            box = document.createElement('div'); box.className = 'fw-doughnut-summary';
+            root.insertBefore(box, root.querySelector('.fw-doughnut-layout'));
+        }
+        var summary = cfg.header_summary;
+        var result = _fwDoughnutSummaryResult(chart.data.datasets[0].data, original, summary);
+        function span(cls, text) {
+            var el = document.createElement('span'); el.className = cls; el.textContent = text; return el;
+        }
+        var text = result.value == null ? '—' : _fwDoughnutFormat(result.value, {
+            value_format: summary.format,
+            precision: summary.stat === 'count' ? 0 : cfg.precision
+        });
+        var description = span('fw-doughnut-summary-description',
+            'All category entries in the current supplied or report-filtered result, including hidden entries. ' +
+            (summary.stat === 'count' ? 'Counts category entries, not unique names or source facts; independent of amount completeness. ' : '') + result.reason);
+        description.id = descriptionId;
+        box.replaceChildren(span('fw-doughnut-summary-label', summary.label),
+            span('fw-doughnut-summary-value', text),
+            span('fw-doughnut-summary-scope', 'All categories in current result'),
+            span('fw-doughnut-summary-reason', result.reason), description);
+        box.title = description.textContent;
+        tokens.push(descriptionId);
+    } else if (box) box.remove();
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+}
+
 /* Doughnut-local formatting and population context. Arc and CSV data retain
    their existing static grain / live groupBy contract. */
 function _fwDoughnutPopulation(values) {
@@ -134,7 +188,7 @@ function _fwDoughnutLegend(chart, root, cfg, population, supplied) {
     }
 }
 
-function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, population, supplied, categoryKeys) {
+function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, population, supplied, categoryKeys, original) {
     if (window._chartInstances[id]) {
         window._chartInstances[id].destroy();
         delete window._chartInstances[id];
@@ -204,6 +258,7 @@ function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, popul
         // Runs after shared theme code has set the actual dataset colors.
         plugins: [{ id: 'fwDoughnutLegend', afterUpdate: function(chart) {
             _fwDoughnutLegend(chart, root, cfg, population, supplied);
+            _fwDoughnutSummary(chart, root, cfg, original || data);
         } }]
     });
     window._chartInstances[id]._fwThemeManagedFonts = true;
@@ -245,7 +300,7 @@ window._fwRenderers['doughnut'] = function renderDoughnut(id, cfg) {
             }) : null;
             _createDoughnut(id, canvas, gr.labels, data,
                 activeCfg.crossFilter ? { crossFilter: activeCfg.crossFilter, dsId: activeCfg.dataset_id } : null,
-                activeCfg.show_labels, activeCfg, population, supplied, categoryKeys);
+                activeCfg.show_labels, activeCfg, population, supplied, categoryKeys, original);
         } else {
             var supplied = activeCfg.data.map(function(v, i) {
                 return { text: activeCfg.supplied_values ? activeCfg.supplied_values[i] : _fwDoughnutRaw(v), invalid: typeof v !== 'number' || !Number.isFinite(v) };

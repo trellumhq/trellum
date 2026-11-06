@@ -30,3 +30,11 @@
     .fw-doughnut .fw-doughnut-entry { min-height: 44px; }
     .fw-doughnut .fw-doughnut-context button { min-height: 44px; }
 }
+
+/* Optional header adds height above the unchanged ring/legend layout. */
+.fw-doughnut-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 4px 8px; min-width: 0; margin-bottom: 12px; text-align: right; overflow-wrap: anywhere; }
+.fw-doughnut-summary-label { color: var(--text-secondary); font-size: var(--font-size-label); min-width: 0; }
+.fw-doughnut-summary-value { color: var(--text-main); font-size: var(--font-size-body); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; }
+.fw-doughnut-summary-scope, .fw-doughnut-summary-reason { flex-basis: 100%; color: var(--text-secondary); font-size: var(--font-size-label); }
+.fw-doughnut-summary-reason:empty { display: none; }
+.fw-doughnut-summary-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

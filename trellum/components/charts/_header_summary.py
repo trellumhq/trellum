@@ -1,4 +1,4 @@
-"""Explicit summaries of one final plotted BarChart or AreaChart vector."""
+"""Explicit chart-family summary declarations and population scopes."""
 
 from __future__ import annotations
 
@@ -70,3 +70,37 @@ def header_summary_config(chart: Any) -> dict:
             "choose mean (unweighted), last, min or max.")
     return {"header_summary": {"stat": stat, "scope": "plotted_series", "series": series,
                                "label": cfg.get("label", _LABELS[stat]), "format": fmt}}
+
+
+def doughnut_summary_config(chart: Any) -> dict:
+    """Validate a category-entry summary independently of plotted series."""
+    cfg = getattr(chart, "header_summary", None)
+    if cfg is None:
+        return {}
+
+    def bad(message: str) -> None:
+        raise ValueError(f"DoughnutChart header_summary: {message}")
+
+    if not isinstance(cfg, dict):
+        bad("must be a dict with stat and scope='all_categories'.")
+    if set(cfg) - {"stat", "scope", "label", "format"}:
+        bad("unknown keys in declaration.")
+    labels = {"sum": "Total", "max": "Largest category", "count": "Category entries"}
+    stat = cfg.get("stat")
+    if not isinstance(stat, str) or stat not in labels:
+        bad("stat must be sum, max or count.")
+    if not isinstance(cfg.get("scope"), str) or cfg["scope"] != "all_categories":
+        bad("scope must be 'all_categories'.")
+    if "label" in cfg and (not isinstance(cfg["label"], str)
+                           or not cfg["label"].strip() or len(cfg["label"]) > 60):
+        bad("label must be nonblank text of at most 60 characters.")
+    if "format" in cfg and (not isinstance(cfg["format"], str) or cfg["format"] not in _FORMATS):
+        bad(f"format must be one of {list(_FORMATS)}.")
+    fmt = cfg.get("format", "number" if stat == "count" else chart.value_format)
+    if stat == "count" and fmt not in ("number", "plain"):
+        bad("count format must be number or plain; it counts category entries.")
+    if stat == "sum" and (chart.value_format in ("percent", "ratio")
+                          or fmt in ("percent", "ratio")):
+        bad("sum is undefined for percent/ratio amounts or summary formats.")
+    return {"header_summary": {"stat": stat, "scope": "all_categories",
+                               "label": cfg.get("label", labels[stat]), "format": fmt}}

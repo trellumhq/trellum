@@ -16,9 +16,15 @@ from trellum.validation.walk import _comp_name
 def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult) -> None:
     from trellum.components.charts.line_area import line_option_problems
 
-    from trellum.components.charts._header_summary import header_summary_config
+    from trellum.components.charts._header_summary import header_summary_config, doughnut_summary_config
 
     for comp, sec in comps:
+        if _comp_name(comp) == "DoughnutChart":
+            try:
+                doughnut_summary_config(comp)
+            except ValueError as exc:
+                result.fail("chart-summary-invalid", str(exc),
+                            component="DoughnutChart", section=sec)
         if _comp_name(comp) in ("BarChart", "AreaChart"):
             try:
                 header_summary_config(comp)

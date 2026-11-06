@@ -9,6 +9,7 @@ import pandas as pd
 
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
+from trellum.components.charts._header_summary import doughnut_summary_config
 from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
     _ChartBase,
@@ -44,12 +45,14 @@ class DoughnutChart(Component):
     value_format: str = field(default="number", kw_only=True)
     precision: Optional[int] = field(default=None, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
+    header_summary: Optional[dict] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="doughnut_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        doughnut_summary_config(self)
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
         if self.value_format not in {"number", "currency", "percent", "ratio", "plain", "chips"}:
@@ -63,6 +66,7 @@ class DoughnutChart(Component):
             raise ValueError("Doughnut center_total must be bool and center_label must be text")
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary_config = doughnut_summary_config(self)
         category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()
 
@@ -108,6 +112,7 @@ class DoughnutChart(Component):
             "value_format": self.value_format,
             "precision": self.precision,
         })
+        cfg_d.update(summary_config)
         cfg_d.update(category_config)
         if category_config and not self.dataset_id:
             cfg_d["category_keys"] = [v if isinstance(v, str) else None
