@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from trellum.assets import load_css
 from trellum.components.base import RenderContext
 from trellum.components.charts._header_summary import header_summary_config
 from trellum.components.charts.base import (
@@ -189,6 +190,8 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     validator reports them all for a chart changed afterwards.
     """
     problems: list[tuple[str, str]] = []
+    if type(getattr(chart, "result_presentation", True)) is not bool:
+        problems.append(("line-chart-result-presentation-invalid", "LineChart result_presentation must be bool."))
     try:
         _series_availability_config(chart)
     except ValueError as exc:
@@ -295,6 +298,10 @@ class LineChart(_ChartBase):
     ``series_availability``: keyword-only rules requiring complete finite raw
     supplied inputs per point. Invalid supplied observations become null gaps
     with selected-data context below the plot. See docs/report-line-availability.md.
+
+    ``result_presentation``: keyword-only bool, default True. Show precise
+    no-result messages and requested/displayed live result context without
+    changing plotted values. See docs/report-line-results.md; False opts out.
     """
 
     df: pd.DataFrame
@@ -338,8 +345,13 @@ class LineChart(_ChartBase):
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
     event_labels: str = field(default="grouped", kw_only=True)
     series_availability: Optional[list[dict] | tuple[dict, ...]] = field(default=None, kw_only=True)
+    result_presentation: bool = field(default=True, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
+
+    @classmethod
+    def css(cls) -> str:
+        return super().css() + load_css("components/line_results.css")
 
     def __post_init__(self):
         _month_context_config(self)
@@ -380,8 +392,11 @@ class LineChart(_ChartBase):
         return {"header_summary": out}
 
     def _style_config(self) -> dict[str, Any]:
+        if type(self.result_presentation) is not bool:
+            raise ValueError("LineChart result_presentation must be bool.")
         return {"line_style": "adaptive", "tension": self.tension,
-                "event_labels": self.event_labels}
+                "event_labels": self.event_labels,
+                **({"line_result_presentation": True} if self.result_presentation else {})}
 
     def _validate_event_labels(self) -> None:
         if not isinstance(self.event_labels, str) or self.event_labels not in ("grouped", "full"):

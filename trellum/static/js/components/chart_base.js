@@ -555,8 +555,18 @@ function _fwLineAvailabilityPlugin(availability) {
 
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
+function _fwLineResultView(chart) {
+    return {signature: JSON.stringify([chart.data.labels, chart.data.datasets.map(function(ds) { return [ds.label, ds.data]; })]),
+        hidden: chart.data.datasets.map(function(_, i) { return !chart.isDatasetVisible(i); }),
+        min: chart.options.scales.x.min, max: chart.options.scales.x.max};
+}
+
 function _createChart(id, canvas, spec) {
     var previous = window._chartInstances[id];
+    // A status/theme/reentry draw of the same ordinary result keeps the user's
+    // view. A genuinely different result retains the existing reset behavior.
+    var lineView = spec.lineResultPresentation ? (previous ? _fwLineResultView(previous) : canvas._fwLineResultView) : null;
+    if (lineView && lineView.signature !== JSON.stringify([spec.labels, spec.datasets.map(function(ds) { return [ds.label, ds.data]; })])) lineView = null;
     var eventDetails = spec.eventLabels === 'grouped' && previous && previous._fwTakeEventDetails
         ? previous._fwTakeEventDetails() : (spec.eventLabels === 'grouped' && canvas._fwEventDetailsState);
     var comboFocus = spec.comboAxes && document.activeElement &&
@@ -568,6 +578,7 @@ function _createChart(id, canvas, spec) {
         delete window._chartInstances[id];
     }
     delete canvas._fwEventDetailsState;
+    delete canvas._fwLineResultView;
     // A cloned replacement canvas may still carry the previous description.
     if (!spec.availability) _fwDescribeLineAvailability(canvas, false);
     if (!spec.monthlyAverage && window._fwClearMonthlyAverage) window._fwClearMonthlyAverage(canvas);
@@ -682,6 +693,11 @@ function _createChart(id, canvas, spec) {
         plugins: plugins,
         scales: scales
     };
+    if (lineView) {
+        spec.datasets.forEach(function(ds, i) { ds.hidden = lineView.hidden[i]; });
+        if (lineView.min !== undefined) scales.x.min = lineView.min;
+        if (lineView.max !== undefined) scales.x.max = lineView.max;
+    }
 
     /* ── Cross-filter click handler ── */
     if (spec.crossFilter && spec.dsId) {
@@ -712,7 +728,9 @@ function _createChart(id, canvas, spec) {
         type: spec.type || 'bar',
         data: { labels: spec.labels, datasets: spec.datasets },
         options: chartOpts,
-        plugins: (spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
+        plugins: (spec.lineResultPresentation ? [{id: 'fwLineResultView', beforeDestroy: function(chart) {
+            if (canvas.isConnected) canvas._fwLineResultView = _fwLineResultView(chart);
+        }}] : []).concat(spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
             spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
                 ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : []).concat(
             spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
@@ -731,9 +749,151 @@ function _createChart(id, canvas, spec) {
     _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
 }
 
+// Resolve only the engine's registered parent edges. Never infer a live source
+// from controls or recursively call isReady on an unchecked scope chain.
+function _fwLineResultSource(engine, id) {
+    var seen = new Set(), current = id;
+    for (var depth = 0; current && depth < 64; depth++) {
+        if (seen.has(current)) return null;
+        seen.add(current);
+        var scope = engine && engine._scopes[current];
+        if (!scope) return {id: current, subset: current !== id};
+        current = scope.parent;
+    }
+    return null;
+}
+
+function _fwLineResultParams(params) {
+    if (params === null || params === undefined) return 'unknown';
+    var keys = Object.keys(params).sort();
+    return keys.length ? keys.map(function(key) {
+        return key + '=' + JSON.stringify(params[key]);
+    }).join(', ') : '(no parameters)';
+}
+
+// Classification uses the full unhidden plotted vectors, before legend/zoom.
+// It never edits chart data, aggregates rows, or changes capture admission.
+function _fwLineResultText(cfg, spec, rows, source, state, engine) {
+    var usable = (spec.datasets || []).some(function(ds) {
+        return (ds.data || []).some(function(v) { return Number.isFinite(v); });
+    });
+    var live = !!state || !!(source && (source.live || (engine && engine.isLiveDataset(source.id))));
+    var transition = state && (state.phase === 'pending' || state.phase === 'error');
+    var requested = state ? _fwLineResultParams(state.requested_params) : 'unknown';
+    var displayed = state ? _fwLineResultParams(state.displayed_params) : 'unknown';
+    var same = state && state.displayed_params !== null && requested === displayed;
+    var action = state && state.phase === 'error' ? 'Could not load requested data' : 'Loading requested data';
+    var context = '';
+    if (usable && state && state.has_result && transition && !same) {
+        context = action + '. Requested: ' + requested + '\nDisplayed ' +
+            (state.origin === 'snapshot' ? 'snapshot' : 'query') + ': ' + displayed +
+            (source.subset ? '\nLocal subset of the displayed live parent (' + source.id + ').' : '');
+    }
+    if (usable && (!live || (state && state.has_result))) return {overlay: '', context: context};
+    if (transition && !same) return {overlay: action + '\nRequested: ' + requested, context: ''};
+    if (live && (!state || !state.has_result)) return {overlay: 'Result unavailable', context: ''};
+    if (cfg.dataset_id && (!source || !engine || !engine._columnar[source.id])) {
+        return {overlay: 'Data not ready', context: ''};
+    }
+    var count = cfg.dataset_id ? (rows || []).length : (spec.labels || []).length;
+    if (count) {
+        var reasons = (spec.availability || []).map(function(item) { return item.reason; }).filter(Boolean);
+        var unavailable = (spec.availability || []).length > 0;
+        return {overlay: (unavailable ? 'Observations unavailable' : 'No usable observations') +
+            (unavailable ? '\n' + (reasons.length ? Array.from(new Set(reasons)).join(' ') :
+                'Required observations are incomplete or unavailable.') : ''), context: ''};
+    }
+    var supplied = !cfg.dataset_id || (!live && !source.subset && engine.getDatasetRowCount(source.id) === 0);
+    return {overlay: supplied ? 'No data supplied' : 'No matching data', context: ''};
+}
+
+function _fwUpdateLineResult(canvas, cfg, spec, rows) {
+    var enabled = cfg.line_result_presentation === true && cfg.chartType === 'line' &&
+        !cfg.area_fill && !cfg.combo_axes && !window._fwMetricsWorkspace;
+    var owned = canvas._fwLineResult;
+    if (owned && (!enabled || owned.cfg !== cfg)) { owned.dispose(); owned = null; }
+    if (!enabled) return spec;
+    spec.lineResultPresentation = true;
+    if (!owned) {
+        var box = canvas.parentElement;
+        var context = document.createElement('div'), overlay = document.createElement('div');
+        context.className = 'fw-line-result-context';
+        overlay.className = 'fw-line-result-overlay';
+        context.id = canvas.id + '-result-context'; overlay.id = canvas.id + '-result';
+        [context, overlay].forEach(function(el) {
+            el.hidden = true; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+            el.setAttribute('aria-atomic', 'true');
+        });
+        box.before(context); box.appendChild(overlay);
+        function retire() {
+            owned.dispose();
+            var bindings = window._fwCategoryChartBindings;
+            if (bindings && bindings.has(canvas.id)) bindings.get(canvas.id)();
+            delete canvas._fwBarLive;
+        }
+        var off = null, observer = new MutationObserver(function() {
+            if (document.getElementById(canvas.id) !== canvas ||
+                    (owned.scope && owned.scope !== window._currentScope)) retire();
+        });
+        function describe() {
+            var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+                return token && token !== context.id && token !== overlay.id;
+            });
+            if (!context.hidden) tokens.push(context.id);
+            if (!overlay.hidden) tokens.push(overlay.id);
+            if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+            else canvas.removeAttribute('aria-describedby');
+        }
+        owned = {
+            cfg: cfg,
+            paint: function(state) {
+                if (document.getElementById(canvas.id) !== canvas) { owned.dispose(); return; }
+                // Native report scope switches retire the live owner while
+                // keeping the old scope's canvas connected but hidden.
+                if (!state && owned.source && owned.source.live) {
+                    retire();
+                    return;
+                }
+                var text = _fwLineResultText(cfg, owned.spec, owned.rows, owned.source, state, window._fwFilterEngine);
+                [[context, text.context], [overlay, text.overlay]].forEach(function(pair) {
+                    if (pair[0].textContent !== pair[1]) pair[0].textContent = pair[1];
+                    pair[0].hidden = !pair[1];
+                });
+                describe();
+            },
+            update: function(next, selectedRows) {
+                owned.spec = next; owned.rows = selectedRows;
+                owned.scope = window._currentScope;
+                owned.source = _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
+                if (owned.source) owned.source.live = !!window._fwFilterEngine.isLiveDataset(owned.source.id);
+                // Renew on native draws/reentry, including retired/replaced sources.
+                // Status callbacks only paint text and never rebind or redraw.
+                if (off) { off(); off = null; }
+                if (owned.source && owned.source.live && window._fwLiveQuery) {
+                    off = window._fwLiveQuery.subscribeDataset(owned.source.id, owned.paint);
+                } else owned.paint(null);
+            },
+            dispose: function() {
+                if (off) { off(); off = null; }
+                observer.disconnect(); context.hidden = overlay.hidden = true; describe();
+                context.remove(); overlay.remove();
+                delete canvas._fwLineResultView;
+                if (canvas._fwLineResult === owned) delete canvas._fwLineResult;
+            }
+        };
+        canvas._fwLineResult = owned;
+        observer.observe(document.body, {childList: true, subtree: true});
+        var scopePanel = canvas.closest('[data-toggle-target="__scope__"]');
+        if (scopePanel) observer.observe(scopePanel, {attributes: true, attributeFilter: ['style']});
+    }
+    owned.update(spec, rows);
+    return spec;
+}
+
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
+    if (canvas._fwLineResult && (cfg.line_result_presentation !== true || window._fwMetricsWorkspace)) canvas._fwLineResult.dispose();
     if (!cfg.header_summary) _fwUpdateHeaderSummary(id, null);
     var previousBindings = window._fwCategoryChartBindings;
     var ownsAvailability = !!(cfg.series_availability && cfg.series_availability.length);
@@ -842,7 +1002,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.y1_max !== undefined) spec.y1Max = cfg.y1_max;
             if (cfg.show_labels) spec.showLabels = true;
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
-            return window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec));
+            return _fwUpdateLineResult(canvas, cfg,
+                window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec)), labelRows);
         }
 
         var labelRows;
@@ -1305,7 +1466,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
-            var observer = (canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
+            var observer = (cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
                 if (document.getElementById(id) !== canvas) dispose();
             }) : null;
             function dispose() {
@@ -1346,7 +1507,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }};
     }
     var yFmt = cfg.yTickFormat === 'currency' ? function(v) { return fmtCompact$(v); } : undefined;
-    _createChart(id, canvas, window._fwMonthlyAverageSpec(cfg, null, _fwApplyLineAvailability(cfg, null, {
+    _createChart(id, canvas, _fwUpdateLineResult(canvas, cfg, window._fwMonthlyAverageSpec(cfg, null, _fwApplyLineAvailability(cfg, null, {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
@@ -1361,7 +1522,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stackNormalized: false,
         stackLabelReason: cfg.stack_labels && (cfg.stack_labels.totals || cfg.stack_labels.percentages)
             ? _fwStaticStackLabelEligibility(cfg) : ''
-    })));
+    })), null));
 };
 
 document.addEventListener('click', function(e) {
