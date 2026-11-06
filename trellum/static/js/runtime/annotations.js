@@ -246,14 +246,25 @@
         function summary() { return root && root.querySelector('summary'); }
         function reconcile(chart) {
             if (!groups.length) {
+                var returnToChart = focusKey() || (restoreFocus && pendingFocus);
+                pendingFocus = null;
                 if (root) {
                     // Keep open preference for a subsequent nonempty selection,
                     // but reserve no row and leave no stale event descriptions.
-                    if (focusKey()) summary().focus({preventScroll: true});
                     root.hidden = true;
                     root.querySelector('.fw-event-list').replaceChildren();
                 }
                 describe(chart, false);
+                if (returnToChart) {
+                    // The summary is hidden too. Keep focus on the owning chart,
+                    // without adding a sequential tab stop or taking focus from
+                    // an unrelated filter. Preserve any authored canvas name.
+                    var canvas = chart.canvas;
+                    if (!canvas.hasAttribute('tabindex')) canvas.tabIndex = -1;
+                    if (!canvas.hasAttribute('aria-label') && !canvas.hasAttribute('aria-labelledby'))
+                        canvas.setAttribute('aria-label', canvas.dataset.fwTitle || 'Report chart');
+                    canvas.focus({preventScroll: true});
+                }
                 signature = '';
                 return;
             }

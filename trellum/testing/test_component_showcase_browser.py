@@ -9,6 +9,7 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.runner.discovery import discover_report
+from trellum.runner.events import local_annotation_events, _weekday_highlight_config
 
 
 def test_component_showcase_sections_and_independent_filters(tmp_path):
@@ -19,11 +20,14 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
     ctx = ReportContext(config=report.load_config(str(source)),
                         slug="component-showcase", output_dir=str(tmp_path))
     report().generate(ctx)
+    events = local_annotation_events(ctx.config)
+    assert len(events) == 13
     from trellum.reporting.diagnostics import compute_details
     from trellum.validation import validate_report
-    result = validate_report(ctx, details=compute_details(ctx))
+    result = validate_report(ctx, events=events, details=compute_details(ctx))
     assert result.summary["warn"] == result.summary["fail"] == 0, result.to_dict()
-    render_report(ctx, str(tmp_path), auto_refresh=False)
+    render_report(ctx, str(tmp_path), auto_refresh=False, data={
+        "_events": events, "_weekday_highlight": _weekday_highlight_config(ctx.config)})
     copy_vendor_tree(tmp_path)
 
     with sync_playwright() as playwright:
@@ -264,6 +268,29 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
                                    arg=forecast_id)
             assert page.evaluate("id => window._chartInstances[id].data.datasets[1].borderDash", forecast_id) == [7, 4]
             assert forecast_section.locator('.fw-forecast-key').count() == 1
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='dated events', exact=True).click()
+            event_canvas = page.locator('canvas[data-fw-title="Synthetic daily · grouped events"]')
+            event_canvas.scroll_into_view_if_needed()
+            event_id = event_canvas.get_attribute('id')
+            event_details = page.locator(f'#{event_id}-event-details')
+            expect(event_details.locator('summary')).to_contain_text('13 events')
+            event_details.locator('summary').click()
+            assert '2026-07-28 – 2026-08-05' in event_details.inner_text()
+            event_section = page.locator('#sec-annotations-—-synthetic-independent-date-selection')
+            event_window = event_section.locator('.fw-date-range')
+            event_window.locator('.fw-date-trigger').click()
+            event_window.locator('input[data-edge="min"]').fill('2026-08-18')
+            event_window.locator('input[data-edge="min"]').dispatch_event('change')
+            event_window.locator('input[data-edge="max"]').fill('2026-08-20')
+            event_window.locator('input[data-edge="max"]').dispatch_event('change')
+            expect(event_section.locator('.fw-event-details summary')).to_contain_text('1 event · 1 group')
+            event_window.locator('.fw-date-trigger').click()
+            event_section.get_by_role('button', name='Partner', exact=True).click()
+            event_live_id = event_section.locator('canvas').get_attribute('id')
+            page.wait_for_function("id => window._chartInstances[id]?.data.datasets[0].data[0] === 50",
+                                   arg=event_live_id)
+            expect(event_details.locator('summary')).to_contain_text('13 events')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.

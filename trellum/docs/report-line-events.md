@@ -39,6 +39,9 @@ retained across redraws. No eligible dated events, no data or a non-date categor
 axis adds no visible row or reserved space. Existing annotation type controls,
 legend, nearest tooltip, chart values, colors and plot heights stay unchanged.
 Type controls retain their existing pointer-only span behavior.
+If a focused event disappears, focus returns to that chart's summary; if the
+entire disclosure disappears, it returns to the named chart instead. Focus in
+unrelated controls stays where it is.
 
 ## Retained date and visibility limits
 

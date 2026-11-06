@@ -477,18 +477,39 @@ def _browser_check(tmp_path, width):
         page.evaluate("id=>window._chartInstances[id].resetZoom('none')", cid)
         assert page.evaluate("document.activeElement.id") == "fwThemeSelect"
         # A valid empty date selection removes the visible row; reset restores it.
+        live_details = _details(page, live_title)
+        live_details.evaluate("el=>el.open=true")
+        live_details.locator('[data-event-item]').first.focus()
         page.evaluate("fw.filterEngine.setFilter('showcase_annotations_daily','event-window','day','range',{min:'2026-09-10',max:'2026-09-11'})")
         assert not _details(page, live_title).is_visible()
         assert page.evaluate("id=>window._chartInstances[id].data.labels.length", live_id) == 0
+        assert page.evaluate("document.activeElement.id") == live_id
+        assert _canvas(page, live_title).get_attribute("aria-label") == live_title
         page.evaluate("fw.filterEngine.clearFilter('showcase_annotations_daily','event-window')")
         assert _details(page, live_title).is_visible()
+        assert page.evaluate("document.activeElement.id") == live_id
         # No dated population leaves no row, while recurring weekday geometry survives.
         visible_before = page.evaluate("({...window._annoVisible})")
+        details.evaluate("el=>el.open=true")
+        details.locator('[data-event-item]').first.focus()
         page.evaluate("Object.keys(window._annoVisible).filter(k=>k!=='weekday'&&k!=='_storageKey').forEach(k=>window._annoVisible[k]=false);window._refreshAllAnnotations()")
         assert not details.is_visible()
+        assert page.evaluate("document.activeElement.id") == cid
+        assert cid + '-event-details' not in (canvas.get_attribute('aria-describedby') or '').split()
+        assert cid + '-header-context' in canvas.get_attribute('aria-describedby').split()
         assert all(a["id"].startswith("wd_") for a in page.evaluate(_STATE, title)["annotations"])
         page.evaluate("v=>{Object.assign(window._annoVisible,v);window._refreshAllAnnotations();}", visible_before)
         assert details.is_visible()
+        # renderAll removes owned DOM before constructing the empty chart.
+        details.locator('[data-event-item]').first.focus()
+        events_before = page.evaluate("window._reportData._events")
+        page.evaluate("window._reportData._events=[];window.renderAll()")
+        page.wait_for_function("""id=>window._chartInstances[id]?._fwEventMarkers?.length===0
+            && document.activeElement.id===id""", arg=cid)
+        assert not details.is_visible()
+        assert page.evaluate("document.activeElement.id") == cid
+        page.evaluate("events=>{window._reportData._events=events;window.renderAll();}", events_before)
+        details.wait_for(state="visible")
         # Hide/reveal resize uses current width and keeps the disclosure state.
         canvas.evaluate("el=>el.parentElement.style.display='none'")
         canvas.evaluate("el=>el.parentElement.style.display=''")
@@ -500,7 +521,7 @@ def _browser_check(tmp_path, width):
             for t in (title, live_title, "Synthetic weekly · snapped dates"):
                 _canvas(page, t).scroll_into_view_if_needed()
                 i = _canvas(page, t).get_attribute("id")
-                page.wait_for_function("id=>!document.getElementById(id)._fwPendingTheme", arg=i)
+                page.wait_for_function("id=>!!window._chartInstances[id] && !document.getElementById(id)._fwPendingTheme", arg=i)
                 _assert_groups(page, t)
             assert page.locator("html").get_attribute("data-theme") == theme
             canvas.scroll_into_view_if_needed()
