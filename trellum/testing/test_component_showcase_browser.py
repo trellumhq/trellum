@@ -197,6 +197,15 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             treemaps.get_by_role('button', name='iOS', exact=True).click()
             expect(treemaps.locator('.fw-chart-summary-value')).to_have_text(['$300.00', '4', '$75.00', '$30.00', '$120.00'])
             expect(stack_summaries.locator('.fw-chart-summary-value').first).to_have_text('30')
+            page.get_by_role('link', name='Sankey summaries', exact=True).click()
+            sankey_summaries = page.locator('#sec-sankey-summaries-—-filtered-complete-paths')
+            sankey_summaries.scroll_into_view_if_needed()
+            for canvas in sankey_summaries.locator('canvas').all():
+                canvas.scroll_into_view_if_needed()
+            expect(sankey_summaries.locator('.fw-chart-summary-value')).to_have_text(['1.0k', '260', '8'])
+            sankey_summaries.get_by_role('button', name='Android', exact=True).click()
+            expect(sankey_summaries.locator('.fw-chart-summary-value')).to_have_text(['500', '220', '4'])
+            expect(treemaps.locator('.fw-chart-summary-value').first).to_have_text('$300.00')
             expect(scatter.locator('.fw-chart-summary-value').last).to_have_text('4')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"

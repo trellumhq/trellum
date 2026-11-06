@@ -1,5 +1,13 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional Sankey summaries
+
+Keyword-only `header_summary=None` retains historical output. Path summaries
+describe grouped complete paths; adjacent-transition summaries require one
+explicit boundary. Existing graph admission, geometry, raw-unit CSV and capture
+readiness remain unchanged. See [Sankey summaries](report-sankey-summaries.md)
+for empty/zero distinctions and formatting. Rebuild matching assets; no migration.
+
 ## Unreleased: optional TreemapChart summaries
 
 Keyword-only `header_summary=None` preserves existing constructor positions,

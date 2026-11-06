@@ -102,6 +102,8 @@ The [StackedBar summary examples](../docs/report-stacked-summaries.md) compare
 selected original-unit statistics, shared controls and exact series eligibility.
 The [Treemap summary examples](../docs/report-treemap-summaries.md) compare
 final-leaf statistics, independent counts, source-row grain and input eligibility.
+The [Sankey summary examples](../docs/report-sankey-summaries.md) compare
+complete-path and adjacent-boundary statistics, including empty and zero results.
 
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal

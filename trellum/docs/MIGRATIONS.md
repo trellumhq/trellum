@@ -1,5 +1,14 @@
 # Framework Migration Guide
 
+## Unreleased: optional Sankey summaries
+
+Existing calls need no changes. Complete-path charts accept
+`header_summary={"stat": "sum", "scope": "complete_paths"}`.
+Adjacent-transition charts require `scope="adjacent_boundary"` plus exact
+`from_stage` and `to_stage` keys. See
+[Sankey summaries](report-sankey-summaries.md) for counts, maxima and declared
+units. Rebuild report assets; CSV records remain unchanged.
+
 ## Unreleased: optional TreemapChart summaries
 
 Existing calls need no changes. Use `header_summary={"stat": "sum",

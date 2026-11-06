@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional Sankey header summaries for complete paths or a declared adjacent
+  boundary, preserving exact supplied records and existing graph admission.
+
 - Optional TreemapChart header summaries over final leaf entries, with
   conservative numeric eligibility and native filtered examples.
 

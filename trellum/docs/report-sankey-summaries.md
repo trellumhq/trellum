@@ -95,7 +95,7 @@ completed states; invalid results remain blocked. CSV contains the same
 ordered grouped records and exact raw unit values as before. Summaries never
 insert, remove or reorder exported records.
 
-## Deterministic examples and integration
+## Deterministic examples and validation
 
 `demo/reports/component-showcase/examples_sankey_summaries.py` provides
 `add_sections(ctx)` with four independently named sections: static off/on,
@@ -104,18 +104,7 @@ quantities. It uses shared `SankeyChart`, native filters, panels, grids and tabs
 RawHTML supplies explanation only. Each filtered population has its own dataset
 ID. Existing showcase examples need no changes.
 
-Generator integration: import `examples_sankey_summaries` alongside the other
-local examples modules and call `examples_sankey_summaries.add_sections(ctx)`
-inside `generate`. Put this call immediately after `examples_sankeys.add_sections(ctx)`
-so the four native sections appear beside the existing Sankey examples. Add a
-showcase jump link `<a href="#sec-sankey-summaries-—-static-off-and-on">Sankey summaries</a>`
-beside the existing Sankey navigation entry. Link `docs/report-sankey-summaries.md`
-from the framework README beside `docs/report-sankey-charts.md`. In common
-compatibility guidance, record the keyword-only, default-off option, explicit
-path/boundary populations, and unchanged CSV/native capture admission. No
-migration, new public export or common validator hook is necessary:
-`check_sankey_charts` already calls `snapshot` → `config`.
-
-Suggested short changelog entry: “Add optional Sankey header summaries for
-complete paths or a declared adjacent boundary, preserving exact supplied
-records and existing graph admission.”
+The shared showcase includes these four sections through its Sankey summaries
+link, beside the existing Sankey examples. The native `check_sankey_charts`
+validator calls `snapshot` → `config`, including summary validation.
+Import the existing `SankeyChart` from `trellum.components`.
