@@ -10,6 +10,9 @@ import pandas as pd
 
 from trellum.components.base import RenderContext
 from trellum.components.charts._header_summary import header_summary_config
+from trellum.components.charts._stacked_summary import (
+    stacked_summary_config, stacked_summary_input_reason,
+)
 from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
     _category_colors_config,
@@ -228,6 +231,9 @@ class StackedBar(_ChartBase):
     ``show_percentages=False`` enables fitting labels in live pivot Percentage
     mode. Both require complete finite nonnegative additive quantities. See
     ``docs/report-bar-labels.md`` for eligibility and preserved path differences.
+    Keyword-only ``header_summary=None`` optionally describes one exact final
+    bar series in original units with ``scope="absolute_series"``. See
+    ``docs/report-stacked-summaries.md`` for eligibility and scope.
     """
 
     df: pd.DataFrame
@@ -273,9 +279,12 @@ class StackedBar(_ChartBase):
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
 
+    header_summary: Optional[dict] = field(default=None, kw_only=True)
+
     _component_type: str = field(default="stacked_bar", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        stacked_summary_config(self)
         _month_context_config(self)
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
@@ -300,6 +309,7 @@ class StackedBar(_ChartBase):
         return {"container_class": "fw-stacked-height", "container_style": f"--fw-stacked-height:{self.height}px"}
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary_config = stacked_summary_config(self)
         month_config = _month_context_config(self)
         category_config = _category_colors_config(self, ctx)
         self._validate_stack_labels()
@@ -314,6 +324,7 @@ class StackedBar(_ChartBase):
             cfg = {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
                 "stack_labels": stack_labels,
@@ -363,6 +374,7 @@ class StackedBar(_ChartBase):
                 )
             controls_html = toggle_html + normalize_html
             return _chart_container_html(cid, self.title, extra_before=controls_html,
+                                         summary=self.header_summary is not None,
                                          header_context=self.header_context, **self._plot_container())
 
         if self.show_totals or self.show_percentages:
@@ -380,8 +392,11 @@ class StackedBar(_ChartBase):
                 "_themeManaged": True,
             })
 
+        if summary_config:
+            summary_config["stacked_summary_input_reason"] = stacked_summary_input_reason(self)
         ctx.register(cid, {
             "type": "chart",
+            **summary_config,
             **month_config,
             "chartType": "bar",
             "stack_labels": stack_labels,
@@ -398,7 +413,8 @@ class StackedBar(_ChartBase):
             "yTickFormat": self.value_format,
         })
 
-        return _chart_container_html(cid, header_context=self.header_context, **self._plot_container())
+        return _chart_container_html(cid, summary=self.header_summary is not None,
+                                     header_context=self.header_context, **self._plot_container())
 
 def stack_option_problems(chart: StackedBar) -> list[tuple[str, str]]:
     """Strict opt-in controls/sizing diagnostics, also after author mutation."""

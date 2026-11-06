@@ -61,7 +61,7 @@ function _fwSummarySeries(datasets, series) {
 
 function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
     var box = document.querySelector('[data-chart-summary="' + id + '"]');
-    if (!box) return;
+    if (!box || box.dataset.stackedSummary) return;
     var canvas = document.getElementById(id), descriptionId = id + '-summary-scope';
     if (!summary) {
         if (box.dataset.plottedScope) {
@@ -112,6 +112,110 @@ function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
     out.textContent = value === null ? '\u2014' : fmt(value);
     if (summary.scope === 'plotted_series') box.setAttribute('aria-label',
         label.textContent + ': ' + out.textContent + '. ' + box.title);
+}
+
+/* StackedBar owns a separate original-unit contract. No coercion, skipped
+   entries, hidden-series exclusion or normalization is used by this reducer. */
+function _fwStackSummarySafe(v) {
+    return typeof v === 'number' && Number.isFinite(v) &&
+        (!Number.isInteger(v) || Number.isSafeInteger(v));
+}
+function _fwStackSummaryResult(summary, datasets, inputReason) {
+    var matches = (datasets || []).filter(function(ds) {
+        return ds.type !== 'line' && ds.yAxisID !== 'y1' && ds.label === summary.series;
+    });
+    function unavailable(reason) { return {value: null, reason: reason}; }
+    if (matches.length !== 1) return unavailable(matches.length ? 'Ambiguous bar-series caption' : 'Selected bar series unavailable');
+    if (inputReason) return unavailable(inputReason);
+    var values = matches[0]._absData || matches[0].data || [];
+    if (!values.length) return unavailable('No displayed entries');
+    if (!values.every(_fwStackSummarySafe)) return unavailable('Nonfinite, unsafe or unavailable displayed values');
+    var result;
+    if (summary.stat === 'last') result = values[values.length - 1];
+    else if (summary.stat === 'min' || summary.stat === 'max') {
+        result = values[0];
+        values.forEach(function(v) { result = summary.stat === 'min' ? Math.min(result, v) : Math.max(result, v); });
+    } else {
+        // Scaling also protects the mean from avoidable intermediate overflow.
+        var scale = values.reduce(function(m, v) { return Math.max(m, Math.abs(v)); }, 0);
+        var total = 0, correction = 0;
+        values.forEach(function(v) {
+            var next = scale ? v / scale - correction : 0;
+            var updated = total + next;
+            correction = (updated - total) - next; total = updated;
+        });
+        result = summary.stat === 'mean' ? total / values.length * scale : total * scale;
+    }
+    return _fwStackSummarySafe(result) ? {value: result, reason: ''} : unavailable('Nonfinite or unsafe summary result');
+}
+function _fwStackSummaryInputReason(cfg, rows) {
+    if (!rows) return cfg.stacked_summary_input_reason || '';
+    return rows.some(function(row) {
+        return (cfg.value_cols || []).some(function(col) { return !_fwStackSummarySafe(row[col]); });
+    }) ? 'Incomplete, nonnumeric, nonfinite or unsafe original bar values' : '';
+}
+function _fwClearStackSummary(canvas) {
+    var owned = canvas._fwStackSummary;
+    if (!owned) return;
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+        return token && token !== owned.description.id;
+    });
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+    if (owned.observer) owned.observer.disconnect();
+    if (owned.box._fwStackSummaryCanvas === canvas) {
+        var head = owned.box.parentElement;
+        owned.box.remove();
+        if (head && head.classList.contains('fw-chart-head') && !head.children.length) head.remove();
+    }
+    delete canvas._fwStackSummary;
+}
+function _fwUpdateStackSummary(canvas, summary, datasets, inputReason) {
+    if (!summary) { _fwClearStackSummary(canvas); return; }
+    var box = document.querySelector('[data-chart-summary="' + canvas.id + '"]');
+    if (!box) {
+        box = document.createElement('div');
+        box.dataset.chartSummary = canvas.id;
+        var head = document.createElement('div'); head.className = 'fw-chart-head';
+        head.appendChild(box); canvas.parentElement.before(head);
+    }
+    box._fwStackSummaryCanvas = canvas;
+    box.className = 'fw-chart-summary fw-stacked-summary';
+    box.dataset.stackedSummary = 'true';
+    box.style.removeProperty('display');
+    box.removeAttribute('id'); box.removeAttribute('data-plotted-scope');
+    var result = _fwStackSummaryResult(summary, datasets, inputReason);
+    function span(cls, text) {
+        var el = document.createElement('span'); el.className = cls; el.textContent = text; return el;
+    }
+    var value = result.value === null ? '—' : window.getFormatter(summary.format)(result.value);
+    var description = span('fw-stacked-summary-description',
+        'One final bar series (' + summary.series + ') in original absolute units, even in Percentage mode. ' +
+        'All current filtered supplied bar inputs must be finite native numbers with safe integers. ' +
+        'After existing aggregation, pivot, sorting, max_stacks and Other; before percentage normalization. ' +
+        'Every displayed entry counts, including plotted zero-fill; none are skipped. Last is the final displayed entry. ' +
+        'Legend hiding and zoom do not change scope. Delivered population only; no warehouse completeness claim. ' + result.reason);
+    description.id = canvas.id + '-stacked-summary-scope';
+    var children = [span('fw-chart-summary-label', summary.label), span('fw-chart-summary-value', value),
+        span('fw-stacked-summary-scope', 'Original units · ' + summary.series)];
+    if (result.reason) children.push(span('fw-stacked-summary-reason', result.reason));
+    children.push(description); box.replaceChildren.apply(box, children);
+    box.setAttribute('role', 'note'); box.title = description.textContent;
+    box.setAttribute('aria-label', summary.label + ': ' + value + '. ' + description.textContent);
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+        return token && token !== canvas.id + '-summary-scope';
+    });
+    if (tokens.indexOf(description.id) < 0) tokens.push(description.id);
+    canvas.setAttribute('aria-describedby', tokens.join(' '));
+    var owned = canvas._fwStackSummary || {};
+    owned.box = box; owned.description = description;
+    canvas._fwStackSummary = owned;
+    if (!owned.observer) {
+        owned.observer = new MutationObserver(function() {
+            if (document.getElementById(canvas.id) !== canvas) _fwClearStackSummary(canvas);
+        });
+        owned.observer.observe(document.body, {childList: true, subtree: true});
+    }
 }
 
 /* Combo-only context. Use axis + caption identity, preserving intentional
@@ -754,7 +858,8 @@ function _createChart(id, canvas, spec) {
         if (focused) focused.focus({ preventScroll: true });
     }
     if (spec.comboAxes) delete canvas._fwComboFocusKey;
-    _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
+    if (spec.stackedSummary) _fwUpdateStackSummary(canvas, spec.stackedSummary, spec.datasets, spec.stackedSummaryInputReason);
+    else _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
 }
 
 // Resolve only the engine's registered parent edges. Never infer a live source
@@ -913,6 +1018,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
     if (canvas._fwLineResult && (cfg.line_result_presentation !== true || window._fwMetricsWorkspace)) canvas._fwLineResult.dispose();
+    if (!cfg.stacked_summary) _fwClearStackSummary(canvas);
     if (!cfg.header_summary) _fwUpdateHeaderSummary(id, null);
     var previousBindings = window._fwCategoryChartBindings;
     var ownsAvailability = !!(cfg.series_availability && cfg.series_availability.length);
@@ -924,17 +1030,18 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     // Modern ordinary lines/bars may gain/remove declarations during renderAll.
     // Keep one scoped binding before opt-in so adoption cannot retain an old
     // anonymous theme handler or a second subscription.
-    var scopedLive = cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
-    // Shared StackedBars alone adopt ownership of scope/control/source changes.
+    var scopedLive = cfg.stack_labels || cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
+    // Tagged StackedBars own local/shared controls from the first draw, so
+    // adding/removing summaries cannot strand anonymous legacy handlers.
     // Legacy untagged payloads and workspace leasing keep their existing path.
-    var stackOwner = cfg.stacked_bar_controls === true && !window._fwMetricsWorkspace;
+    var stackOwner = !!(cfg.stack_labels || cfg.stacked_bar_controls === true) && !window._fwMetricsWorkspace;
     var stackScope = window._currentScope;
     var stackSource = stackOwner && window._fwFilterEngine._columnar[cfg.dataset_id];
-    var stackGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id]')).find(function(el) {
-        return el.dataset.toggleId === cfg.stack_toggle_id;
+    var stackGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id], [data-stack-toggle], [data-normalize-toggle]')).find(function(el) {
+        return cfg.stack_toggle_id ? el.dataset.toggleId === cfg.stack_toggle_id : el.dataset.stackToggle === id;
     });
-    var normalizeGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id]')).find(function(el) {
-        return el.dataset.toggleId === cfg.normalize_toggle_id;
+    var normalizeGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id], [data-stack-toggle], [data-normalize-toggle]')).find(function(el) {
+        return cfg.normalize_toggle_id ? el.dataset.toggleId === cfg.normalize_toggle_id : el.dataset.normalizeToggle === id;
     });
     var oldStack = canvas._fwBarLive;
     if (stackOwner && previousBindings && previousBindings.has(id) && (!oldStack || oldStack.cfg !== cfg ||
@@ -1009,7 +1116,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }, barListener);
 
         function _mkSpec(spec) {
-            if (stackOwner) spec.stackedControlView = [cfg.dataset_id, activeStackBy];
+            // Preserve the existing shared-only legend retention contract.
+            if (stackOwner && cfg.stacked_bar_controls === true) spec.stackedControlView = [cfg.dataset_id, activeStackBy];
             if (cfg.month_context === true) spec.monthContext = true;
             if (cfg.event_labels) spec.eventLabels = cfg.event_labels;
             if (cfg.bar_values) {
@@ -1038,6 +1146,10 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.y_max !== undefined) spec.yMax = cfg.y_max;
             if (cfg.y1_max !== undefined) spec.y1Max = cfg.y1_max;
             if (cfg.show_labels) spec.showLabels = true;
+            if (cfg.stacked_summary) {
+                spec.stackedSummary = cfg.stacked_summary;
+                spec.stackedSummaryInputReason = _fwStackSummaryInputReason(cfg, labelRows);
+            }
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
             return _fwUpdateLineResult(canvas, cfg,
                 window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec)), labelRows);
@@ -1502,6 +1614,14 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
             var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
+            var lifeOff = stackOwner ? window._fwFilterEngine.subscribeLifecycle(function(event) {
+                if (event.dataset_id !== cfg.dataset_id) return;
+                if (event.type === 'init' || event.type === 'scope') {
+                    unsubscribe();
+                    unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
+                }
+                current();
+            }) : null;
             function onTheme() {
                 if (document.getElementById(id) !== canvas || stackRetired()) {
                     bindings.get(id)(); bindings.delete(id); return;
@@ -1513,6 +1633,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             }) : null;
             function dispose() {
                 unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
+                if (lifeOff) lifeOff();
+                if (stackOwner) _fwClearStackSummary(canvas);
                 if (barSignals) barSignals.abort();
                 if (stackOwner && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) delete canvas._fwBarLive;
                 if (observer) observer.disconnect();
@@ -1563,6 +1685,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         monthContext: cfg.month_context === true,
         eventLabels: cfg.event_labels,
         headerSummary: cfg.header_summary,
+        stackedSummary: cfg.stacked_summary,
+        stackedSummaryInputReason: _fwStackSummaryInputReason(cfg, null),
         comboAxes: cfg.combo_axes,
         barValues: cfg.bar_values,
         stackLabels: cfg.stack_labels,
