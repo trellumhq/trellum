@@ -1,6 +1,8 @@
 .fw-sankey { min-width:0; max-width:100%; }
 .fw-sankey.fw-chart-container { height:auto; overflow:visible; }
 .fw-sankey > .fw-chart-title { overflow-wrap:anywhere; }
+.fw-sankey-summary-scope,.fw-sankey-summary-reason { flex-basis:100%; text-align:right; overflow-wrap:anywhere; }
+.fw-sankey-summary { min-width:0; }
 .fw-sankey-scroll { overflow-x:auto; max-width:100%; border-radius:var(--radius,4px); }
 .fw-sankey-scroll:focus-visible { outline:2px solid var(--text-secondary); outline-offset:2px; }
 .fw-sankey-plot { min-width:var(--sankey-width); height:var(--sankey-height); position:relative; }

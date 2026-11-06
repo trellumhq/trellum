@@ -16,6 +16,31 @@
     }
     function add(a, b, kind) { return measure(a + b, kind); }
     function bytes(value) { return new TextEncoder().encode(JSON.stringify(value)).length; }
+    function summaryConfig(cfg) {
+        var s = cfg.header_summary;
+        if (s == null) return null;
+        function bad() {throw Error('Invalid Sankey header_summary declaration.');}
+        if (typeof s !== 'object' || Array.isArray(s) ||
+            !own(s,'stat') || !own(s,'scope') ||
+            Object.keys(s).some(function(k) {return !['stat','scope','label','format','from_stage','to_stage'].includes(k);}) ||
+            !['sum','max','count'].includes(s.stat) ||
+            s.scope !== (cfg.mode === 'paths' ? 'complete_paths' : 'adjacent_boundary')) bad();
+        if (own(s,'label') && (typeof s.label !== 'string' || !s.label.trim() || tooLong(s.label,60))) bad();
+        if (own(s,'format') && !['number','currency','chips','plain'].includes(s.format)) bad();
+        var boundary = -1;
+        if (cfg.mode === 'paths') {
+            if (own(s,'from_stage') || own(s,'to_stage')) bad();
+        } else {
+            if (typeof s.from_stage !== 'string' || typeof s.to_stage !== 'string') bad();
+            boundary = cfg.stages.findIndex(function(stage) {return stage.key === s.from_stage;});
+            if (boundary < 0 || !cfg.stages[boundary + 1] || cfg.stages[boundary + 1].key !== s.to_stage) bad();
+        }
+        var fmt = own(s,'format') ? s.format : 'number';
+        if (s.stat === 'count' && !['number','plain'].includes(fmt)) bad();
+        var labels = cfg.mode === 'paths' ? {sum:'Path total',max:'Largest path',count:'Path entries'} :
+            {sum:'Boundary total',max:'Largest edge',count:'Edge entries'};
+        return {stat:s.stat, label:own(s,'label') ? s.label : labels[s.stat], format:fmt, boundary:boundary};
+    }
     function model(cfg, rows, enforceDomain) {
         if (!['paths', 'edges'].includes(cfg.mode) || !['count', 'quantity'].includes(cfg.weight_kind) ||
             !Array.isArray(cfg.stages) || cfg.stages.length < 2 || cfg.stages.length > 12 ||
@@ -30,6 +55,7 @@
             if (stageIndex.has(s.key)) throw Error('Duplicate Sankey stage key.');
             stageIndex.set(s.key, i);
         });
+        summaryConfig(cfg); // Counts also require the complete strict graph admission below.
         var edgeCols = [cfg.source, cfg.target, cfg.source_stage, cfg.target_stage];
         if (cfg.mode === 'paths' && edgeCols.some(function(c) {return c != null;})) throw Error('Paths cannot declare edge columns.');
         if (cfg.mode === 'edges') edgeCols.forEach(function(c) {text(c, 128);});
@@ -163,7 +189,52 @@
         var state = root.querySelector('.fw-sankey-state'), population = root.querySelector('.fw-sankey-population');
         var details = root.querySelector('details'), summary = details.querySelector('summary'), records = root.querySelector('.fw-sankey-records');
         var button = root.querySelector('.fw-sankey-download'), plot = root.querySelector('.fw-sankey-plot');
-        var active = true, chart = null, graph = null, frame = 0, unsubscribe = null, lastSize = '', internalDestroy = false;
+        var active = true, chart = null, graph = null, frame = 0, unsubscribe = null, lifeOff = null, lastSize = '', internalDestroy = false;
+        var summaryId = id + '-sankey-summary-scope';
+        function clearHeader() {
+            var head = root.querySelector('[data-sankey-summary-head]');
+            if (head) {
+                var title = head.querySelector('.fw-chart-title');
+                if (title) head.replaceWith(title); else head.remove();
+            }
+            var targets = [canvas], replacement = root.querySelector('canvas');
+            if (replacement && replacement !== canvas && replacement.id === id) targets.push(replacement);
+            targets.forEach(function(target) {
+                var tokens = (target.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) {return t && t !== summaryId;});
+                if (tokens.length) target.setAttribute('aria-describedby',tokens.join(' '));
+                else target.removeAttribute('aria-describedby');
+            });
+        }
+        function renderHeader() {
+            var s = summaryConfig(cfg);
+            if (!s) {clearHeader(); return;}
+            // Never derive a population from pixels, stage nodes or summed ribbons.
+            var entries = cfg.mode === 'paths' ? graph.paths : graph.edges.filter(function(e) {return e.stage === s.boundary;});
+            var value = s.stat === 'count' ? entries.length : !entries.length ? null :
+                s.stat === 'sum' ? (cfg.mode === 'paths' ? graph.total : graph.boundaries[s.boundary]) :
+                entries.reduce(function(max,e) {return Math.max(max,cfg.mode === 'paths' ? e.weight : e.flow);},0);
+            var head = root.querySelector('[data-sankey-summary-head]');
+            if (!head) {
+                head = document.createElement('div'); head.className = 'fw-chart-head'; head.dataset.sankeySummaryHead = id;
+                var title = Array.from(root.children).find(function(e) {return e.classList.contains('fw-chart-title');});
+                if (title) {title.before(head); head.appendChild(title);} else root.prepend(head);
+            }
+            var box = head.querySelector('.fw-sankey-summary');
+            if (!box) {box = document.createElement('div'); box.className = 'fw-chart-summary fw-sankey-summary'; box.dataset.chartSummary = id; head.appendChild(box);}
+            var scope = cfg.mode === 'paths' ? 'Current complete paths' : stage(cfg,s.boundary) + ' → ' + stage(cfg,s.boundary + 1);
+            scope += ' · ' + (s.stat === 'count' ? (cfg.mode === 'paths' ? 'paths' : 'edges') : cfg.unit);
+            var displayed = value === null ? '—' : s.stat === 'count' ? String(value) : window.getFormatter(s.format)(value);
+            var scopeNode = cell('span',scope); scopeNode.className = 'fw-sankey-summary-scope'; scopeNode.id = summaryId;
+            var labelNode = cell('span',s.label); labelNode.className = 'fw-chart-summary-label';
+            var valueNode = cell('span',displayed); valueNode.className = 'fw-chart-summary-value';
+            var children = [labelNode,valueNode,scopeNode];
+            if (value === null) {var reason = cell('span','No measured observations.'); reason.className = 'fw-sankey-summary-reason'; children.push(reason);}
+            box.replaceChildren.apply(box,children);
+            box.title = scope + (value === null ? '. No measured observations.' : '');
+            var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+            if (!tokens.includes(summaryId)) tokens.push(summaryId);
+            canvas.setAttribute('aria-describedby',tokens.join(' '));
+        }
         function destroy() {
             if (chart) {
                 var old = chart; chart = null; internalDestroy = true;
@@ -255,11 +326,11 @@
                 population.textContent = cfg.mode === 'paths'
                     ? exact(graph.total) + ' ' + cfg.unit + ' in mutually exclusive supplied complete paths. Each stage and boundary has this total. Merged ribbons show adjacent movement; they do not establish complete journeys. Use exact complete paths below.'
                     : 'Supplied adjacent transitions only; complete paths are not supplied. Boundary populations may differ and inflow/outflow may be unbalanced. No single unique-population total is assigned across boundaries. Boundary totals: ' + graph.boundaries.map(function(v,i) {return stage(cfg,i) + ' → ' + stage(cfg,i + 1) + ': ' + exact(v) + ' ' + cfg.unit;}).join('; ') + '. Exact adjacent edges are below.';
-                renderDetails(); button.disabled = false;
+                renderDetails(); renderHeader(); button.disabled = false;
                 paint();
                 root.dataset.sankeyState = graph.rowCount === 0 ? 'empty' : graph.edges.every(function(e) {return e.flow === 0;}) ? 'zero' : 'ready';
             } catch (error) {
-                graph = null; destroy(); records.replaceChildren(); button.disabled = true;
+                graph = null; destroy(); clearHeader(); records.replaceChildren(); button.disabled = true;
                 state.textContent = 'Sankey unavailable: ' + error.message;
                 population.textContent = ''; summary.textContent = 'Exact records unavailable'; root.dataset.sankeyState = 'invalid';
             }
@@ -279,6 +350,22 @@
         button.addEventListener('click',download);
         window.addEventListener('fw-theme-change',queue);
         if (cfg.dataset_id && window._fwFilterEngine) unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id,id,queue);
+        if (cfg.header_summary != null && cfg.dataset_id && window._fwFilterEngine && window._fwFilterEngine.subscribeLifecycle) {
+            var engine = window._fwFilterEngine;
+            lifeOff = engine.subscribeLifecycle(function(event) {
+                var ds = cfg.dataset_id, seen = new Set(), all = configs();
+                while (ds && !seen.has(ds)) {
+                    seen.add(ds);
+                    if (ds === event.dataset_id) {
+                        if (unsubscribe) unsubscribe();
+                        unsubscribe = engine.subscribe(cfg.dataset_id,id,queue);
+                        queue(); return;
+                    }
+                    var registration = Object.keys(all).map(function(k) {return all[k];}).find(function(c) {return c.dataset_id === ds && c.type === 'scoped_data_source';});
+                    ds = registration && registration.parent_id;
+                }
+            });
+        }
         var resize = new ResizeObserver(function() {var size = plot.clientWidth + ':' + plot.clientHeight; if (size !== lastSize) {lastSize = size; queue();}});
         resize.observe(plot);
         var removal = new MutationObserver(function() {if (!root.isConnected || !canvas.isConnected || root.querySelector('canvas') !== canvas) owner.dispose();});
@@ -287,6 +374,8 @@
             if (!active) return;
             active = false; if (frame) cancelAnimationFrame(frame); frame = 0;
             if (unsubscribe) unsubscribe();
+            if (lifeOff) lifeOff();
+            clearHeader();
             window.removeEventListener('fw-theme-change',queue); button.removeEventListener('click',download);
             resize.disconnect(); removal.disconnect(); destroy();
             if (root._fwSankeyOwner === owner) delete root._fwSankeyOwner;

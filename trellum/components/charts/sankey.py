@@ -13,6 +13,7 @@ import pandas as pd
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import _ChartBase, _header_context_html, _title_html
+from trellum.components.charts._sankey_summary import sankey_summary_config
 
 MAX_ROWS = 10_000
 MAX_NODES = 200
@@ -81,6 +82,7 @@ class SankeyChart(Component):
     header_context: str | None = None
     dataset_id: str | None = None
     static: bool = False
+    header_summary: dict | None = None
 
     _component_type: str = field(default="sankey_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
@@ -130,10 +132,10 @@ class SankeyChart(Component):
             _text(self.dataset_id, "dataset_id", 128)
         if type(self.static) is not bool:
             raise ValueError("Sankey static must be bool")
-        return {name: getattr(self, name) for name in (
+        return {**{name: getattr(self, name) for name in (
             "mode", "stages", "weight", "unit", "weight_kind", "source", "target",
             "source_stage", "target_stage", "height", "min_width", "title", "header_context",
-        )}
+        )}, **sankey_summary_config(self)}
 
     def required_columns(self):
         return list(dict.fromkeys([self.weight] + (
