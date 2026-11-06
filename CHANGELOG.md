@@ -13,7 +13,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   setup and demo installation, preserving existing notes and ignoring local
   analysis result exports by default. Removal tracks files actually created by
   setup and deletes only unchanged owned scaffolds; edited notes and ignore
-  protection for retained results stay in place.
+  protection for retained results stay in place. Unchanged guidance generated
+  before context scaffolding is still recognized during removal.
 
 - Administrators can include hidden, expired and disabled reports on the regular
   Reports page with a default-off option. Cards and lists identify repository

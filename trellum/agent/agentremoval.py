@@ -60,7 +60,7 @@ _PY = "\x00py\x00"
 _POINTER_HEAD = setup.POINTER[:setup.POINTER.index("{py}")]
 
 
-def _pointer_patterns() -> list[re.Pattern[str]]:
+def _pointer_patterns(template: str = setup.POINTER) -> list[re.Pattern[str]]:
     """The pointer ``setup`` writes, once per variant it can take.
 
     The cwd note and the Portal section are conditional, and the interpreter is
@@ -70,7 +70,7 @@ def _pointer_patterns() -> list[re.Pattern[str]]:
     patterns = []
     for note in ("", setup.RELATIVE_INTERPRETER_NOTE):
         for portal in ("", setup.PORTAL_SECTION.format(py=_PY)):
-            text = setup.POINTER.format(py=_PY, cwd_note=note, portal=portal)
+            text = template.format(py=_PY, cwd_note=note, portal=portal)
             first, *rest = text.split(_PY)
             parts = [re.escape(first), r"(?P<py>[^\n]+?)", re.escape(rest[0])]
             for part in rest[1:]:
@@ -79,7 +79,13 @@ def _pointer_patterns() -> list[re.Pattern[str]]:
     return patterns
 
 
-_POINTERS = _pointer_patterns()
+# Before context scaffolding, setup emitted this same pointer without the
+# context paragraph. Recognize that exact generated form after an upgrade too.
+_CONTEXT_PARAGRAPH = (
+    "Read `context/README.md` and source/metric notes first; use `analysis/README.md` for findings.\n"
+    "Keep exports in `analysis/results/`; update verified context and preserve questions.\n\n"
+)
+_POINTERS = _pointer_patterns() + _pointer_patterns(setup.POINTER.replace(_CONTEXT_PARAGRAPH, "", 1))
 
 
 def is_written_pointer(text: str) -> bool:

@@ -1,11 +1,12 @@
 """Ownership, rather than template recognition, controls context cleanup."""
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from trellum.agent.agentremoval import incomplete, remove
-from trellum.agent.agentsetup import write_project_files
+from trellum.agent.agentsetup import PORTAL_SECTION, RELATIVE_INTERPRETER_NOTE, write_project_files
 from trellum.scaffold import context_ownership as ownership
 from trellum.scaffold.project_context import FILES
 
@@ -192,3 +193,23 @@ def test_platform_without_safe_directory_access_preserves_scaffolds(tmp_path, mo
     assert incomplete(remove(tmp_path))
     for name in (*FILES, ownership.RECORD):
         assert (tmp_path / name).read_bytes() == before[name]
+
+
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+@pytest.mark.parametrize('portal', [False, True])
+@pytest.mark.parametrize('relative', [False, True])
+def test_previous_generated_pointer_is_removed_but_authored_additions_stay(tmp_path, newline, portal, relative):
+    # Frozen from main before context scaffolding, independent of today's writer.
+    template = (Path(__file__).parent / 'fixtures/project-pointer-before-context.txt').read_text(encoding='utf-8')
+    py = '"C:/Project Env/python.exe"'
+    original = template.format(py=py, cwd_note=RELATIVE_INTERPRETER_NOTE if relative else '',
+                               portal=PORTAL_SECTION.format(py=py) if portal else '')
+    original = original.replace('\n', newline).encode('utf-8')
+    (tmp_path / 'CLAUDE.md').write_bytes(original)
+    authored = original + b'\r\nOur source definitions must be reviewed.\r\n'
+    (tmp_path / 'AGENTS.md').write_bytes(authored)
+    rows = {r.name: r for r in remove(tmp_path)}
+    assert rows['CLAUDE.md'].status == 'deleted'
+    assert not (tmp_path / 'CLAUDE.md').exists()
+    assert rows['AGENTS.md'].status == 'kept'
+    assert (tmp_path / 'AGENTS.md').read_bytes() == authored
