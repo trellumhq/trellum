@@ -23,7 +23,7 @@ from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME, THEME_REGISTRY
 from trellum.validation import validate_report
 
-BASELINE = "2fcbf6afcb8bf48b83d2dedc76dd15222168b9a2"
+BASELINE = "395a68b89aa1eb77616419f064f821e9bbf1f14e"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -320,25 +320,26 @@ def test_actual_theme_paint_hover_geometry_scroll_and_evidence(shading_page, wid
         assert page.locator(f'[data-shading-for="{shaded}"]').count() == 1
 
 
-def _baseline_module():
-    result = subprocess.run(["git", "show", f"{BASELINE}:trellum/components/tables.py"], cwd=ROOT, capture_output=True, text=True)
+def _baseline_module(reference=BASELINE):
+    result = subprocess.run(["git", "show", f"{reference}:trellum/components/tables.py"], cwd=ROOT, capture_output=True, text=True)
     if result.returncode:
         return None
     module = types.ModuleType("_table_shading_baseline")
     sys.modules[module.__name__] = module
-    exec(compile(result.stdout, f"{BASELINE}/tables.py", "exec"), module.__dict__)
+    exec(compile(result.stdout, f"{reference}/tables.py", "exec"), module.__dict__)
     for loader, suffix in (("load_css", "css"), ("load_js", "js")):
         real = getattr(module, loader)
-        content = subprocess.check_output(["git", "show", f"{BASELINE}:trellum/static/{suffix}/components/data_table.{suffix}"], cwd=ROOT, text=True)
+        content = subprocess.check_output(["git", "show", f"{reference}:trellum/static/{suffix}/components/data_table.{suffix}"], cwd=ROOT, text=True)
         setattr(module, loader, lambda name, real=real, content=content, suffix=suffix: content if name == f"components/data_table.{suffix}" else real(name))
     return module
 
 
 @pytest.mark.parametrize("width", [1280, pytest.param(390, marks=pytest.mark.heavy)])
-def test_default_off_matches_actual_dependency_baseline(shading_page, width):
+@pytest.mark.parametrize("reference", [BASELINE, "2fcbf6afcb8bf48b83d2dedc76dd15222168b9a2"])
+def test_default_off_matches_actual_dependency_baseline(shading_page, width, reference):
     page, _, _, tmp = shading_page
     page.set_viewport_size({"width": width, "height": 1000})
-    baseline = _baseline_module()
+    baseline = _baseline_module(reference)
     if baseline is None:
         pytest.skip("Dependency baseline Git object is unavailable for visual comparison")
     frame = _examples().shading_fixture()
@@ -352,12 +353,25 @@ def test_default_off_matches_actual_dependency_baseline(shading_page, width):
         cell = page.locator(".fw-data-table td").first
         cell.wait_for()
         page.evaluate("document.fonts.ready")
+        page.mouse.move(0, 0)
+        page.wait_for_function("getComputedStyle(document.querySelector('.fw-csv-btn')).color === 'rgb(71, 85, 105)'")
         table = page.locator(".fw-table-scroll")
+        assert page.locator('[data-table-row-limit], .fw-row-limit-note').count() == 0
         assert page.locator(".fw-table-shading-key, .fw-table-shading-meets, .fw-table-shading-misses").count() == 0
         assert cell.evaluate("e=>getComputedStyle(e).paddingTop") == "6px"
         shots = Path(os.environ.get("TRELLUM_SCREENSHOT_DIR", tmp / "evidence"))
         shots.mkdir(parents=True, exist_ok=True)
-        capture = table.screenshot(path=str(shots / f"default-{width}-{name}.png"))
+        # The CSV button transitions colors after switching theme. Finish that
+        # finite animation so both captures compare the settled presentation.
+        capture = page.locator('.fw-section').first.screenshot(
+            path=str(shots / f"default-{reference[:7]}-{width}-{name}.png"), animations='disabled')
         geometry = table.evaluate("e => Array.from(e.querySelectorAll('th,td')).map(c => {const r=c.getBoundingClientRect();return [r.x,r.width,r.height,getComputedStyle(c).backgroundColor]})")
-        captures.append((capture, geometry))
-    assert captures[0] == captures[1]
+        captures.append((table.screenshot(animations='disabled'), geometry, capture))
+    assert captures[0][:2] == captures[1][:2]
+    # Whole-panel captures also cover the header. Chromium's SVG button edge
+    # antialiasing can differ by one RGB level after a theme transition.
+    from io import BytesIO
+    from PIL import Image, ImageChops
+    before, after = (Image.open(BytesIO(c[2])).convert('RGB') for c in captures)
+    assert before.size == after.size
+    assert all(high <= 1 for low, high in ImageChops.difference(before, after).getextrema())

@@ -360,6 +360,23 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert page.evaluate('id => window._chartInstances[id]._fwMonthlyAverage.rows.map(r=>r.mean)', average_static_id) == [6, 12, 20]
             expect(page.locator(f'#{average_id}-monthly-average tbody tr')).to_have_count(1)
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='table row limits', exact=True).click()
+            row_section = page.locator('#sec-datatable-row-limits-—-filtered')
+            rows_choice = row_section.get_by_role('combobox', name='Rows', exact=True)
+            row_metrics = row_section.locator('.fw-kpi-value')
+            assert row_metrics.nth(1).inner_text() == '120'
+            expect(row_section.locator('tbody tr')).to_have_count(10)
+            rows_choice.select_option('all')
+            expect(row_section.locator('tbody tr')).to_have_count(120)
+            assert row_metrics.nth(1).inner_text() == '120'
+            row_section.get_by_role('button', name='Android', exact=True).click()
+            expect(row_section.locator('tbody tr')).to_have_count(60)
+            assert row_metrics.nth(1).inner_text() == '60'
+            row_section.locator('input[data-table-search]').fill('Campaign 120')
+            expect(row_section.locator('tbody tr')).to_have_count(1)
+            assert row_metrics.nth(1).inner_text() == '60'
+            assert rows_choice.input_value() == 'all'
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

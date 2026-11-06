@@ -7,7 +7,7 @@ from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
     examples_annotations, examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
-    examples_kpi_states, examples_layouts, examples_line_availability, examples_line_forecasts, examples_line_styles, examples_month_context, examples_monthly_averages, examples_pivots, examples_status_text, examples_table_shading, examples_tables, examples_treemaps,
+    examples_kpi_states, examples_layouts, examples_line_availability, examples_line_forecasts, examples_line_styles, examples_month_context, examples_monthly_averages, examples_pivots, examples_status_text, examples_table_row_limits, examples_table_shading, examples_tables, examples_treemaps,
 )
 
 
@@ -39,6 +39,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-readable-small-status-text">status text</a>, '
             '<a href="#sec-standalone-choices">report controls</a>, '
             '<a href="#sec-datatable-—-static-population">data tables</a>, '
+            '<a href="#sec-datatable-row-limits-—-legacy">table row limits</a>, '
             '<a href="#sec-table-shading-—-snapshot-comparison">table shading</a>, '
             '<a href="#sec-explicit-weekly-comparisons">comparison tables</a>, '
             '<a href="#sec-pivot-tables-—-revenue-by-title-and-platform">pivot tables</a>, '
@@ -108,6 +109,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_controls.add_sections(ctx)
 
         examples_tables.add_sections(ctx)
+        examples_table_row_limits.add_sections(ctx)
 
         examples_table_shading.add_sections(ctx)
 

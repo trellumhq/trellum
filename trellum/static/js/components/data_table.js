@@ -87,8 +87,30 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var _rowLimitEnabled = cfg.rowLimit != null && !_pageSize;
     var _rowLimitControl = document.querySelector('[data-table-row-limit="' + id + '"]');
     var _rowLimitDefault = cfg.rowLimit;
+    function _rowLimitNote(count) {
+        var noteId = id + '-row-limit-note', note = document.getElementById(noteId);
+        var needed = _rowLimitEnabled && _rowLimitControl && count > 1000;
+        if (needed) {
+            if (!note) {
+                note = document.createElement('div'); note.id = noteId;
+                note.className = 'fw-table-note fw-row-limit-note';
+                note.setAttribute('role', 'status');
+                _rowLimitControl.closest('.fw-data-table-header').appendChild(note);
+            }
+            note.textContent = 'All is available for up to 1,000 matching rows. CSV includes all ' + count + ' matches.';
+        } else if (note) note.remove();
+        if (_rowLimitControl) {
+            var descriptions = (_rowLimitControl.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+                return token && token !== noteId;
+            });
+            if (needed) descriptions.push(noteId);
+            if (descriptions.length) _rowLimitControl.setAttribute('aria-describedby', descriptions.join(' '));
+            else _rowLimitControl.removeAttribute('aria-describedby');
+        }
+    }
     function _ensureRowLimitControl() {
         if (!_rowLimitEnabled) {
+            _rowLimitNote(0);
             if (_rowLimitControl && _rowLimitControl.parentNode) _rowLimitControl.parentNode.remove();
             _rowLimitControl = null;
             return;
@@ -300,6 +322,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             var allOption = _rowLimitControl.querySelector('option[value="all"]');
             if (allOption) allOption.disabled = filtered.length > 1000;
         }
+        _rowLimitNote(filtered.length);
         var visible = _pageSize ? filtered.slice((_page - 1) * _pageSize, _page * _pageSize)
             : filtered.slice(0, _rowLimitEnabled ? (limit === 'all' ? filtered.length : limit) : cfg.maxRows);
         var numericColumns = columns.map(function(c, index) { return _isNumericColumn(columns, rows, index); });
@@ -351,9 +374,6 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             + ' of ' + filtered.length + ' matching rows ('
             + (rows.length < totalRows ? rows.length + ' available of ' : '') + totalRows
             + ' supplied) — CSV exports ' + filtered.length + ' rows</div>';
-        if (_rowLimitEnabled && filtered.length > 1000) {
-            note += '<div class="fw-table-note fw-row-limit-note">All is available for up to 1,000 matching rows. CSV includes all ' + filtered.length + ' matches.</div>';
-        }
         if (_pageSize) {
             note = '<div class="fw-table-note" data-workspace-table-status tabindex="-1" role="status">' + filtered.length + ' of ' + totalRows + ' rows · Page ' + _page + ' of ' + pages
                 + ' · CSV exports ' + filtered.length + ' rows</div><div class="fw-metric-actions" data-workspace-table-pager>'

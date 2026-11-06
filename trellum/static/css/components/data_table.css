@@ -75,7 +75,7 @@
     font: inherit;
 }
 .fw-row-limit-control select:focus-visible { outline: 2px solid var(--accent-red); outline-offset: 2px; }
-.fw-row-limit-note { margin-top: 2px; }
+.fw-row-limit-note { flex-basis: 100%; margin-top: 2px; overflow-wrap: anywhere; }
 .fw-csv-btn {
     background: transparent; border: 1px solid var(--border-color);
     border-radius: var(--radius-control); padding: 4px 8px; cursor: pointer;

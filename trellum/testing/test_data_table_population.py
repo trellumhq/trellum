@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -58,6 +59,14 @@ def test_row_limit_is_strict_keyword_only_and_opt_in():
     for invalid in (True, 10.0, "10", "All", 0, 101):
         with pytest.raises(ValueError, match="row_limit"):
             DataTable(frame, "Invalid", row_limit=invalid)
+    @dataclass
+    class ExtendedTable(DataTable):
+        marker: str = 'kept'
+
+    table = ExtendedTable(frame, 'Subclass', 20, True, None, None, False,
+                          None, None, None, None, 'positional subclass', row_limit=10)
+    assert table.marker == 'positional subclass'
+    assert _register(table)['rowLimit'] == 10
 
 
 def test_comparison_table_preserves_legacy_positional_constructor_and_row_limit():
@@ -210,8 +219,10 @@ def test_ranked_row_limit_search_sort_csv_and_keyboard(report_page):
 
 
 @pytest.mark.heavy
-def test_row_limit_all_is_bounded_but_csv_keeps_every_match(report_page):
+@pytest.mark.parametrize('width', [1280, 390])
+def test_row_limit_all_is_bounded_but_csv_keeps_every_match(report_page, width):
     page, ids, _ = report_page
+    page.set_viewport_size({'width': width, 'height': 900})
     cid = ids[5]
     page.evaluate("""id => {
         const cfg = window._reportData.components[id];
@@ -224,12 +235,19 @@ def test_row_limit_all_is_bounded_but_csv_keeps_every_match(report_page):
         window._fwRenderers.table(id, cfg);
     }""", cid)
     assert page.locator(f"#{cid} tbody tr").count() == 100
-    assert page.locator(f"#{cid} .fw-table-note").all_inner_texts()[-1] == (
+    assert page.locator(f"#{cid}-row-limit-note").inner_text() == (
         "All is available for up to 1,000 matching rows. CSV includes all 1200 matches.")
     choice = page.locator(f'[data-table-row-limit="{cid}"]')
     assert choice.input_value() == "100"
+    assert choice.get_attribute('aria-describedby') == cid + '-row-limit-note'
+    assert choice.evaluate("el => el.closest('.fw-data-table-header').contains(document.getElementById(el.getAttribute('aria-describedby')))")
     assert choice.locator('option[value="all"]').evaluate("el => el.disabled")
     assert len(_export(page, cid)["rows"]) == 1200
+    shots = os.environ.get('TRELLUM_SCREENSHOT_DIR')
+    if shots:
+        Path(shots).mkdir(parents=True, exist_ok=True)
+        choice.locator('xpath=ancestor::div[contains(@class,"fw-data-table-header")]').screenshot(
+            path=str(Path(shots) / f'row-limit-bounded-header-{width}.png'))
     page.evaluate("""id => {
         const cfg = window._reportData.components[id];
         cfg.rows = cfg.rows.slice(0, 120); cfg.rawRows = cfg.rawRows.slice(0, 120); cfg.totalRows = 120;
@@ -237,6 +255,7 @@ def test_row_limit_all_is_bounded_but_csv_keeps_every_match(report_page):
     }""", cid)
     assert choice.input_value() == "100"
     assert not choice.locator('option[value="all"]').is_disabled()
+    assert page.locator(f"#{cid}-row-limit-note").count() == 0
     assert page.locator(f"#{cid} .fw-table-note").all_inner_texts() == [
         "Showing 100 of 120 matching rows (120 supplied) — CSV exports 120 rows"]
     choice.select_option("all")
@@ -274,6 +293,46 @@ def test_bound_row_limit_does_not_change_filter_or_kpi_population(report_page):
     # Local search stays table-only while the source-filtered KPI still reports
     # all 60 Android events.
     assert kpi.inner_text() == filtered_kpi
+
+
+def test_row_limit_focus_rerender_replacement_and_workspace_ownership(report_page):
+    page, ids, _ = report_page
+    cid = ids[8]
+    choice = page.locator(f'[data-table-row-limit="{cid}"]')
+    original_filters = page.evaluate("fw.filterEngine.getFilterState('row_limit_events')")
+    choice.select_option('50')
+    assert page.evaluate("fw.filterEngine.getFilterState('row_limit_events')") == original_filters
+    # Rerendering keeps the focused native control, value and local search/sort.
+    choice.focus()
+    page.evaluate("window.renderAll()")
+    assert choice.evaluate('el => document.activeElement === el')
+    assert choice.input_value() == '50'
+    page.locator('#fwThemeSelect').select_option('trellum dark')
+    assert choice.input_value() == '50'
+    # A replaced table adopts the current declaration, and replaces the old
+    # control's closure instead of calling the detached table renderer.
+    page.evaluate("""id => {
+        const old = document.getElementById(id); window.oldRowLimitTable = old;
+        old.replaceWith(old.cloneNode(true));
+        window._fwRenderers.table(id, window._reportData.components[id]);
+    }""", cid)
+    assert choice.input_value() == '10'
+    choice.select_option('20')
+    assert page.locator(f'#{cid} tbody tr').count() == 20
+    assert page.evaluate("window.oldRowLimitTable.querySelectorAll('tbody tr').length") == 50
+    assert page.locator(f'[data-row-limit-for="{cid}"]').count() == 1
+
+    # Internal workspace pagination wins over injected row-limit payloads.
+    static_id = ids[6]
+    page.evaluate("""id => {
+        window._fwMetricsWorkspace = {};
+        const cfg = window._reportData.components[id];
+        cfg.workspacePageSize = 25; cfg.rowLimit = 'all';
+        window._fwRenderers.table(id, cfg);
+    }""", static_id)
+    assert page.locator(f'[data-table-row-limit="{static_id}"]').count() == 0
+    assert page.locator(f'#{static_id} tbody tr').count() == 25
+    assert len(_export(page, static_id)['rows']) == 120
 
 
 @pytest.mark.parametrize("width", [1280, pytest.param(390, marks=pytest.mark.heavy)])
@@ -335,6 +394,8 @@ def test_showcase_whole_population_filter_search_sort_csv_and_rendering(report_p
         shots = os.environ.get("TRELLUM_SCREENSHOT_DIR")
         if shots:
             Path(shots).mkdir(parents=True, exist_ok=True)
+            page.locator('#sec-datatable-row-limits-—-filtered').screenshot(
+                path=str(Path(shots) / f'row-limits-filtered-{width}-{theme.replace(" ", "-")}.png'))
             page.evaluate("window.scrollTo(0, 0)")
             if width == 390:
                 page.screenshot(path=str(Path(shots) / f"data-table-{width}-{theme.replace(' ', '-')}-numbers.png"), full_page=True)
