@@ -386,12 +386,8 @@
                 var rect = el.getBoundingClientRect();
                 var offScreen = rect.top > window.innerHeight + 200;
                 if (workspace && id === workspace.definitionId && definitionHash) offScreen = false;
-                var toggleParent = el.parentElement, inHiddenToggle = false;
-                while (toggleParent) {
-                    if (toggleParent.classList && toggleParent.classList.contains('fw-toggle-vis') &&
-                            toggleParent.style.display === 'none') { inHiddenToggle = true; break; }
-                    toggleParent = toggleParent.parentElement;
-                }
+                var toggleVis = el.closest('.fw-toggle-vis');
+                var inHiddenToggle = toggleVis && toggleVis.style.display === 'none';
                 if (_lazyObserver && (inCollapsed || offScreen || inHiddenToggle || workspace && !renderable(el))) {
                     _lazyQueue[id] = workspace ? lazy(id, cfg) : cfg;
                     _lazyObserver.observe(el);

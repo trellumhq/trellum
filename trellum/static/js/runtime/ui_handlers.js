@@ -9,8 +9,6 @@
             // a 0×0 canvas from Chart.js. Resize them now that the canvas is visible.
             if (isShowing && wasHidden) {
                 el.querySelectorAll('canvas').forEach(function(canvas) {
-                    // A nested toggle may change while another ancestor stays hidden.
-                    if (!canvas.getClientRects().length) return;
                     var chart = window._chartInstances && window._chartInstances[canvas.id];
                     if (chart) chart.resize();
                 });
