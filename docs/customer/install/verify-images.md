@@ -49,6 +49,46 @@ release workflow also generates an SPDX SBOM for the portal image as a
 90-day GitHub Actions artifact; it is not an attestation on the published
 image. Check the release workflow's artifacts if you specifically need SPDX.
 
+## Recurring vulnerability checks and triage
+
+The **published image scan** GitHub Actions workflow runs every Monday at
+06:23 UTC (GitHub may delay scheduled runs), and maintainers can also start it
+manually from the repository's Actions tab. It resolves GitHub's latest
+published stable release once, then scans both the portal and report-runner
+images for that exact version tag, using immutable registry digests. It does
+not build or publish images. Release-time scanning remains in place.
+
+Each run records the release URL and ID, version tag and image digests in its
+job summaries and retains identity, registry manifest and scan reports as
+Actions artifacts for 30 days. The pinned Trivy scanner uses a current
+vulnerability database and the same threshold as the release workflow:
+**HIGH or CRITICAL vulnerabilities with an available fix fail the scan**.
+Unfixed vulnerabilities and lower severities do not fail this gate; a passing
+run is not a claim that the image has no vulnerabilities. Both image jobs run
+even if one fails. Missing images, registry access denial, scanner/database
+download errors and timeouts fail visibly rather than count as clean scans.
+Check the failed step's logs when no scan report could be produced.
+
+The Trellum repository maintainers handling **security@trellum.dev**, the
+existing reporting route in
+[SECURITY.md](https://github.com/trellumhq/trellum/blob/main/SECURITY.md), own
+triage of failed weekly/manual runs and dependency-update PRs. After each
+weekly or manual run they review the
+[published image scan runs](https://github.com/trellumhq/trellum/actions/workflows/published-image-scan.yml),
+distinguish operational failures from vulnerability findings, and investigate
+affected packages and available fixes. Operational failures require restoring
+the scan and rerunning it; confirmed security issues follow the existing
+[private vulnerability reporting route](https://github.com/trellumhq/trellum/security/advisories/new)
+or **security@trellum.dev**. Do not post sensitive vulnerability details in
+public issues. There is no additional messaging integration.
+
+Dependabot checks pip manifests (portal, framework, integration tests and
+website) and GitHub Actions weekly on Mondays at 07:00 UTC. Updates are grouped
+by ecosystem, with separate security-update groups and a limit of two open
+version-update PRs per ecosystem. GitHub applies its separate security-update
+PR limit; the version-update limit does not cap security PRs. Maintainers
+review and test updates before merging; updates are not automatically merged.
+
 ## What the image contains
 
 - No test tooling — packages needed only for tests are absent from the runtime

@@ -60,9 +60,9 @@ class DropdownFilter(BaseFilter):
         return (
             f'<div class="fw-filter-item">'
             f'<div class="fw-filter-label-row">'
-            f'<label class="fw-filter-label">{label}</label>'
+            f'<label class="fw-filter-label" id="{fid}_label" for="{fid}_input">{label}</label>'
             f'{actions}</div>'
-            f'<select class="fw-dropdown" data-filter-id="{fid}" '
+            f'<select class="fw-dropdown" id="{fid}_input" name="{fid}" aria-labelledby="{fid}_label" data-filter-id="{fid}" '
             f'data-filter-col="{col}"{multiple_attr} placeholder="(All)"></select>'
             f'</div>'
         )

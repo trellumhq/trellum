@@ -28,6 +28,10 @@ come up for the scenarios that need them and go down afterwards, reusing
 `itest/`'s compose file and project name — a `--keep` here and an
 `itest/run.py --keep` there refer to the same containers.
 
+Benchmark agents use the CLI's `default` permission mode, including when run
+outside the optimizer. They no longer bypass permission checks. Grant only
+intended tools in local configuration; headless denials can affect results.
+
 Runs cost real money. `--repeat 3` and comparing medians is the cheapest
 defence against model nondeterminism; a single run proves very little.
 
@@ -70,21 +74,43 @@ failure can be reproduced by hand; a passing one is deleted unless `--keep`.
 Transcripts land in `results/transcripts/<run_id>.jsonl`. They are the input
 to any question that starts "why did it fail".
 
-## Optimizing overnight
+## Maintainer optimizer (explicit opt-in)
 
 ```
-python trellum/bench/optimize.py --max-iters 4 --budget-usd 10
+# Prepare a disposable linked worktree of this repository first.
+git worktree add -b bench/auto-review /absolute/path/to/bench-review HEAD
+python trellum/bench/optimize.py --enable-optimizer \
+  --worktree /absolute/path/to/bench-review --max-iters 4 --budget-usd 10
 ```
+
+This is a maintainer-only, paid-provider workflow. Both `--enable-optimizer`
+and an explicit `--worktree` are required; there is no automatic checkout path.
+Existing scenario, model, repeat, budget, iteration and timeout options remain.
+Both benchmark agents and the fixer use Claude's `default` permission mode;
+permission bypass is no longer supplied. Configure only the permissions you
+intend to grant before running. Headless permission denials may prevent a fix
+or affect scores; permissions are not a sandbox. Review the target and its local
+configuration before opting in. Do not compare these runs to historical runs
+that bypassed permissions without accounting for that difference.
 
 Runs the bench, reads the worst failure's transcript, asks a fixer agent for
 one targeted change to the guidance layer, re-measures that scenario, and keeps
 the commit only if the score actually moved. Stops on budget, iteration count,
 wall clock, everything passing, or two iterations without a usable fix.
+Budget and wall-clock limits are checked between iterations, not hard provider
+spending caps; an in-flight benchmark/fix/recheck can exceed them.
 
 The guardrails are the loop's job, never the fixer's:
 
-* a dedicated worktree on a `bench/auto-*` branch — it refuses to run in the
-  working checkout
+* a dedicated linked worktree on a `bench/auto-*` branch, sharing this
+  repository's Git common directory. The working checkout, other repositories,
+  detached heads, other branches and subdirectories are refused. It must start
+  clean, including untracked and ignored files. Use this checkout only for the
+  optimizer while it runs; its tracked changes may be discarded. Checkout
+  identity and branch are checked again before each destructive revert
+* the target's `agent.py` and `run.py` must match the optimizer's harness,
+  checked before every benchmark batch, so an older target cannot silently
+  restore permission bypasses. Prepare the worktree from the same revision
 * the fixer may only touch the guidance surface (`WHITELIST` in `optimize.py`).
   `trellum/bench/` is denied outright, and deny beats allow, so widening the
   whitelist later cannot accidentally hand the fixer its own grader

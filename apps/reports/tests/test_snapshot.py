@@ -259,3 +259,72 @@ class TestVendorServing:
         finally:
             server.shutdown()
             server.server_close()
+
+
+@pytest.mark.heavy
+@_skip_no_chromium
+@pytest.mark.parametrize(
+    ('mode', 'expected_height', 'expected_truncated'),
+    [('short', 900, False), ('lazy-short', 1400, False),
+     ('lazy-tall', 1800, True), ('growing', 1800, True),
+     ('creeping', None, False)],
+)
+def test_snapshot_height_bound_with_lazy_content(
+    tmp_path, mode, expected_height, expected_truncated
+):
+    """Below-fold placeholders grow only after the snapshot viewport grows."""
+    import json
+    import struct
+    import time
+
+    if mode == 'short':
+        html = '<style>html,body{margin:0}</style><p>Short report</p>'
+    else:
+        content_height = 400 if mode in ('lazy-short', 'growing', 'creeping') else 2200
+        html = """
+            <style>html,body{margin:0}#spacer{height:1000px}
+            #lazy{height:100px;background:#167040;color:white}</style>
+            <div id="spacer">Synthetic report</div>
+            <section class="fw-collapsible fw-collapsed">
+              <div id="lazy">Lazy placeholder</div>
+            </section>
+            <script>
+              const lazy = document.querySelector('#lazy');
+              const observer = new IntersectionObserver(entries => {
+                if (entries.some(entry => entry.isIntersecting) &&
+                    !lazy.closest('.fw-collapsed')) {
+                  lazy.style.height = 'CONTENT_HEIGHTpx';
+                  lazy.textContent = 'Rendered lazy content';
+                  observer.disconnect();
+                }
+              });
+              observer.observe(lazy);
+              GROWING
+            </script>
+        """.replace('CONTENT_HEIGHT', str(content_height)).replace(
+            'GROWING', "window.addEventListener('resize', () => { "
+            "lazy.style.height = (lazy.offsetHeight + GROWTH) + 'px'; });"
+            if mode in ('growing', 'creeping') else '',
+        )
+    html = html.replace('GROWTH', '1' if mode == 'creeping' else '500')
+    (tmp_path / 'index.html').write_text(html, encoding='utf-8')
+    started = time.monotonic()
+    result = render_report(tmp_path, want_pdf=False, max_height_px=1800, timeout_s=10)
+    elapsed = time.monotonic() - started
+    assert result.error == ''
+    # Keep the real PNG as a pytest artifact, including on baseline failure.
+    (tmp_path / f'{mode}.png').write_bytes(result.png)
+    width, height = struct.unpack('>II', result.png[16:24])
+    (tmp_path / f'{mode}.json').write_text(json.dumps({
+        'width': width, 'height': height, 'truncated': result.truncated,
+        'elapsed_s': elapsed,
+    }), encoding='utf-8')
+    assert width == 552 * 3
+    if expected_height is None:
+        # One pixel per resize would take hundreds of rounds to reach the
+        # cap without an iteration bound. Capture the latest measured extent.
+        assert 1400 * 3 < height < 1500 * 3
+    else:
+        assert height == expected_height * 3
+    assert result.truncated is expected_truncated
+    assert elapsed < 10, f'repeated content growth took {elapsed:.2f}s'

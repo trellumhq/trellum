@@ -143,8 +143,12 @@ window._fwRenderers['filter_bar'] = function(id, cfg) {
         var fid = group.dataset.filterId;
         var fc = _findFc(fid);
         if (!fc) return;
-        group.querySelectorAll('.fw-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+        group.querySelectorAll('.fw-toggle-btn').forEach(function(b) {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+        });
         btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
         var handler = window._fwFilterTypes && window._fwFilterTypes[fc.type];
         if (handler && handler.onClick) {
             handler.onClick(el, fc, dsId, helpers, btn);

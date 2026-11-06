@@ -134,7 +134,8 @@ def test_empty_result_hints_at_the_date_span_trap(project, capsys):
 def test_describe_advertises_query_and_serve():
     text = cli._describe()
     assert "trellum query" in text
-    assert "trellum serve --background" in text
+    assert "review start reports/<slug>" in text
+    assert "plain `serve` only when" in text
 
 
 def test_data_footer_advertises_query(project, capsys):
@@ -144,10 +145,22 @@ def test_data_footer_advertises_query(project, capsys):
 
 
 def test_agents_md_states_the_closing_move():
-    """The done-checklist requires handing over the link -- the rule that
-    closes the measured Opus-does-it / Sonnet-doesn't gap."""
+    """The completion guidance points human report previews at review mode."""
     from trellum.agent import agentdoc
     body = agentdoc.sections()["validation"].body
-    assert "serve --background" in body
+    assert "review start reports/<slug>" in body
+    assert "review poll --report <slug>" in body
+    assert "serve --background" in body  # explicitly requested plain previews
     queries = agentdoc.sections()["queries"].body
     assert "trellum query" in queries
+
+
+def test_build_footer_points_human_handoff_to_review(capsys):
+    from trellum.runner.console import _closing_move
+
+    _closing_move()
+    out = capsys.readouterr().out
+    assert "review start reports/<slug>" in out
+    assert "review poll --report <slug>" in out
+    assert "--no-serve" in out
+    assert "explicitly requested plain preview" in out

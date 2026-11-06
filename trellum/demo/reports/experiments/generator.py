@@ -20,10 +20,9 @@ The three stories, deliberately different:
   measures. Revenue is declared (the front door requires one currency
   metric) but should read flat while Day-1 Return moves.
 
-Console note: onboarding's frame makes ``validate_user_df`` print a harmless
-``payer-no-gross`` WARN at build time -- it assumes the ``rate`` metric means
-"paid", so returners with no revenue look like a data gap. Expected, not a
-validation FAIL.
+The onboarding comparison explicitly declares its outcome as engagement,
+so purchase-specific payer/revenue consistency checks do not apply to its
+Day-1 return metric.
 """
 
 from trellum import BaseReport
@@ -233,6 +232,7 @@ class ExperimentsReport(BaseReport):
                 ],
                 exposure_col="active_days",
                 n_days=21,
+                outcome_type="engagement",
                 expected_split=(50, 50),
                 iters=2000,
                 pre_window_days=21,

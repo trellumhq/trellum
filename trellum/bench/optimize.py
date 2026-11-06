@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 """Run the bench, read the worst failure, fix one thing, measure again.
 
-    python trellum/bench/optimize.py --max-iters 4 --budget-usd 10
-    python trellum/bench/optimize.py --worktree a local worktree
+    python trellum/bench/optimize.py --enable-optimizer --worktree /path/to/worktree
 
 The loop is deliberately dumb and the guardrails are deliberately not the
 fixer's job. An agent asked to improve a score and trusted to police itself
@@ -25,7 +24,6 @@ import json
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 _BENCH_DIR = Path(__file__).resolve().parent
@@ -86,33 +84,57 @@ Do not merge. Do not run the benchmark.
 def _git(*args: str, cwd: Path) -> str:
     out = subprocess.run(
         ["git", "-C", str(cwd), *args],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True, text=True, timeout=60, check=True,
     )
-    return out.stdout.strip()
+    return out.stdout if "-z" in args else out.stdout.strip()
 
 
-def _ensure_worktree(path: Path | None) -> Path:
-    """A dedicated worktree, so a bad fix cannot touch the working checkout."""
+def _ensure_worktree(path: Path | None, *, require_clean: bool = True) -> Path:
+    """Validate an explicitly prepared, disposable checkout; never create one."""
     if path is None:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        path = Path.home() / ".herdr" / "worktrees" / "bi-portal" / f"bench-auto-{stamp}"
-        branch = f"bench/auto-{stamp}"
-        subprocess.run(
-            ["git", "-C", str(_REPO_DIR), "worktree", "add", str(path), "-b", branch],
-            check=True, timeout=300,
-        )
-        print(f"worktree: {path} (branch {branch})", flush=True)
-        return path
-
+        raise SystemExit("Pass --worktree with a dedicated bench/auto-* worktree.")
     path = path.expanduser().resolve()
-    if path == _REPO_DIR:
-        raise SystemExit(
-            "Refusing to optimise in the working checkout -- pass a worktree "
-            "path, or omit --worktree to have one created."
-        )
-    if not (path / ".git").exists():
-        raise SystemExit(f"{path} is not a git worktree.")
+    try:
+        root = Path(_git("rev-parse", "--show-toplevel", cwd=path)).resolve()
+        common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir",
+                           cwd=path)).resolve()
+        expected = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir",
+                             cwd=_REPO_DIR)).resolve()
+        branch = _git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=path)
+        if (root != path or path == _REPO_DIR.resolve() or common != expected
+                or not (path / ".git").is_file()
+                or not branch.startswith("bench/auto-")):
+            raise SystemExit("Refusing target: use a linked worktree of this repository "
+                             "on a dedicated bench/auto-* branch.")
+        # Ignored files count too: cleanup must never inherit someone else's data.
+        if require_clean and _git("status", "--porcelain", "--untracked-files=all",
+                                  "--ignored", cwd=path):
+            raise SystemExit("Refusing target: worktree must be completely clean "
+                             "(including untracked and ignored files).")
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise SystemExit(f"Cannot verify optimizer worktree: {exc}") from exc
     return path
+
+
+def _discard_fix(worktree: Path, before_sha: str, *, expected_branch: str) -> None:
+    """Recheck checkout identity before discarding only this attempt's changes."""
+    _ensure_worktree(worktree, require_clean=False)
+    if _git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=worktree) != expected_branch:
+        raise SystemExit("Refusing cleanup: optimizer branch changed during the attempt.")
+    _git("reset", "--hard", before_sha, cwd=worktree)
+
+
+def _verify_harness(worktree: Path) -> None:
+    """Do not delegate permission handling to an older or modified harness."""
+    for name in ("agent.py", "run.py"):
+        try:
+            matches = (worktree / "trellum" / "bench" / name).read_bytes() == (
+                _BENCH_DIR / name).read_bytes()
+        except OSError as exc:
+            raise SystemExit(f"Cannot verify benchmark harness: {exc}") from exc
+        if not matches:
+            raise SystemExit(f"Refusing target: trellum/bench/{name} must match "
+                             "the optimizer's benchmark harness.")
 
 
 def _run_matrix(worktree: Path, *, scenarios: str, guidance: str,
@@ -122,6 +144,7 @@ def _run_matrix(worktree: Path, *, scenarios: str, guidance: str,
     The worktree's own copy of run.py is used, so whatever the fixer changed
     is what gets measured.
     """
+    _verify_harness(worktree)
     results = worktree / "trellum" / "bench" / "results" / "results.jsonl"
     before = results.stat().st_size if results.is_file() else 0
 
@@ -191,15 +214,19 @@ def path_allowed(path: str) -> bool:
     """
     if any(path.startswith(d) for d in DENYLIST):
         return False
-    return any(path.startswith(w) for w in WHITELIST)
+    return any(path.startswith(w) if w.endswith("/") else path == w for w in WHITELIST)
 
 
 def _violations(worktree: Path, before_sha: str) -> list[str]:
     """Paths the fixer touched that it had no business touching."""
-    changed = _git("diff", "--name-only", f"{before_sha}..HEAD", cwd=worktree).splitlines()
+    # Disable rename collapsing so both the removed and added paths are checked.
+    # NUL delimiters preserve whitespace, newlines and Git-quoted filenames.
+    changed = _git("diff", "--no-renames", "--name-only", "-z",
+                   f"{before_sha}..HEAD", cwd=worktree).split("\0")
     dirty = [
-        line[3:].strip()
-        for line in _git("status", "--porcelain", cwd=worktree).splitlines()
+        entry[3:]
+        for entry in _git("status", "--porcelain", "--no-renames", "-z",
+                          "--untracked-files=all", cwd=worktree).split("\0") if entry
     ]
     return sorted(
         p for p in {*changed, *dirty} if p and not path_allowed(p)
@@ -225,7 +252,7 @@ def _run_fixer(worktree: Path, record: dict, model: str, timeout_s: int) -> floa
 
     proc = subprocess.Popen(
         [agent_mod._claude_bin(), "-p", "--output-format", "json",
-         "--max-turns", "80", "--dangerously-skip-permissions",
+         "--max-turns", "80", "--permission-mode", "default",
          "--model", model],
         cwd=str(worktree), stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -247,7 +274,10 @@ def _run_fixer(worktree: Path, record: dict, model: str, timeout_s: int) -> floa
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--worktree", type=Path, default=None)
+    parser.add_argument("--enable-optimizer", action="store_true",
+                        help="Explicitly allow provider calls and automatic commits/reverts.")
+    parser.add_argument("--worktree", type=Path, required=True,
+                        help="Clean linked worktree on a dedicated bench/auto-* branch.")
     parser.add_argument("--scenarios", default="all")
     parser.add_argument("--guidance", default="pointer")
     parser.add_argument("--repeat", type=int, default=1)
@@ -262,7 +292,12 @@ def main() -> int:
     parser.add_argument("--fix-timeout-s", type=int, default=1800)
     args = parser.parse_args()
 
+    if not args.enable_optimizer:
+        parser.error("--enable-optimizer is required: this loop makes provider calls "
+                     "and may discard fixes in the target worktree")
     worktree = _ensure_worktree(args.worktree)
+    _verify_harness(worktree)
+    branch = _git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=worktree)
     py = sys.executable
     started = time.time()
     spent = 0.0
@@ -306,8 +341,7 @@ def main() -> int:
 
         if after_sha == before_sha:
             print("no commit from the fixer; discarding any working-tree changes.")
-            subprocess.run(["git", "-C", str(worktree), "checkout", "--", "."],
-                           timeout=60)
+            _discard_fix(worktree, before_sha, expected_branch=branch)
             stale += 1
             if stale >= 2:
                 print("\nstop: two iterations without a usable fix.")
@@ -318,8 +352,7 @@ def main() -> int:
         if bad:
             print(f"fix touched paths outside the whitelist: {', '.join(bad)}\n"
                   f"reverting.", flush=True)
-            subprocess.run(["git", "-C", str(worktree), "reset", "--hard", before_sha],
-                           timeout=60)
+            _discard_fix(worktree, before_sha, expected_branch=branch)
             stale += 1
             if stale >= 2:
                 print("\nstop: two iterations without a usable fix.")
@@ -343,8 +376,7 @@ def main() -> int:
                   f"{best_record['score'] if best_record else '?'}, turns "
                   f"{_turns(target)}->{-best[1]}); reverting the fix.",
                   flush=True)
-            subprocess.run(["git", "-C", str(worktree), "reset", "--hard", before_sha],
-                           timeout=60)
+            _discard_fix(worktree, before_sha, expected_branch=branch)
             stale += 1
             if stale >= 2:
                 print("\nstop: two consecutive non-improvements.")

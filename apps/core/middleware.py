@@ -81,7 +81,9 @@ class ContentSecurityPolicyMiddleware:
     #: ``frame-ancestors`` header there (apps.reports.views._share_response).
     #: The public scripts (``@public_asset``, apps.core.public_assets) are exempt
     #: too, by that marker on the resolved view rather than by a name listed here.
-    _EXEMPT = {"report-page", "report-asset", "share-entry", "share-asset"}
+    # The report entry route only redirects or renders portal-owned notices.
+    # Tenant-authored documents are served by report-asset instead.
+    _EXEMPT = {"report-asset", "share-entry", "share-asset"}
 
     def __init__(self, get_response):
         self.get_response = get_response

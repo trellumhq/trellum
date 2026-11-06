@@ -99,8 +99,12 @@ point resets all of it:
    and saying that signing in once cancels it. Nothing else changes.
 2. **Sign-in switched off**, `RETENTION_DORMANT_DISABLE_DAYS` later. Nothing is
    deleted; an operator can turn the account back on from the built-in
-   admin site at `/admin` (clear `dormancy_warned_at` there too, or the next
-   sweep switches it off again). Erasing a disabled dormant account is a human decision, made on
+   admin site at `/admin` by enabling **Is active** and saving. Reactivation
+   automatically clears the old dormancy warning and records who reactivated
+   the account in the instance audit trail. It does not change the last sign-in
+   time: if the account remains dormant, it can receive a fresh warning and
+   the full grace period before being disabled again.
+   Erasing a disabled dormant account is a human decision, made on
    [the erase screen](#deleting-one-person-on-request) — with one edge worth
    knowing: if the disabled account was an organization's only admin, nobody
    in that org can reach that screen, and an operator promotes someone first.

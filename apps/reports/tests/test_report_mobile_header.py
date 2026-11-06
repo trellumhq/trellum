@@ -98,3 +98,33 @@ def test_phone_header_is_compact_and_consistent(display):
             assert page.evaluate("document.documentElement.scrollWidth") <= 412
         finally:
             browser.close()
+
+
+def test_docked_assistant_close_stays_above_mounted_console_header():
+    """The dock's top row overlaps the console header on desktop."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            html = _page().replace(
+                '</head>',
+                f'<style>{_read(STATIC / "assistant.css")}</style></head>',
+            ).replace(
+                '</body>',
+                '<div id="assistantPanel" class="assistant-open assistant-dock">'
+                '<header class="assistant-header"><button id="assistantClose" '
+                'onclick="this.closest(\'#assistantPanel\').remove()">Close</button>'
+                '</header></div></body>',
+            )
+            page.route("http://console.test/**", lambda route: route.fulfill(
+                content_type="text/html", body=html,
+            ))
+            page.goto("http://console.test/s/demo/casino/r/player-overview/index.html?display=focus")
+            page.evaluate("document.body.classList.add('tl-report-console-mounted')")
+            # A real click fails when the higher console header intercepts it.
+            page.locator("#assistantClose").click(timeout=3000)
+            assert page.locator("#assistantPanel").count() == 0
+        finally:
+            browser.close()

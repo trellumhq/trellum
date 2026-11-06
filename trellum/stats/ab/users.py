@@ -7,7 +7,7 @@ The aggregation into groups happens in aggregate.py.
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -58,10 +58,15 @@ def validate_user_df(
     payer_col: str = "is_payer",
     ftd_col: str | None = "is_ftd",
     txns_col: str | None = "transactions",
+    outcome_type: Literal["purchase", "engagement"] = "purchase",
     strict: bool = False,
     print_findings: bool = True,
 ) -> list[tuple[str, str, str]]:
     """Sanity-check a per-user A/B DataFrame before winsor / CUPED.
+
+    ``outcome_type`` is ``"purchase"`` by default. Engagement callers may
+    pass ``"engagement"`` to skip only the purchase-specific payer/revenue
+    consistency check; shape and binary-indicator checks still run.
 
     Catches the shape bugs we've actually hit in past A/B reports:
 
@@ -82,6 +87,8 @@ def validate_user_df(
     ``"ERROR"``, ``"WARN"``, ``"INFO"``. With ``strict=True``, raises
     ``ValueError`` if any ERROR finding is present.
     """
+    if outcome_type not in ("purchase", "engagement"):
+        raise ValueError("outcome_type must be 'purchase' or 'engagement'")
     findings: list[tuple[str, str, str]] = []
 
     def add(sev: str, code: str, msg: str) -> None:
@@ -147,17 +154,9 @@ def validate_user_df(
             add("ERROR", "payer-not-binary",
                 f"{payer_col} has values outside {{0,1}}: {list(unique_vals)[:5]} — must be a raw identity indicator")
 
-    # ── Payer / gross consistency ──────────────────────────────────────────
-    # Note: we DON'T flag (gross_revenue > 0 AND is_payer == 0) — that's
-    # legitimate when gross_revenue is IAP + Ad revenue (ad-watchers have
-    # gross > 0 but is_payer must reflect IAP identity, not ad watching).
-    # We only flag the opposite: is_payer = 1 should always imply gross > 0,
-    # since a payer can't have less revenue than their IAP.
-    if payer_col in df.columns and gross_col in df.columns:
-        payer_no_gross = int(((df[gross_col] <= 0) & (df[payer_col] == 1)).sum())
-        if payer_no_gross:
-            add("WARN", "payer-no-gross",
-                f"{payer_no_gross:,} row(s) have {payer_col} == 1 but {gross_col} <= 0 — payer in DAU CTE without revenue row (CTE join gap)")
+    # Purchase outcomes require payer rows to have gross revenue.
+    if outcome_type == "purchase":
+        _check_payer_gross(df, payer_col, gross_col, add)
 
     # ── Other numeric NaN / Inf checks ─────────────────────────────────────
     for label, col in optional.items():
@@ -180,6 +179,15 @@ def validate_user_df(
 
     _emit(findings, print_findings, strict)
     return findings
+
+def _check_payer_gross(df: pd.DataFrame, payer_col: str, gross_col: str, add: Any) -> None:
+    """Warn when a purchase payer has no gross revenue; ad revenue is valid."""
+    if payer_col not in df.columns or gross_col not in df.columns:
+        return
+    payer_no_gross = int(((df[gross_col] <= 0) & (df[payer_col] == 1)).sum())
+    if payer_no_gross:
+        add("WARN", "payer-no-gross",
+            f"{payer_no_gross:,} row(s) have {payer_col} == 1 but {gross_col} <= 0 — payer in DAU CTE without revenue row (CTE join gap)")
 
 def _emit(
     findings: list[tuple[str, str, str]],
