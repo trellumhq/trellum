@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+import yaml
 from django.conf import settings
 
 from trellum.rendering.cdn import serve_vendor_request
@@ -34,6 +35,11 @@ def deck_server(tmp_path, monkeypatch):
     monkeypatch.setattr("trellum.project._project_root_override", None)
     source = tmp_path / "reports" / "checkout-presentation"
     shutil.copytree(settings.BASE_DIR / "trellum/demo/reports/checkout-presentation", source)
+    # These cases exercise the default document contract, independently of the
+    # demo's authored opening view. Opt-in slides have their own player coverage.
+    config = yaml.safe_load((source / "report.yaml").read_text(encoding="utf-8"))
+    config["presentation_view"] = "document"
+    (source / "report.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
     output = Path(run_report(str(source)))
     markup = (output / "index.html").read_text(encoding="utf-8")
 
@@ -170,7 +176,7 @@ def test_host_fallback_hides_chrome_and_guards_messages(deck_browser, deck_serve
     child.evaluate("() => { document.querySelector('.fw-presentation').requestFullscreen = () => Promise.reject(new Error('denied')); }")
     page.evaluate("window.postMessage({type:'trellum:presentation',report:'player-overview',hostToken:'wrong',presenting:true},location.origin)")
     assert not page.locator("body").evaluate("el => el.classList.contains('tl-console-presenting')")
-    frame.get_by_role("link", name="Investigate before choosing an experiment", exact=True).click()
+    frame.locator('.fw-presentation-toc a[href="#slide-next-step"]').click()
     assert len(page.frames) == 2
     frame.get_by_role("button", name="Present", exact=True).click()
     page.wait_for_function("document.body.classList.contains('tl-console-presenting')")
