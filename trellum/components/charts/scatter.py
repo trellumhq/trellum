@@ -7,7 +7,8 @@ from typing import Optional
 
 import pandas as pd
 
-from trellum.assets import load_js
+from trellum.assets import load_css, load_js
+from trellum.components.charts._scatter_summary import scatter_summary_config
 from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
@@ -38,14 +39,17 @@ class ScatterChart(Component):
     dataset_id: Optional[str] = None
     static: bool = False
     header_context: Optional[str] = field(default=None, kw_only=True)
+    header_summary: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="scatter_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
         _validate_header_context(self.header_context)
+        scatter_summary_config(self)
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary = scatter_summary_config(self)
         cid = ctx.next_id()
 
         if self.dataset_id:
@@ -59,6 +63,7 @@ class ScatterChart(Component):
                 "x_format": self.x_format,
                 "y_format": self.y_format,
                 "title": self.title,
+                **summary,
             })
         else:
             theme = ctx.theme
@@ -109,9 +114,11 @@ class ScatterChart(Component):
                 "y_format": self.y_format,
                 "gridColor": theme.grid_color,
                 "tickColor": theme.tick_color,
+                **summary,
             })
 
-        return _chart_container_html(cid, self.title, header_context=self.header_context)
+        return _chart_container_html(cid, self.title, header_context=self.header_context,
+                                     summary=bool(summary))
 
     @classmethod
     def cdn_deps(cls) -> list[str]:
@@ -119,7 +126,7 @@ class ScatterChart(Component):
 
     @classmethod
     def css(cls) -> str:
-        return _ChartBase.css()
+        return _ChartBase.css() + load_css("components/scatter.css")
 
     @classmethod
     def client_js(cls) -> str:

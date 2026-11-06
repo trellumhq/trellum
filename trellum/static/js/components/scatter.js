@@ -1,6 +1,126 @@
+/* Point-entry arithmetic never edits the supplied points or normalized radii. */
+function _fwScatterSummaryResult(datasets, summary) {
+    var count = 0, valid = true, values = [], scale = 0;
+    datasets.forEach(function(ds) {
+        ds.data.forEach(function(p) {
+            count++;
+            if (summary.stat === 'count') return;
+            if (!p || typeof p.x !== 'number' || !Number.isFinite(p.x) ||
+                    typeof p.y !== 'number' || !Number.isFinite(p.y)) valid = false;
+            else { values.push(p[summary.axis]); scale = Math.max(scale, Math.abs(p[summary.axis])); }
+        });
+    });
+    if (summary.stat === 'count') return {value: count, reason: 'Entry count; independent of coordinate completeness.'};
+    if (!count) return {value: null, reason: 'No point entries in current result.'};
+    if (!valid) return {value: null, reason: 'Every point entry needs finite numeric x and y coordinates.'};
+    var result;
+    if (summary.stat === 'min' || summary.stat === 'max') {
+        result = values.reduce(function(a, b) { return summary.stat === 'min' ? Math.min(a, b) : Math.max(a, b); });
+    } else {
+        // Add in source units when the absolute bound is safe, preserving
+        // small exact sums. Otherwise normalize before compensated addition
+        // and rescale only the mean, avoiding cross-point sum overflow.
+        var normalized = scale > Number.MAX_VALUE / count;
+        var sum = 0, correction = 0;
+        values.forEach(function(v) {
+            var term = normalized ? v / scale : v;
+            var adjusted = term - correction, next = sum + adjusted;
+            correction = (next - sum) - adjusted; sum = next;
+        });
+        result = normalized ? scale * (sum / count) : sum / count;
+    }
+    // Rounding at floating-point extremes cannot certify a nonfinite result.
+    return Number.isFinite(result) ? {value: result, reason: ''}
+        : {value: null, reason: 'Coordinate result is not finite at supplied precision.'};
+}
+
+function _fwScatterSummary(canvas, cfg, datasets) {
+    var id = canvas.id, descriptionId = id + '-scatter-summary-scope';
+    var box = document.querySelector('[data-chart-summary="' + id + '"]');
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) {
+        return t && t !== descriptionId;
+    });
+    if (cfg.header_summary) {
+        if (!box) {
+            var container = canvas.parentElement;
+            if (!container) return;
+            var before = container.previousElementSibling;
+            if (before && before.classList.contains('fw-chart-header-context')) before = before.previousElementSibling;
+            var head = document.createElement('div'); head.className = 'fw-chart-head';
+            if (before && before.classList.contains('fw-chart-title')) {
+                before.before(head); head.appendChild(before); before.style.marginBottom = '';
+            } else container.before(head);
+            box = document.createElement('div'); box.dataset.chartSummary = id; head.appendChild(box);
+        }
+        box.className = 'fw-chart-summary fw-scatter-summary';
+        var summary = cfg.header_summary, result = _fwScatterSummaryResult(datasets, summary);
+        function span(cls, text) {
+            var el = document.createElement('span'); el.className = cls; el.textContent = text; return el;
+        }
+        var text = result.value == null ? '—' : summary.stat === 'count' ? String(result.value)
+            : window.getFormatter(summary.format)(result.value);
+        var description = span('fw-scatter-summary-description',
+            'Current supplied or report-filtered point entries across all datasets, including legend-hidden entries and entries outside zoom. ' +
+            'Duplicate observations remain separate; entries are not distinct names, source facts, painted dots or unique people. ' +
+            (summary.stat === 'count' ? 'Entry count is independent of coordinate and bubble-size validity. ' :
+                'Coordinate pairs only; bubble drawing and size eligibility are not certified. ' +
+                (summary.stat === 'mean' ? 'Unweighted arithmetic mean of ' + summary.axis + '. ' : 'Selected coordinate: ' + summary.axis + '. ')) +
+            'Warehouse completeness and upstream missingness or precision are not established. ' + result.reason);
+        description.id = descriptionId;
+        var children = [span('fw-chart-summary-label', summary.label), span('fw-chart-summary-value', text),
+            span('fw-scatter-summary-scope', 'Current point entries' + (summary.axis ? ' · ' + summary.axis : ''))];
+        if (result.reason) children.push(span('fw-scatter-summary-reason', result.reason));
+        children.push(description); box.replaceChildren.apply(box, children);
+        box.title = description.textContent; tokens.push(descriptionId);
+    } else if (box) {
+        var head = box.parentElement;
+        box.remove();
+        if (head.classList.contains('fw-chart-head')) {
+            var title = head.querySelector('.fw-chart-title');
+            if (title) { title.style.marginBottom = '4px'; head.replaceWith(title); }
+            else if (!head.children.length) head.remove();
+        }
+    }
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+}
+
 window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
     var canvas = document.getElementById(id);
+    var bindings = window._fwScatterBindings || (window._fwScatterBindings = new Map());
+    if (bindings.has(id)) bindings.get(id)();
+    if (window._fwMetricDrawLeases && window._fwMetricDrawLeases[id]) {
+        window._fwMetricDrawLeases[id](); delete window._fwMetricDrawLeases[id];
+    }
     if (!canvas) return;
+    var active = true, unsubscribe = function() {}, lease = null;
+    function resetZoom() {
+        var c = window._chartInstances[id]; if (c && c.resetZoom) c.resetZoom();
+    }
+    function current() {
+        if (!active || document.getElementById(id) !== canvas) return;
+        draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+    }
+    var observer = new MutationObserver(function() {
+        if (document.getElementById(id) !== canvas) dispose();
+    });
+    function dispose() {
+        active = false; unsubscribe(); observer.disconnect();
+        canvas.removeEventListener('dblclick', resetZoom);
+        window.removeEventListener('fw-theme-change', current);
+        if (lease) {
+            lease();
+            if (window._fwMetricDrawLeases[id] === lease) delete window._fwMetricDrawLeases[id];
+        }
+        if (bindings.get(id) === dispose) bindings.delete(id);
+        if (document.getElementById(id) !== canvas) {
+            _fwScatterSummary(canvas, {}, []);
+            var chart = window._chartInstances[id];
+            if (chart && chart.canvas === canvas) { chart.destroy(); delete window._chartInstances[id]; }
+        }
+    }
+    bindings.set(id, dispose);
+    observer.observe(document.body, {childList: true, subtree: true});
 
     var fmtMap = { currency: fmtCompact$, number: fmtCompact, percent: fmtPercent };
     var xFmt = fmtMap[cfg.x_format] || fmtCompact;
@@ -11,6 +131,7 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
             window._chartInstances[id].destroy();
             delete window._chartInstances[id];
         }
+        _fwScatterSummary(canvas, cfg, datasets);
         var tc = window.getThemeColors();
         var isBubble = datasets.some(function(ds) {
             return ds.data.some(function(p) { return p.r != null; });
@@ -60,11 +181,9 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
         window._chartInstances[id]._fwThemeManagedFonts = true;
     }
 
-    if (cfg.dataset_id) {
-        canvas.addEventListener('dblclick', function() {
-            var c = window._chartInstances[id]; if (c && c.resetZoom) c.resetZoom();
-        });
-        window._fwLiveWrap(id, cfg, function(rows) {
+    function draw(rows) {
+        if (!active || document.getElementById(id) !== canvas) return;
+        if (cfg.dataset_id) {
             var tc = window.getThemeColors();
             var datasets = [];
             if (cfg.color_by) {
@@ -114,9 +233,18 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
                 });
             }
             _buildChart(datasets);
-        });
-        return;
+        } else _buildChart(cfg.datasets);
     }
-
-    _buildChart(cfg.datasets);
+    if (cfg.dataset_id) {
+        canvas.addEventListener('dblclick', resetZoom);
+        if (window._fwMetricsWorkspace) {
+            // Queue and workspace disposal stay with the existing leased wrapper.
+            window._fwLiveWrap(id, cfg, draw);
+            lease = window._fwMetricDrawLeases[id];
+        } else {
+            unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
+            window.addEventListener('fw-theme-change', current);
+            current();
+        }
+    } else draw();
 };
