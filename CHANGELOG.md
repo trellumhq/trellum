@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Give the ordinary portal CI suite a 20-minute job budget and stop on the
+  first test failure so its traceback and test report are available promptly.
+
 - Pin external CI actions to verified upstream commits while retaining weekly
   dependency-update checks.
 
