@@ -44,12 +44,16 @@ is internal and may change in a patch release without warning.
 | `python -m trellum.run` CLI flags | The documented flags, per the Tier 1 row above. This is the supported way to build a report — never by importing the runner internals |
 | `trellum.testing.runner.test_all_reports()` | Build every report against mock data, for a host's own "test run" action |
 | `trellum.themes.THEME_REGISTRY` | Available themes |
+| `trellum.data.assistant_query.validate_query`, `execute_query`, `describe_source` | Restricted PostgreSQL source reads: explicit relation grants, read-only identity, execution/cancellation deadlines and bounded JSON evidence. Synchronous worker API; callbacks run on auxiliary threads. `QueryRejected` is a safe rejection; `QueryExecutionError.confirmed` distinguishes a confirmed remote completion from an uncertain outcome, and `.cancelled` identifies confirmed caller cancellation. |
 | `trellum.data.query_df` / `resolve_connection` | Run a query against a configured data source, per the `query_df()` Tier 1 row |
 | `trellum.data.query.sql_dialect_for(source_type)` | The string-literal dialect a host must bind parameters with for a datasource type |
 | `trellum.data.query.bind_params(sql, params, dialect="standard")` | Substitute `:name` placeholders with escaped literals; `dialect` from `sql_dialect_for` |
 | `trellum.runner.local_annotation_events(config)` | A report's `annotations.events` from its `report.yaml` config, normalised the way a build merges them into `_events` |
 | `trellum.data.datasource_config` | `data-sources/config.yaml` read/write helpers |
 | `trellum.metrics.load_metrics` | The project's `metrics.yaml` as `{name: Metric}` — the business-metric registry a host may present or index. `{}` when the file is absent |
+| `trellum.metrics.parse_metrics_document` | Parse an already decoded registry document without file I/O, imports of providers or SQL execution. Raises `ValueError` for non-JSON values, cycles or bounds (64 KiB serialized, 5000 nodes, depth 12, 200 metrics); returns `MetricsLoadResult` with structural `problems`. Callers must bound decoding before calling. |
+| `trellum.metric_execution` | Optional pure canonical execution: `make_binding`, `publish_bindings`, `execute_metric`, `MetricUnavailable`; explicit build contracts and bounded complete daily inputs, as described below. |
+| Optional execution metadata | `data.json._metric_execution` maps metric IDs to explicit versioned execution fingerprints, semantics, coverage and column mappings. `_meta.json.metric_execution_build` pins the successful build ID; absence never implies canonical eligibility. |
 | `trellum.project.get_project_root()` | Project root resolution |
 | `trellum.project.load_project_config()` | The project's `config.yaml` |
 | `trellum.reporting_day.load_reporting_settings(project_root=None)` | Validated project reporting timezone, day boundary and Metrics build time. Pass an explicit root in multi-project hosts. |
@@ -230,3 +234,53 @@ A host must separately enforce admission, retry budgets, process
 termination/fencing and delivery deduplication. The framework only validates the
 configuration shape and emits evidence; it does not schedule retries. Raw driver
 or arbitrary Python activity outside framework APIs cannot be fully observed.
+
+### Optional canonical metric execution
+
+Ordinary metric claims and older reports continue to render unchanged. Assistant
+canonical execution additionally requires `metrics.yaml` `execution` metadata
+and an explicit report.yaml `metric_bindings` entry. Missing or unsupported
+metadata leaves that execution path unavailable; it does not change rendering.
+
+`execution` declares `timezone` (IANA), `unit`, `currency` (string or null),
+`grain: day`, `dimensions`, `additive_dimensions`, `filters` (dimension names),
+`time_aggregation` (`sum`, `last`, `average`, `none`), `null_policy: propagate`,
+`zero_denominator: "null"`, and `max_age_seconds` (1–31536000).
+Dimensions and grain must match the registry dataset. Only canonical sum,
+absolute sum and ratios of additive operands are supported. Ratios are computed
+from operand totals; average means average of complete daily totals. Distinct
+counts require non-additive declarations and cannot be rolled up beyond their
+published grain. Missing periods or dimension-day cells are unavailable, never inferred as zero.
+Every observed full dimension tuple within declared artifact coverage must have
+every requested day, including before dimensions are rolled up. Filters and
+dimension identities distinguish booleans, numbers and strings.
+
+Each `metric_bindings.<metric_id>` declares `output_dataset`, `columns` (an
+explicit canonical-column to output-column mapping covering date, dimensions
+and operands), `coverage_start`, `coverage_end` (exclusive), and
+`source_revision`. Registry dataset names never imply output dataset identity.
+The build publishes only claimed, non-overridden opt-ins in
+`data.json._metric_execution`, with a generated build ID and timestamp. The
+matching `_meta.json.metric_execution_build` pins the metadata. A versioned
+SHA-256 execution fingerprint covers the entire manifest, including binding,
+semantics and coverage; existing metric definition hashes are unchanged.
+This is an integrity/version check, not a signature or proof of source quality.
+
+The executor accepts explicit ISO dates `[start, end)` in the business timezone,
+declared filters and breakdowns. It requires complete daily coverage, rejects
+chunked input and duplicate grain rows, and computes before display truncation.
+The current inline budgets are 2 MiB input, 10000 rows, 366 periods, 50 output
+rows and 32000 output bytes. Report-bound tools use only that report's published
+snapshot; studio tools also compare the current bounded registry definition and
+semantics before execution. Definitions never include canonical SQL in these
+tools. Unsupported artifacts can be investigated through separately granted
+source tools. Multi-chunk execution, non-daily calendars and live canonical
+bindings are not implemented by this contract version.
+
+Generic assistant report queries retain raw previews and legacy behavior when no
+execution contract is present. Explicit contracts guard reductions of mapped
+metric operands: non-additive dimensions must remain grouped, and last/average/
+non-additive time rules cannot be replaced by an overall sum. Ratio operand
+reductions are conservatively routed to `query_metric` for weighted calculation
+or a granted source query. Raw reads and descriptive min/max/count/nunique reads
+remain exploratory and receive no approved-calculation assurance.

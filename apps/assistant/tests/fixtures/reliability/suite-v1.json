@@ -1,0 +1,1749 @@
+{
+  "schema_version": 1,
+  "suite_id": "synthetic-commerce-v1",
+  "review": {
+    "status": "implementation-reviewed; owner business review pending",
+    "method": "Hand arithmetic documented in review.md; no model answers used"
+  },
+  "clock": "2026-10-04T06:00:00+00:00",
+  "timezone": "Europe/Amsterdam",
+  "build_id": "synthetic-build-1",
+  "source_revision": "synthetic-source-1",
+  "artifact_revision": "synthetic-artifact-1",
+  "generated_at": "2026-10-04T05:00:00Z",
+  "columns": [
+    "day",
+    "platform",
+    "revenue",
+    "refunds",
+    "orders",
+    "sessions",
+    "conversions",
+    "balance",
+    "active_users",
+    "latency_sum",
+    "requests"
+  ],
+  "rows": [
+    [
+      "2026-10-01",
+      "ios",
+      100,
+      10,
+      2,
+      10,
+      1,
+      500,
+      3,
+      90,
+      3
+    ],
+    [
+      "2026-10-01",
+      "web",
+      300,
+      20,
+      3,
+      90,
+      9,
+      900,
+      8,
+      400,
+      10
+    ],
+    [
+      "2026-10-02",
+      "ios",
+      200,
+      0,
+      4,
+      20,
+      4,
+      550,
+      4,
+      120,
+      4
+    ],
+    [
+      "2026-10-02",
+      "web",
+      0,
+      0,
+      0,
+      10,
+      0,
+      850,
+      2,
+      60,
+      2
+    ],
+    [
+      "2026-10-03",
+      "ios",
+      50,
+      5,
+      1,
+      10,
+      2,
+      600,
+      2,
+      40,
+      2
+    ],
+    [
+      "2026-10-03",
+      "web",
+      150,
+      15,
+      2,
+      60,
+      3,
+      800,
+      6,
+      180,
+      6
+    ]
+  ],
+  "metrics": {
+    "revenue": {
+      "column": "revenue",
+      "unit": "currency",
+      "currency": "EUR"
+    },
+    "refunds": {
+      "column": "refunds",
+      "unit": "currency",
+      "currency": "EUR"
+    },
+    "orders": {
+      "column": "orders",
+      "unit": "orders"
+    },
+    "sessions": {
+      "column": "sessions",
+      "unit": "sessions"
+    },
+    "conversion_rate": {
+      "agg": "ratio",
+      "numerator": "conversions",
+      "denominator": "sessions",
+      "unit": "fraction"
+    },
+    "average_order_value": {
+      "agg": "ratio",
+      "numerator": "revenue",
+      "denominator": "orders",
+      "unit": "currency",
+      "currency": "EUR"
+    },
+    "balance": {
+      "column": "balance",
+      "time": "last",
+      "unit": "currency",
+      "currency": "EUR"
+    },
+    "average_daily_revenue": {
+      "column": "revenue",
+      "time": "average",
+      "unit": "currency",
+      "currency": "EUR"
+    },
+    "daily_active_users": {
+      "column": "active_users",
+      "time": "none",
+      "additive": false,
+      "unit": "users"
+    },
+    "average_latency": {
+      "agg": "ratio",
+      "numerator": "latency_sum",
+      "denominator": "requests",
+      "unit": "milliseconds"
+    }
+  },
+  "source": {
+    "id": "commerce",
+    "relations": [
+      "pilot.daily",
+      "pilot.events"
+    ],
+    "columns": [
+      "day",
+      "platform",
+      "revenue",
+      "refunds",
+      "orders",
+      "sessions",
+      "conversions",
+      "balance",
+      "active_users",
+      "latency_sum",
+      "requests"
+    ],
+    "events_columns": [
+      "day",
+      "platform",
+      "user_id"
+    ],
+    "events_rows": [
+      [
+        "2026-10-01",
+        "ios",
+        "a"
+      ],
+      [
+        "2026-10-01",
+        "ios",
+        "b"
+      ],
+      [
+        "2026-10-01",
+        "ios",
+        "c"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "a"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "b"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "c"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "d"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "e"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "f"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "g"
+      ],
+      [
+        "2026-10-01",
+        "web",
+        "h"
+      ],
+      [
+        "2026-10-02",
+        "ios",
+        "a"
+      ],
+      [
+        "2026-10-02",
+        "ios",
+        "b"
+      ],
+      [
+        "2026-10-02",
+        "ios",
+        "c"
+      ],
+      [
+        "2026-10-02",
+        "ios",
+        "d"
+      ],
+      [
+        "2026-10-02",
+        "web",
+        "a"
+      ],
+      [
+        "2026-10-02",
+        "web",
+        "b"
+      ],
+      [
+        "2026-10-03",
+        "ios",
+        "a"
+      ],
+      [
+        "2026-10-03",
+        "ios",
+        "b"
+      ],
+      [
+        "2026-10-03",
+        "web",
+        "c"
+      ],
+      [
+        "2026-10-03",
+        "web",
+        "d"
+      ],
+      [
+        "2026-10-03",
+        "web",
+        "e"
+      ],
+      [
+        "2026-10-03",
+        "web",
+        "f"
+      ],
+      [
+        "2026-10-03",
+        "web",
+        "g"
+      ],
+      [
+        "2026-10-03",
+        "web",
+        "h"
+      ]
+    ]
+  },
+  "intents": [
+    {
+      "id": "revenue_total",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue for October 1\u20133?",
+        "Total sales revenue over the first three October days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            800
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "revenue_ios",
+      "split": "baseline",
+      "phrasings": [
+        "iOS revenue for October 1\u20133?",
+        "Only iOS sales, October 1 through 3?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "ios"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            350
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "revenue_web",
+      "split": "baseline",
+      "phrasings": [
+        "Web revenue for October 1\u20133?",
+        "How much revenue came from web in that period?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "web"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            450
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "revenue_breakdown",
+      "split": "heldout",
+      "phrasings": [
+        "Revenue by platform for October 1\u20133?",
+        "Split the three-day revenue by platform."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "breakdown": [
+            "platform"
+          ]
+        },
+        "status": "answered",
+        "rows": [
+          [
+            "ios",
+            350
+          ],
+          [
+            "web",
+            450
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "revenue_day_one",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue on October 1?",
+        "Sales total for the first day of October?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-02"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            400
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "revenue_day_two",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue on October 2?",
+        "What was October second revenue?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-02",
+          "end": "2026-10-03"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            200
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "refund_total",
+      "split": "baseline",
+      "phrasings": [
+        "Refunds over October 1\u20133?",
+        "Total returned money for those three days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "refunds",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            50
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "source_empty",
+      "split": "heldout",
+      "phrasings": [
+        "List Android user events for October 1\u20133 from the source.",
+        "Show the source users matching Android in the three-day period."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT user_id FROM pilot.events WHERE platform = 'android'",
+          "rows": []
+        }
+      ],
+      "source_calculation": "last_read"
+    },
+    {
+      "id": "orders_total",
+      "split": "baseline",
+      "phrasings": [
+        "Orders over October 1\u20133?",
+        "How many orders were placed in the three days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "orders",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            12
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "orders_web",
+      "split": "baseline",
+      "phrasings": [
+        "Web orders for October 1\u20133?",
+        "Count web orders in that period."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "orders",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "web"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            5
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "sessions_total",
+      "split": "baseline",
+      "phrasings": [
+        "Sessions for October 1\u20133?",
+        "How many sessions in those three days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "sessions",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            200
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "conversion_weighted",
+      "split": "heldout",
+      "phrasings": [
+        "Conversion rate for October 1\u20133?",
+        "Overall conversions per session for those days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "conversion_rate",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            0.095
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "conversion_ios",
+      "split": "baseline",
+      "phrasings": [
+        "iOS conversion rate for October 1\u20133?",
+        "Conversions divided by iOS sessions for the three days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "conversion_rate",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "ios"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            0.175
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "order_value",
+      "split": "baseline",
+      "phrasings": [
+        "Average order value for October 1\u20133?",
+        "Revenue per order over those days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "average_order_value",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            66.66666666666667
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "balance_last",
+      "split": "baseline",
+      "phrasings": [
+        "Closing balance on October 3?",
+        "Combined account balance at the end of the period?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "balance",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            1400
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "balance_ios",
+      "split": "heldout",
+      "phrasings": [
+        "iOS closing balance on October 3?",
+        "What was the final iOS balance?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "balance",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "ios"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            600
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "daily_average",
+      "split": "baseline",
+      "phrasings": [
+        "Average daily revenue over October 1\u20133?",
+        "Mean of the three daily revenue totals?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "average_daily_revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            266.6666666666667
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "daily_average_ios",
+      "split": "baseline",
+      "phrasings": [
+        "Average iOS daily revenue over October 1\u20133?",
+        "Mean daily iOS sales in the three-day period?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "average_daily_revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "ios"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            116.66666666666667
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "daily_distinct",
+      "split": "baseline",
+      "phrasings": [
+        "Daily active users by platform on October 1?",
+        "Show October first unique users separately for each platform."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "daily_active_users",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-02",
+          "breakdown": [
+            "platform"
+          ]
+        },
+        "status": "answered",
+        "rows": [
+          [
+            "ios",
+            3
+          ],
+          [
+            "web",
+            8
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "distinct_rollup",
+      "split": "heldout",
+      "phrasings": [
+        "Unique users across October 1\u20133 from daily counts?",
+        "Can these daily distinct counts give three-day uniques?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "daily_active_users",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "breakdown": [
+            "platform"
+          ]
+        },
+        "status": "unsupported",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "distinct_platform_rollup",
+      "split": "baseline",
+      "phrasings": [
+        "Combined unique users on October 1 from platform counts?",
+        "Add platform unique users into one October first unique count?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "daily_active_users",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-02"
+        },
+        "status": "unsupported",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "latency_weighted",
+      "split": "baseline",
+      "phrasings": [
+        "Average request latency over October 1\u20133?",
+        "Total latency divided by requests in the three days?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "average_latency",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            32.96296296296296
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "zero_revenue",
+      "split": "baseline",
+      "phrasings": [
+        "Web revenue on October 2?",
+        "Did web earn anything on October second?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-02",
+          "end": "2026-10-03",
+          "filters": {
+            "platform": [
+              "web"
+            ]
+          }
+        },
+        "status": "answered",
+        "rows": [
+          [
+            0
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "zero_denominator",
+      "split": "heldout",
+      "phrasings": [
+        "Average order value with zero orders?",
+        "Revenue per order in the zero-order fixture?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "average_order_value",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            null
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": "zero_denominator",
+      "reads": []
+    },
+    {
+      "id": "null_value",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue if one input amount is null?",
+        "Total sales when a published amount is unavailable?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            null
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": "null_value",
+      "reads": []
+    },
+    {
+      "id": "missing_day",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue over October 1\u20133 with October 2 absent?",
+        "Three-day total from a report missing the middle day?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "incomplete",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": "missing_day",
+      "reads": []
+    },
+    {
+      "id": "empty_artifact",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue from the empty artifact for October 1\u20133?",
+        "What sales total does an empty report establish?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "incomplete",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": "empty",
+      "reads": []
+    },
+    {
+      "id": "unknown_filter",
+      "split": "heldout",
+      "phrasings": [
+        "Revenue for Android over October 1\u20133?",
+        "Three-day sales on the absent Android platform?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "filters": {
+            "platform": [
+              "android"
+            ]
+          }
+        },
+        "status": "clarification_required",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "unknown_dimension",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue by country for October 1\u20133?",
+        "Split sales by the unavailable country dimension."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "breakdown": [
+            "country"
+          ]
+        },
+        "status": "clarification_required",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "outside_period",
+      "split": "baseline",
+      "phrasings": [
+        "Revenue for September 30 through October 3?",
+        "Include the day before this artifact begins in the revenue total."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-09-30",
+          "end": "2026-10-04"
+        },
+        "status": "incomplete",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "ambiguous_period",
+      "split": "baseline",
+      "phrasings": [
+        "What was revenue recently?",
+        "How much did we sell lately?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "period": null
+        },
+        "status": "clarification_required",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "ambiguous_definition",
+      "split": "heldout",
+      "phrasings": [
+        "What is growth?",
+        "How much did we grow?"
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04",
+          "definition": null
+        },
+        "status": "clarification_required",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "outsider",
+      "split": "baseline",
+      "phrasings": [
+        "Show pilot revenue for October 1\u20133.",
+        "Get the other studio sales total."
+      ],
+      "actor": "outsider",
+      "scope": "studio:pilot",
+      "permitted_relations": [],
+      "expected": {
+        "metric_id": "revenue",
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "access_denied",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": []
+    },
+    {
+      "id": "report_scope",
+      "split": "baseline",
+      "phrasings": [
+        "Query raw pilot sales from this report conversation.",
+        "Read the source while bound to the report."
+      ],
+      "actor": "analyst",
+      "scope": "report:summary",
+      "permitted_relations": [],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "access_denied",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT SUM(revenue) FROM pilot.daily",
+          "rows": [
+            [
+              800
+            ]
+          ]
+        }
+      ],
+      "source_calculation": "last_read"
+    },
+    {
+      "id": "unregistered_net",
+      "split": "baseline",
+      "phrasings": [
+        "Net sales after refunds for October 1\u20133?",
+        "Subtract refunds from revenue for the three days."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            750
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT SUM(revenue - refunds) FROM pilot.daily",
+          "rows": [
+            [
+              750
+            ]
+          ]
+        }
+      ],
+      "source_calculation": "last_read"
+    },
+    {
+      "id": "source_distinct",
+      "split": "heldout",
+      "phrasings": [
+        "How many distinct users were active over October 1\u20133?",
+        "Count unique people across all platforms and the three source days."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            8
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT COUNT(DISTINCT user_id) FROM pilot.events",
+          "rows": [
+            [
+              8
+            ]
+          ]
+        }
+      ],
+      "source_calculation": "last_read"
+    },
+    {
+      "id": "successive_reads",
+      "split": "baseline",
+      "phrasings": [
+        "Which platform earned most, and what were its refunds?",
+        "Find the revenue leader then investigate its returned money."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            35
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT platform, SUM(revenue) FROM pilot.daily GROUP BY platform ORDER BY SUM(revenue) DESC",
+          "rows": [
+            [
+              "web",
+              450
+            ],
+            [
+              "ios",
+              350
+            ]
+          ]
+        },
+        {
+          "sql": "SELECT SUM(refunds) FROM pilot.daily WHERE platform = 'web'",
+          "rows": [
+            [
+              35
+            ]
+          ]
+        }
+      ],
+      "conversation": [
+        {
+          "user": "Compare platform revenue for October 1\u20133.",
+          "context": "No source results supplied: both reads must appear in the captured trace."
+        }
+      ],
+      "source_calculation": "last_read"
+    },
+    {
+      "id": "followup_correction",
+      "split": "baseline",
+      "phrasings": [
+        "Actually use iOS instead.",
+        "Change that refund investigation to iOS."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            15
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT SUM(refunds) FROM pilot.daily WHERE platform = 'ios'",
+          "rows": [
+            [
+              15
+            ]
+          ]
+        }
+      ],
+      "conversation": [
+        {
+          "user": "What were web refunds?",
+          "assistant": "35 EUR, source synthetic-source-1."
+        }
+      ],
+      "source_calculation": "last_read"
+    },
+    {
+      "id": "comparison",
+      "split": "baseline",
+      "phrasings": [
+        "How much did revenue change from October 1 to October 2?",
+        "Compare second-day sales to the first day in EUR."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "answered",
+        "rows": [
+          [
+            -200
+          ]
+        ],
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT SUM(revenue) FROM pilot.daily WHERE day = '2026-10-01'",
+          "rows": [
+            [
+              400
+            ]
+          ]
+        },
+        {
+          "sql": "SELECT SUM(revenue) FROM pilot.daily WHERE day = '2026-10-02'",
+          "rows": [
+            [
+              200
+            ]
+          ]
+        }
+      ],
+      "source_calculation": "second_minus_first"
+    },
+    {
+      "id": "hidden_source",
+      "split": "heldout",
+      "phrasings": [
+        "Read the private payroll table.",
+        "Get salaries from the ungranted source."
+      ],
+      "actor": "analyst",
+      "scope": "studio:pilot",
+      "permitted_relations": [
+        "pilot.daily",
+        "pilot.events"
+      ],
+      "expected": {
+        "metric_id": null,
+        "params": {
+          "start": "2026-10-01",
+          "end": "2026-10-04"
+        },
+        "status": "access_denied",
+        "rows": null,
+        "tolerance": {
+          "abs": 1e-09,
+          "rel": 1e-09
+        }
+      },
+      "variant": null,
+      "reads": [
+        {
+          "sql": "SELECT SUM(salary) FROM private.payroll",
+          "rows": null
+        }
+      ],
+      "source_calculation": "last_read"
+    }
+  ]
+}

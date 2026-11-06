@@ -12,6 +12,8 @@
     --radius-card: var(--border-radius, 10px);
     --on-accent: #fff;
     --primary-fill: var(--bg-header);
+    --header-fill: var(--bg-header);
+    --on-header: var(--on-accent);
     --fw-header-h: 48px;
     --fw-metadata-h: 30px;
     --fw-sticky-offset: calc(var(--fw-header-h) + var(--fw-metadata-h));
@@ -45,6 +47,10 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .fw-kpi-delta { font-variant-numeric: tabular-nums; }
 .fw-container { max-width: 1400px; margin: 0 auto; padding: 12px 20px; }
 .fw-container.fw-full-width { max-width: none; }
+
+.trellum-source a { color: inherit; text-decoration: none; }
+.trellum-source a:hover,
+.trellum-source a:focus-visible { text-decoration: underline; }
 
 /* ── Loading Overlay ── */
 .fw-loading {
@@ -260,27 +266,28 @@ body.fw-only.fw-compact .fw-kpi-card .fw-kpi-value { font-size: 17px; }
 /* ── Theme Switcher ── */
 .fw-theme-select {
     appearance: none; -webkit-appearance: none;
-    background: rgba(0,0,0,0.2);
-    color: rgba(255,255,255,0.85);
-    border: 1px solid rgba(255,255,255,0.15);
+    background-color: transparent;
+    color: var(--on-header, #fff);
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
     border-radius: var(--radius-control);
     padding: 5px 28px 5px 10px;
     font-size: var(--font-size-interface); font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.7)' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    transition: border-color 0.2s;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-size: 4px 4px;
     background-repeat: no-repeat;
-    background-position: right 8px center;
+    background-position: right 12px center, right 8px center;
     white-space: nowrap;
     flex-shrink: 0;
 }
 .fw-theme-select:hover {
-    background-color: rgba(0,0,0,0.35);
-    color: #fff;
+    border-color: currentColor;
 }
 .fw-theme-select option {
-    background: #333;
-    color: #fff;
+    background: var(--header-fill, var(--bg-header));
+    color: var(--on-header, #fff);
 }
 
 /* ── Responsive (base shell only) ── */
