@@ -24,6 +24,7 @@ from trellum.components import (
     DataSource,
     DoughnutChart,
     FilterBar,
+    Grid,
     HeatmapChart,
     KpiRow,
     LineChart,
@@ -86,11 +87,9 @@ class PlayerOverviewReport(BaseReport):
         # Claimed · demo: gross/iap/ad_revenue and transactions are the same
         # metrics.yaml definitions monetization claims off its own dataset --
         # two reports, two datasets, one definition each, by construction.
-        # `agg: "ratio"` always returns a percentage (the runtime multiplies
-        # by 100), so it is only correct with `format: "percent"`. Currency
-        # ratios such as ARPDAU belong in a chart's `ratios=` instead -- see
-        # "ARPDAU by Platform". payer_share is the same ratio monetization's
-        # own dataset also claims, and ad_share is the demo's stale-badge
+        # `agg: "ratio"` scales by 100 when `format: "percent"`; currency
+        # ratios retain their native units. payer_share is the same ratio
+        # monetization's own dataset also claims, and ad_share is the stale-badge
         # metric (v2 in metrics.yaml -- see its file header) claimed here and
         # by insert-coin.
         ctx.add_section("Overview", [
@@ -108,6 +107,30 @@ class PlayerOverviewReport(BaseReport):
             ], dataset_id="main"),
         ])
 
+        # Daily totals use the same additive fact grain as the detailed
+        # charts. Summaries average plotted days after the current filters.
+        ctx.add_section("Daily Trends", [
+            RawHTML(html="<p>Daily totals for the current selection. Daily avg "
+                    "averages the displayed days; active-user totals are not "
+                    "unique players across the full period.</p>"),
+            Grid(columns=3, min_width=280, children=[
+                LineChart(df, x="event_date", y=column, title=title,
+                          dataset_id="main", y_format=value_format,
+                          height="compact", header_summary={
+                              "stat": "mean", "series": 0,
+                              "label": "Daily avg", "format": value_format,
+                          })
+                for column, title, value_format in [
+                    ("dau", "Daily Active Users", "number"),
+                    ("new_users", "New Users", "number"),
+                    ("sessions", "Sessions", "number"),
+                    ("transactions", "Transactions", "number"),
+                    ("iap_revenue", "IAP Revenue", "currency"),
+                    ("ad_revenue", "Ad Revenue", "currency"),
+                ]
+            ]),
+        ])
+
         # ── Engagement ───────────────────────────────────────────────
         ctx.add_section("Engagement", [
             LineChart(df, x="event_date", y="dau",
@@ -123,14 +146,14 @@ class PlayerOverviewReport(BaseReport):
                        title="Acquisition vs Session Volume · demo: dual-axis "
                              "combo, bars and line from one DataSource",
                        dataset_id="main"),
-        ])
+        ], collapsible=True, default_collapsed=True)
 
         # ── Efficiency ───────────────────────────────────────────────
         # Claimed · demo: arpdau and avg_transaction_value are currency
         # RATIOS, which metrics.yaml deliberately defines as descriptive
-        # (see metrics.yaml's header) -- the live KpiRow ratio agg always
-        # multiplies by 100 for percent display, which is wrong by 100x for
-        # a dollar figure. A descriptive claim still carries the shared
+        # (see metrics.yaml's header). The runtime now supports currency
+        # ratios too, but these existing cards retain their static scope
+        # over the full fetched window. A descriptive claim carries the shared
         # label/format; the number itself is computed here, once, in Python.
         _dau_sum = df["dau"].sum()
         _arpdau = float(df["iap_revenue"].sum() / _dau_sum) if _dau_sum else 0.0
@@ -169,7 +192,7 @@ class PlayerOverviewReport(BaseReport):
                       title="ARPDAU by Platform · demo: live ratios -- the "
                             "division happens after your filters",
                       dataset_id="main", y_format="currency"),
-        ])
+        ], collapsible=True, default_collapsed=True)
 
         # ── Where ────────────────────────────────────────────────────
         # The map states the shape of the selected window; the ranked bar
