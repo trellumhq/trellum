@@ -6,7 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
-    examples_annotations, examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
+    examples_annotations, examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_chart_summaries, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
     examples_kpi_states, examples_layouts, examples_line_availability, examples_line_forecasts, examples_line_styles, examples_month_context, examples_monthly_averages, examples_pivots, examples_status_text, examples_table_drill_down, examples_table_pinning, examples_table_row_limits, examples_table_shading, examples_table_totals, examples_tables, examples_treemaps,
 )
 
@@ -29,6 +29,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-month-context-—-off-and-on">month context</a>, '
             '<a href="#sec-monthly-averages-—-partial-selection-and-observed-days">monthly averages</a>, '
             '<a href="#sec-chart-header-context-—-filtered-revenue-and-summary">chart context</a>, '
+            '<a href="#sec-chart-summaries-—-static-off-and-on">chart summaries</a>, '
             '<a href="#sec-category-colors-—-spend-observations">category colors</a>, '
             '<a href="#sec-area-example-filters">area charts</a>, '
             '<a href="#sec-bar-values-—-category-and-platform-observations">bar values and stack labels</a>, '
@@ -106,6 +107,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_monthly_averages.add_sections(ctx)
 
         examples_chart_context.add_sections(ctx)
+        examples_chart_summaries.add_sections(ctx)
 
         examples_category_colors.add_sections(ctx)
 

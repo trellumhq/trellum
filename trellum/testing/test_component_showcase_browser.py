@@ -232,6 +232,16 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert context_canvas.get_attribute('aria-describedby').split().count(
                 context_canvas.get_attribute('id') + '-header-context') == 1
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='chart summaries', exact=True).click()
+            summary_bar_section = page.locator('#sec-chart-summaries-—-filtered-horizontal-categories')
+            summary_bar_section.get_by_role('button', name='Partner', exact=True).click()
+            expect(summary_bar_section.locator('.fw-chart-summary-value')).to_have_text('70')
+            summary_area_section = page.locator('#sec-chart-summaries-—-selected-area-band')
+            summary_area_section.get_by_role('button', name='Direct', exact=True).click()
+            expect(summary_area_section.locator('.fw-chart-summary-value')).to_have_text('4')
+            expect(summary_bar_section.locator('.fw-chart-summary-value')).to_have_text('70')
+            assert context_section.locator('.fw-chart-summary-value').inner_text() == '372'
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role('link', name='table shading', exact=True).click()
             shading_section = page.locator('#sec-table-shading-—-filterable-cohort-metrics')
             shading_section.get_by_role('button', name='iOS', exact=True).click()

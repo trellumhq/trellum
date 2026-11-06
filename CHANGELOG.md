@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only BarChart and AreaChart header summaries with explicit
+  plotted-series scope, validated series selection and statistic formatting.
+  Added native examples; default plots and existing LineChart summaries remain
+  unchanged.
+
 - Optional keyword-only DataTable row drill-down through existing dropdown
   owners, with raw string keys, clearable selection context and explained
   local-search/report-filter empty results. Child dropdowns can explicitly

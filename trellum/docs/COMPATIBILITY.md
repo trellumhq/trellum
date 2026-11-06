@@ -1,5 +1,16 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional BarChart and AreaChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors, plots and
+output. Nonempty declarations require an explicit statistic and
+`scope="plotted_series"`, with a selected series when more than one is plotted.
+Summaries describe the final plotted vector after filters, aggregation, sorting
+and Top-N/Other; they do not infer completeness or weighted ratio totals.
+Existing LineChart declarations and calculations retain their current contract.
+Rebuild matching Python/HTML/data/runtime assets for new summaries. No database
+or host migration is required. See [chart summaries](report-chart-summaries.md).
+
 ## Unreleased: optional DataTable row drill-down
 
 Keyword-only `DataTable.drill_down=None` preserves default output and positional

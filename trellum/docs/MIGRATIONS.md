@@ -1,5 +1,15 @@
 # Framework Migration Guide
 
+## Unreleased: optional BarChart and AreaChart summaries
+
+Existing calls need no changes. Authors may opt in with keyword-only
+`header_summary={"stat": "sum", "scope": "plotted_series"}` for a single
+additive series. Select `series` explicitly when the chart has several series;
+do not use sums for rates. This does not alter the existing LineChart summary
+API. Rebuild matching HTML/data/runtime assets for the option; no host or
+database migration is needed. See [chart summaries](report-chart-summaries.md)
+for valid statistics, formats and the filtered plotted-vector scope.
+
 ## Unreleased: optional DataTable matching-population totals
 
 Keyword-only `DataTable.totals=None` preserves existing callers and output.
