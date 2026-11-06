@@ -6,7 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
-    examples_areas, examples_bars, examples_chart_context, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
+    examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
     examples_kpi_states, examples_layouts, examples_line_styles, examples_pivots, examples_status_text, examples_table_shading, examples_tables, examples_treemaps,
 )
 
@@ -24,6 +24,7 @@ class ComponentShowcaseReport(BaseReport):
             '<p>Jump to <a href="#sec-line-example-filters">line charts</a>, '
             '<a href="#sec-line-styles:-density-follows-the-plot">line styles</a>, '
             '<a href="#sec-chart-header-context-—-filtered-revenue-and-summary">chart context</a>, '
+            '<a href="#sec-category-colors-—-spend-observations">category colors</a>, '
             '<a href="#sec-area-example-filters">area charts</a>, '
             '<a href="#sec-bar-values-—-category-and-platform-observations">bar values and stack labels</a>, '
             '<a href="#sec-combo-charts-—-daily-channel-observations">combo charts</a>, '
@@ -91,6 +92,8 @@ class ComponentShowcaseReport(BaseReport):
         examples_line_styles.add_sections(ctx)
 
         examples_chart_context.add_sections(ctx)
+
+        examples_category_colors.add_sections(ctx)
 
         examples_controls.add_sections(ctx)
 

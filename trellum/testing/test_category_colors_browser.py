@@ -28,23 +28,28 @@ DECLARATION = {'domain': 'acquisition', 'column': 'channel', 'slots': {'UA': 0, 
 
 
 def _install_baseline():
-    """Load the actual Git baseline in this disposable build subprocess only.
+    """Use historical code when available, otherwise a current opt-out control.
 
-    No alternate checkout, fake chart renderer or argument-based emulation:
-    original Python chart modules and JS assets are read from the required Git
-    object, and only the new constructor argument is removed from fixture calls.
+    Shallow checkouts still exercise every functional assertion. Evidence names
+    the actual source; an opt-out control is never reported as historical code.
     """
-    import trellum.assets as assets
-    import trellum.rendering.js_runtime as runtime
-    original = assets.load_js
-    names = ['runtime/color_registry.js', 'runtime/theme.js', 'components/chart_base.js', 'components/doughnut.js']
-    sources = {name: subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/{name}'], cwd=ROOT, text=True) for name in names}
-    assets.load_js = lambda name: sources[name] if name in sources else original(name)
-    runtime.load_js = assets.load_js
-    for name in ('base', 'line_area', 'bar', 'doughnut'):
-        module = importlib.import_module('trellum.components.charts.' + name)
-        source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/{name}.py'], cwd=ROOT, text=True)
-        exec(compile(source, f'{BASELINE}/{name}.py', 'exec'), module.__dict__)
+    try:
+        historical = subprocess.run(['git', 'cat-file', '-e', BASELINE], cwd=ROOT,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    except FileNotFoundError:
+        historical = False
+    if historical:
+        import trellum.assets as assets
+        import trellum.rendering.js_runtime as runtime
+        original = assets.load_js
+        names = ['runtime/color_registry.js', 'runtime/theme.js', 'components/chart_base.js', 'components/doughnut.js']
+        sources = {name: subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/{name}'], cwd=ROOT, text=True) for name in names}
+        assets.load_js = lambda name: sources[name] if name in sources else original(name)
+        runtime.load_js = assets.load_js
+        for name in ('base', 'line_area', 'bar', 'doughnut'):
+            module = importlib.import_module('trellum.components.charts.' + name)
+            source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/{name}.py'], cwd=ROOT, text=True)
+            exec(compile(source, f'{BASELINE}/{name}.py', 'exec'), module.__dict__)
     import trellum.components as components
     import trellum.components.charts as charts
     for name, module in [('LineChart', 'line_area'), ('StackedBar', 'bar'), ('DoughnutChart', 'doughnut')]:
@@ -55,6 +60,7 @@ def _install_baseline():
         setattr(components, name, constructor)
         setattr(charts, name, constructor)
         globals()[name] = constructor
+    return BASELINE if historical else None
 
 
 def _context(output):
@@ -65,8 +71,7 @@ def _context(output):
 
 def build_report(output, *, baseline=False, doughnut_only=False):
     output = Path(output)
-    if baseline:
-        _install_baseline()
+    reference = _install_baseline() if baseline else None
     ctx = _context(output)
     if not doughnut_only:
         path = ROOT / 'trellum/demo/reports/component-showcase/examples_category_colors.py'
@@ -131,7 +136,9 @@ def build_report(output, *, baseline=False, doughnut_only=False):
         ])])
     render_report(ctx, str(output), auto_refresh=False)
     copy_vendor_tree(output)
-    (output / 'source.json').write_text(json.dumps({'baseline': BASELINE if baseline else None, 'only_argument_removed': baseline}))
+    (output / 'source.json').write_text(json.dumps({'baseline': reference,
+        'control': 'historical' if reference else ('current opt-out' if baseline else None),
+        'only_argument_removed': baseline}))
 
 
 def _open(page, output):
@@ -428,8 +435,20 @@ def _browser_check(tmp_path, width):
                 window._reportData.components[id]=cfg;window._fwRenderers[cfg.type](id,cfg);}""",current['id'])
             assert _semantic(_state(page,title)) == _semantic(current)
         assert page.evaluate('window._categoryThemeAdds-window._categoryThemeRemoves') == live_counts
+        # Removing the opt-in on a reused StackedBar config must recreate the
+        # normal live binding after disposing its category-specific listeners.
+        page.evaluate("""id=>{const cfg=window._reportData.components[id];
+            delete cfg.category_colors;window._fwRenderers.chart(id,cfg);
+            window._fwFilterEngine.setFilter('category_stacks','mapping-removal','channel','equals','Retargeting');
+        }""", stack['id'])
+        assert [d['label'] for d in _state(page, 'Spend by selected breakdown')['datasets']] == ['Retargeting']
+        page.locator(f'[data-stack-toggle="{stack["id"]}"] button', has_text='Platform').click()
+        assert set(_colors(_state(page, 'Spend by selected breakdown'))) == {'iOS', 'Android'}
+        page.evaluate("window._fwFilterEngine.clearFilter('category_stacks','mapping-removal')")
+        page.locator(f'[data-stack-toggle="{stack["id"]}"] button', has_text='Channel').click()
+        assert set(_colors(_state(page, 'Spend by selected breakdown'))) == {'UA', 'Retargeting'}
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
-        (shots / f'{width}-comparison.json').write_text(json.dumps({'baseline':BASELINE,
+        (shots / f'{width}-comparison.json').write_text(json.dumps({'source':json.loads((before/'source.json').read_text()),
             'before':baseline_states,'after':changed_states,'errors':errors}, indent=2))
         assert errors == []
         browser.close()

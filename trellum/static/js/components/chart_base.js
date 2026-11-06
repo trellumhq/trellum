@@ -549,6 +549,9 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var previousBindings = window._fwCategoryChartBindings;
     if (!cfg.category_colors && previousBindings && previousBindings.has(id)) {
         previousBindings.get(id)(); previousBindings.delete(id);
+        // The cached draw belonged to the binding just disposed. A reused
+        // StackedBar config still has stack_labels, so it must bind again.
+        delete canvas._fwBarLive;
     }
 
     /* ── Live mode ─────────────────────────────────────────── */

@@ -238,6 +238,22 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(shading_section.locator('.fw-table-note')).to_contain_text('2 matching')
             assert shading_section.locator('.fw-table-shading-key').count() == 1
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='category colors', exact=True).click()
+            category_spend = page.locator('canvas[data-fw-title="Spend declared"]')
+            category_revenue = page.locator('canvas[data-fw-title="Revenue declared"]')
+            for chart in (category_spend, category_revenue):
+                chart.scroll_into_view_if_needed()
+                page.wait_for_function('id => !!window._chartInstances[id]', arg=chart.get_attribute('id'))
+                assert page.evaluate("""id => Object.fromEntries(window._chartInstances[id].data.datasets
+                    .map(d => [d.label, d.borderColor]))""", chart.get_attribute('id')) == {
+                        'UA': '#0d9488', 'Retargeting': '#c9861b'}
+            color_ring = page.locator('canvas[data-fw-title="Live declared"]')
+            color_ring.scroll_into_view_if_needed()
+            page.locator('#sec-category-colors-—-snapshot-and-filtered-rings').get_by_role(
+                'button', name='North', exact=True).click()
+            page.wait_for_function("id => window._chartInstances[id]?.data.datasets[0].data[0] === 323",
+                                   arg=color_ring.get_attribute('id'))
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
