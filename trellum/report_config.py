@@ -52,6 +52,11 @@ def validate_content_config(config: object) -> dict:
         raise ValueError("report.yaml kind must be 'report' or 'analysis'")
     if "initial_audience" in config and config["initial_audience"] not in ("studio", "private"):
         raise ValueError("report.yaml initial_audience must be 'studio' or 'private'")
+    if "presentation_view" in config:
+        if config["presentation_view"] not in ("document", "slides"):
+            raise ValueError("presentation_view must be 'document' or 'slides'")
+        if config.get("kind") != "analysis" or config.get("format") != "presentation":
+            raise ValueError("presentation_view requires kind: analysis and format: presentation")
     if config.get("kind") == "analysis":
         if config.get("format", "article") not in ("article", "presentation"):
             raise ValueError("Analysis format must be 'article' or 'presentation'")
