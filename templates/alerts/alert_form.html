@@ -121,8 +121,10 @@
   <p class="muted">Preview only. No delivery or budget warning was sent.</p>
   <h2>Draft test · {{ result.condition }}</h2>
   {% if result.title %}<p><strong>{{ result.title }}</strong></p>{% endif %}
-  {% if result.message %}<p>{{ result.message }}</p>{% endif %}
-  {% if result.evidence %}<h3>Evidence</h3><ul>{% for item in result.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  {% if result.response.summary %}<p>{{ result.response.summary }}</p>{% elif result.message %}<p>{{ result.message }}</p>{% endif %}
+  {% if result.response.why_it_matters %}<p><strong>Why it matters</strong><br>{{ result.response.why_it_matters }}</p>{% endif %}
+  {% if result.response.what_to_check_next %}<p><strong>What to check next</strong><br>{{ result.response.what_to_check_next }}</p>{% endif %}
+  {% if result.evidence %}<h3>Supporting figures</h3><ul>{% for item in result.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
   {% if result.interpretation %}<p>Window: {{ result.interpretation.window }} · Timezone: {{ result.interpretation.timezone }} · Scope: {{ result.interpretation.scope }} · Freshness: {{ result.interpretation.freshness }}</p>{% endif %}
   <p>Delivery simulation: {{ result.simulation|default:"Not evaluated" }}{% if result.simulation_reason %} · {{ result.simulation_reason }}{% endif %}</p>
   <p>{% if result.cost is None %}Cost unavailable{% else %}Cost ${{ result.cost }}{% endif %} · {{ result.status }}</p>

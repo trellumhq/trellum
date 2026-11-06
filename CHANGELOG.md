@@ -25,6 +25,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Structure AI alert explanations into a summary, why it matters, next check, and supporting figures across the run log, draft preview, and email.
+
 - `trellum init` and `trellum setup project` end with a summary of the
   guidance and hook files written, the `trellum doctor` command to check them
   and the `--remove` command to undo them.

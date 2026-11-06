@@ -753,6 +753,7 @@ def send_alert(rule, run, *, eligibility_check=None) -> AlertDelivery:
         "rule": rule,
         "run": run,
         "evidence": list((run.evidence or {}).get("cited") or []),
+        "response": (run.evidence or {}).get("response") or {},
         "report_url": _report_url(report),
         # Seeds a conversation with this run (apps.assistant.views.from_alert).
         "assistant_url": (
