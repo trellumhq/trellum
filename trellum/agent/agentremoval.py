@@ -284,4 +284,7 @@ def remove(root: str | os.PathLike[str]) -> list[Row]:
     for name in setup.MCP_FILES:
         rows.append(_remove_json(root / name, name,
                                  lambda c, n=name: strip_server(c, n)))
+    from trellum.scaffold.context_ownership import remove as remove_context
+
+    rows.extend(Row(*row) for row in remove_context(root))
     return rows

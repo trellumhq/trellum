@@ -121,15 +121,6 @@ The `analysis/` directory itself is not discovered or scheduled as a report.
 
 def write_context_files(root: Path) -> list[tuple[str, str]]:
     """Seed missing files only, including when setup runs in an existing repo."""
-    results = []
-    for name, content in FILES.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with path.open("x", encoding="utf-8") as stream:
-                stream.write(content)
-        except FileExistsError:
-            results.append((name, "current"))
-        else:
-            results.append((name, "created"))
-    return results
+    from trellum.scaffold.context_ownership import seed
+
+    return seed(root)

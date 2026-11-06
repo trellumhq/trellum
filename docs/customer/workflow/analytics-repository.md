@@ -22,6 +22,12 @@ limitations beside each investigation. Promote verified facts into `context/`
 and approved metric definitions into the existing registry. These are editable
 project notes, not an automatic portal assistant memory or data-ingestion job.
 
+`python -m trellum setup project --remove` removes only unchanged context files
+that setup recorded as its own in `.trellum/project-context.json`. Keep that
+ownership record with the project for safe removal. Existing files, edited notes,
+queries and exports remain untouched. The results ignore file stays while any
+local results remain; malformed ownership metadata is retained and reported.
+
 ## What {{BRAND}} requires
 
 All of it:
