@@ -15,6 +15,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   these tones; palettes, authored rules, values and component layouts remain.
   Added deterministic native status-text examples and API/upgrade guidance.
 
+- Horizontal report BarChart value columns with keyword-only `show_values`
+  control, plus optional StackedBar visible absolute totals and fitting normalized
+  percentage labels (both off by default). New stack context explains population
+  scope and label eligibility. Added deterministic bar showcase examples while
+  preserving plotted data, styles, heights, tooltips and CSV units.
+
 - ComboChart left/right axis descriptions and grouped native legend buttons with
   bar/line symbols, separate controls for matching captions on opposite axes,
   keyword-only unit descriptions, and deterministic live/static showcase examples.

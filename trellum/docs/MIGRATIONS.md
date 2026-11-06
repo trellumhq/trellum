@@ -24,6 +24,25 @@ ignore the new Theme dictionary fields; rebuild with matching CSS/JavaScript to
 apply the roles consistently. See [status text](report-status-text.md) for API,
 custom overrides and the measured small-text surface contrast scope.
 
+## Unreleased: BarChart value columns and optional StackedBar labels
+
+Rebuild horizontal category BarCharts to add automatic right-aligned values.
+Keyword-only `show_values=None` uses the existing numeric-axis formatter;
+`False` releases the column and `True` explicitly includes horizontal dates.
+Vertical and generic stacked BarCharts receive no new labels. Dense or narrow
+panels omit nonfitting labels without changing source data or plot heights.
+
+StackedBar adds keyword-only boolean `show_totals=False` and
+`show_percentages=False`. Totals describe visible additive bars in absolute
+units, excluding lines. Percentages require genuine live pivot normalization
+and retain all-series denominators, including hidden series. Optional context
+explains scope and conservative label withholding for incomplete, signed,
+nonfinite or ambiguous populations. Existing static/live option differences,
+legacy aggregation, signed normalization, axes, tooltips and CSV remain.
+Positional/subclass constructors and explicit dataset binding precedence remain.
+Untagged payloads keep prior behavior; old runtimes ignore the additive tags.
+See [bar labels](report-bar-labels.md) for fitting limits and path differences.
+
 ## Unreleased: ComboChart axis descriptions and grouped legends
 
 Rebuild reports to add wrapping Left/bars and Right/lines context outside the

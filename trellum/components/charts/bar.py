@@ -25,7 +25,10 @@ class BarChart(_ChartBase):
     """Vertical or horizontal bar chart.
 
     Pass ``dataset_id`` to make this chart reactive to filter changes.
-    Set ``show_labels=True`` to display data values on each bar.
+    Set ``show_labels=True`` to display data values on each bar in live mode.
+    Keyword-only ``show_values=None`` adds a right value column automatically
+    for horizontal nonstacked categories; False hides it, True includes dates.
+    See ``docs/report-bar-labels.md`` for fitting limits and static differences.
 
     Ratio mode: set ``ratios=[{numerator, denominator, label}]`` to plot
     sum(numerator) / sum(denominator) per x-value. Works in horizontal
@@ -65,9 +68,19 @@ class BarChart(_ChartBase):
     top_n: Optional[int] = None  # Cap to top/bottom N x-values + "Other" bucket
     top_n_show_other: bool = True  # If False, drop the "Other (N items)" bar
 
+    show_values: Optional[bool] = field(default=None, kw_only=True)
+
     _component_type: str = field(default="bar_chart", init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        self._validate_values()
+
+    def _validate_values(self) -> None:
+        if self.show_values is not None and type(self.show_values) is not bool:
+            raise ValueError("show_values must be bool or None")
+
     def render_html(self, ctx: RenderContext) -> str:
+        self._validate_values()
         cid = ctx.next_id()
         cols = self.y_cols or [self.y]
         col_labels = self.y_labels or cols
@@ -82,6 +95,7 @@ class BarChart(_ChartBase):
                 "type": "chart",
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
+                "bar_values": {"show": self.show_values},
                 "x": self.x,
                 "value_cols": cols,
                 "y_labels": col_labels,
@@ -131,6 +145,7 @@ class BarChart(_ChartBase):
             ctx.register(cid, {
                 "type": "chart",
                 "chartType": "bar",
+                "bar_values": {"show": self.show_values},
                 "labels": _clean_list(df_to_render[self.x].tolist()),
                 "datasets": datasets,
                 "stacked": self.stacked,
@@ -170,6 +185,10 @@ class StackedBar(_ChartBase):
 
     In live mode (``dataset_id`` set), use ``stack_by`` to specify which column
     to pivot on.  ``stack_by_options`` renders a toggle to switch dimensions.
+    Keyword-only ``show_totals=False`` enables visible absolute bar totals;
+    ``show_percentages=False`` enables fitting labels in live pivot Percentage
+    mode. Both require complete finite nonnegative additive quantities. See
+    ``docs/report-bar-labels.md`` for eligibility and preserved path differences.
     """
 
     df: pd.DataFrame
@@ -205,16 +224,31 @@ class StackedBar(_ChartBase):
     # UI is enough to identify individual series.
     show_legend: bool = True
 
+    show_totals: bool = field(default=False, kw_only=True)
+    show_percentages: bool = field(default=False, kw_only=True)
+
     _component_type: str = field(default="stacked_bar", init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        self._validate_stack_labels()
+
+    def _validate_stack_labels(self) -> None:
+        for name in ("show_totals", "show_percentages"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be bool")
+
     def render_html(self, ctx: RenderContext) -> str:
+        self._validate_stack_labels()
         cid = ctx.next_id()
+        stack_labels = {"totals": self.show_totals, "percentages": self.show_percentages,
+                        "format": self.value_format}
 
         if self.dataset_id:
             cfg = {
                 "type": "chart",
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
+                "stack_labels": stack_labels,
                 "x": self.x,
                 "value_cols": self.y_cols,
                 "stacked": True,
@@ -259,6 +293,8 @@ class StackedBar(_ChartBase):
             controls_html = toggle_html + normalize_html
             return _chart_container_html(cid, self.title, extra_before=controls_html)
 
+        if self.show_totals or self.show_percentages:
+            stack_labels["duplicate_columns"] = len(set(self.y_cols)) != len(self.y_cols)
         theme = ctx.theme
         datasets = []
         for i, col in enumerate(self.y_cols):
@@ -275,6 +311,7 @@ class StackedBar(_ChartBase):
         ctx.register(cid, {
             "type": "chart",
             "chartType": "bar",
+            "stack_labels": stack_labels,
             "labels": _clean_list(self.df[self.x].tolist()),
             "datasets": datasets,
             "stacked": True,

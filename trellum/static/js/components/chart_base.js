@@ -170,6 +170,224 @@ window._fwComboLegendUpdate = function(chart) {
     root.hidden = !root.children.length;
 };
 
+/* New labels are opt-in by component tag, never by the shared bar factory.
+   Eligibility inspects raw inputs before the legacy aggregators coerce nulls.
+   These checks withhold labels; they do not repair or mutate plotted data. */
+function _fwStackLabelEligibility(cfg, rows, stackBy, spec) {
+    var cols = cfg.value_cols || [], expected = new Map(), reason = '';
+    if (new Set(cols).size !== cols.length) return 'duplicate source columns';
+    var stacks = new Set();
+    function identity(v) { return String(v == null ? '' : v); }
+    rows.forEach(function(row) {
+        var x = identity(row[cfg.x]), s = stackBy ? identity(row[stackBy]) : '';
+        if ((stackBy && (x.includes('||') || s.includes('||'))) ||
+                [x, s].some(function(k) { return k in Object.prototype; })) reason = 'ambiguous grouping identity';
+        if (stackBy) stacks.add(s);
+        var total = expected.get(x) || 0;
+        cols.forEach(function(col) {
+            var v = row[col];
+            if (typeof v !== 'number' || !Number.isFinite(v)) reason = 'incomplete or nonfinite quantities';
+            else if (v < 0) reason = 'signed quantities';
+            else total += v;
+        });
+        expected.set(x, total);
+    });
+    var limit = cfg.max_stacks == null ? 20 : cfg.max_stacks;
+    if (stackBy && stacks.size > limit && stacks.has('Other (' + (stacks.size - limit) + ')'))
+        reason = 'generated Other identity collides with a source category';
+    if (reason) return reason;
+    if (expected.size !== spec.labels.length) return 'plotted and supplied populations differ';
+    for (var i = 0; i < spec.labels.length; i++) {
+        var total = 0;
+        for (var j = 0; j < spec.datasets.length; j++) {
+            var ds = spec.datasets[j];
+            if (ds.type === 'line' || ds.yAxisID === 'y1') continue;
+            var v = (ds._absData || ds.data)[i];
+            if (!Number.isFinite(v) || v < 0) return 'incomplete, signed or nonfinite plotted quantities';
+            total += v;
+        }
+        var raw = expected.get(String(spec.labels[i]));
+        if (!Number.isFinite(total) || !Number.isFinite(raw) || Math.abs(total - raw) > 1e-9 * Math.max(1, Math.abs(raw)))
+            return 'plotted and supplied populations differ';
+    }
+    return '';
+}
+
+function _fwStaticStackLabelEligibility(cfg) {
+    if (cfg.stack_labels.duplicate_columns) return 'duplicate source columns';
+    for (var i = 0; i < cfg.datasets.length; i++) {
+        var ds = cfg.datasets[i];
+        if (ds.data.length !== cfg.labels.length) return 'plotted and supplied populations differ';
+        for (var j = 0; j < ds.data.length; j++) {
+            var v = ds.data[j];
+            if (!Number.isFinite(v)) return 'incomplete or nonfinite quantities';
+            if (v < 0) return 'signed quantities';
+        }
+    }
+    return '';
+}
+
+/* Per-chart plugin. Drawing records are also useful to diagnostics: every record
+   corresponds to one actual fillText, with measured bounds in canvas CSS pixels. */
+function _fwBarLabelPlugin(spec) {
+    var stack = spec.stackLabels, bar = spec.barValues;
+    var enabledStack = stack && (stack.totals || stack.percentages);
+    var context, labelCanvas;
+    function font(chart) {
+        return '600 ' + window._fwFontPx('--font-size-label', 12) + 'px ' + Chart.defaults.font.family;
+    }
+    function number(v) { return Number.isFinite(v) ? (spec.yFmt || window.fmtCompact)(v) : '\u2014'; }
+    function horizontal() {
+        return bar && bar.show !== false && spec.horizontal && !spec.stacked && !spec.barConfiguredStacked &&
+            (bar.show === true || !spec.labels.length || !/^\d{4}-\d{2}-\d{2}/.test(String(spec.labels[0])));
+    }
+    function bars(chart) {
+        return chart.data.datasets.map(function(ds, i) { return {ds: ds, meta: chart.getDatasetMeta(i), index: i}; })
+            .filter(function(d) { return d.ds.type !== 'line' && d.ds.yAxisID !== 'y1' && chart.isDatasetVisible(d.index); });
+    }
+    function updateContext(chart) {
+        if (!enabledStack) return;
+        if (!context) {
+            context = document.createElement('div');
+            context.id = chart.canvas.id + '-stack-label-context';
+            context.dataset.stackLabelContext = chart.canvas.id;
+            context.style.cssText = 'font-size:var(--font-size-label);color:var(--text-secondary);margin-bottom:var(--spacing-md);overflow-wrap:anywhere';
+            chart.canvas.parentElement.after(context);
+            var described = chart.canvas.getAttribute('aria-describedby') || '';
+            chart.canvas.setAttribute('aria-describedby', (described + ' ' + context.id).trim());
+        }
+        var text = 'Totals include visible bar segments only, in absolute ' + (stack.format || 'currency') + ' units; line overlays are excluded.';
+        if (spec.stackNormalized) text += ' Percentages use all matching series, including hidden series. Zero-total buckets have no share.';
+        else if (stack.percentages) text += ' Percentage labels are available only for normalized breakdowns.';
+        if (spec.stackLabelReason) text += ' Labels withheld: ' + spec.stackLabelReason + '.';
+        else if (!chart.data.labels.length) text += ' No observations; no total or share labels.';
+        context.textContent = text;
+    }
+    function contrast(chart, fill) {
+        // Browser color parsing + alpha composition against the actual card.
+        var ctx = chart.ctx;
+        ctx.fillStyle = getComputedStyle(chart.canvas).getPropertyValue('--bg-card').trim() || '#fff';
+        var bg = ctx.fillStyle;
+        function rgba(color) {
+            var probe = document.createElement('canvas'); probe.width = probe.height = 1;
+            var p = probe.getContext('2d'); p.fillStyle = color; p.fillRect(0, 0, 1, 1);
+            return p.getImageData(0, 0, 1, 1).data;
+        }
+        var b = rgba(bg), f = rgba(fill), a = f[3] / 255;
+        var c = [0, 1, 2].map(function(i) {
+            var n = (f[i] * a + b[i] * (1 - a)) / 255;
+            return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+        });
+        var lum = c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+        return (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) ? '#000000' : '#ffffff';
+    }
+    return {
+        id: 'fwBarLabels',
+        beforeLayout: function(chart) {
+            labelCanvas = chart.canvas;
+            var ctx = chart.ctx, size = window._fwFontPx('--font-size-label', 12);
+            ctx.save(); ctx.font = font(chart);
+            var right = 0;
+            if (horizontal()) {
+                var max = 0;
+                bars(chart).forEach(function(d) { d.ds.data.forEach(function(v) { max = Math.max(max, ctx.measureText(number(v)).width); }); });
+                var reserve = Math.max(62, Math.ceil(max + 16));
+                var category = 0;
+                spec.labels.forEach(function(s) { category = Math.max(category, ctx.measureText(String(s)).width); });
+                category = Math.min(chart.width / 2, category);
+                if (chart.width > 260 && chart.width - category - reserve >= 80 && reserve <= chart.width / 3) right = reserve;
+            }
+            chart.options.layout.padding = {right: right, top: enabledStack && stack.totals && !spec.stackLabelReason && spec.labels.length ? size + 10 : 0};
+            chart._fwBarLabelSpace = right;
+            ctx.restore();
+        },
+        beforeBuildTicks: function(chart, args) {
+            var scale = args.scale, padding = chart.options.layout.padding;
+            if (spec.horizontal && padding.right && scale.axis === 'y') {
+                // Keep the original category-label budget; the value column
+                // consumes plot width rather than clipping more category text.
+                scale.maxWidth = Math.max(scale.maxWidth, chart.width / 2);
+            }
+            if (scale.axis !== (spec.horizontal ? 'x' : 'y') || !scale.computeTickLimit) return;
+            var extra = spec.horizontal ? padding.right : padding.top;
+            if (!extra) return;
+            // Keep the pre-label automatic tick budget. Reducing plot space
+            // must not expand the numeric domain through coarser nice ticks.
+            var compute = scale.computeTickLimit;
+            scale._fwBarComputeTickLimit = compute;
+            scale.computeTickLimit = function() {
+                var budget = Object.create(this);
+                if (spec.horizontal) budget.width = this.width + extra;
+                else budget.height = this.height + extra;
+                return compute.call(budget);
+            };
+        },
+        afterBuildTicks: function(chart, args) {
+            var scale = args.scale;
+            if (scale._fwBarComputeTickLimit) {
+                scale.computeTickLimit = scale._fwBarComputeTickLimit;
+                delete scale._fwBarComputeTickLimit;
+            }
+        },
+        afterUpdate: updateContext,
+        afterDatasetsDraw: function(chart) {
+            var ctx = chart.ctx, area = chart.chartArea, visible = bars(chart);
+            var size = window._fwFontPx('--font-size-label', 12), used = [];
+            chart._fwBarLabelPaint = [];
+            ctx.save(); ctx.font = font(chart); ctx.textBaseline = 'middle';
+            function draw(text, x, y, color, kind, index, series) {
+                var w = ctx.measureText(text).width, rect = {left: x - w, right: x, top: y - size / 2, bottom: y + size / 2};
+                if (rect.left < 0 || rect.right > chart.width || rect.top < 0 || rect.bottom > chart.height ||
+                    used.some(function(r) { return rect.left < r.right + 3 && rect.right > r.left - 3 && rect.top < r.bottom + 2 && rect.bottom > r.top - 2; })) return;
+                ctx.fillStyle = color; ctx.textAlign = 'right'; ctx.fillText(text, x, y);
+                used.push(rect); chart._fwBarLabelPaint.push({text: text, x: x, y: y, bounds: rect, kind: kind, index: index, series: series, color: color});
+            }
+            if (chart._fwBarLabelSpace) {
+                visible.forEach(function(d) { d.meta.data.forEach(function(el, i) {
+                    // Null bar elements retain their genuine grouped center Y.
+                    if (!Number.isFinite(el.y) || el.y < area.top || el.y > area.bottom) return;
+                    draw(number(d.ds.data[i]), chart.width - 4, el.y, window.getThemeColors().tick_color, 'value', i, d.index);
+                }); });
+            }
+            if (enabledStack && !spec.stackLabelReason) {
+                var totalFmt = window.getFormatter(stack.format || 'currency');
+                chart.data.labels.forEach(function(_, i) {
+                    var total = 0, all = 0, top = Infinity, x, width = 0;
+                    chart.data.datasets.forEach(function(ds) {
+                        if (ds.type !== 'line' && ds.yAxisID !== 'y1') all += (ds._absData || ds.data)[i];
+                    });
+                    visible.forEach(function(d) {
+                        var el = d.meta.data[i], v = (d.ds._absData || d.ds.data)[i];
+                        if (!el || !Number.isFinite(v)) return;
+                        total += v; top = Math.min(top, el.y, el.base); x = el.x; width = el.width;
+                        if (stack.percentages && spec.stackNormalized && all > 0 && v > 0) {
+                            var text = Math.round(d.ds.data[i]) + '%', w = ctx.measureText(text).width;
+                            var height = Math.abs(el.base - el.y), y = (el.y + el.base) / 2;
+                            if (w + 8 <= el.width && size + 6 <= height && el.x - w / 2 >= area.left &&
+                                el.x + w / 2 <= area.right && y - size / 2 >= area.top && y + size / 2 <= area.bottom)
+                                draw(text, el.x + w / 2, y, contrast(chart, el.options.backgroundColor), 'percentage', i, d.index);
+                        }
+                    });
+                    if (stack.totals && Number.isFinite(top) && Number.isFinite(total) && x >= area.left && x <= area.right) {
+                        var text = totalFmt(total), w = ctx.measureText(text).width;
+                        // Center above the real visible stack; omit dense labels.
+                        if (w + 4 <= Math.max(width, chart.scales.x.width / Math.max(1, chart.data.labels.length)))
+                            draw(text, x + w / 2, top - size / 2 - 4, window.getThemeColors().tick_color, 'total', i, null);
+                    }
+                });
+            }
+            ctx.restore();
+        },
+        afterDestroy: function(chart) {
+            if (context) { context.remove(); context = null; }
+            if (!labelCanvas) return;
+            var described = (labelCanvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(id) { return id !== labelCanvas.id + '-stack-label-context'; });
+            if (described.length) labelCanvas.setAttribute('aria-describedby', described.join(' '));
+            else labelCanvas.removeAttribute('aria-describedby');
+        }
+    };
+}
+
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
 function _createChart(id, canvas, spec) {
@@ -309,7 +527,8 @@ function _createChart(id, canvas, spec) {
     window._chartInstances[id] = new Chart(canvas, {
         type: spec.type || 'bar',
         data: { labels: spec.labels, datasets: spec.datasets },
-        options: chartOpts
+        options: chartOpts,
+        plugins: (spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []
     });
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
@@ -330,6 +549,17 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
 
     /* ── Live mode ─────────────────────────────────────────── */
     if (cfg.dataset_id) {
+        var taggedBars = cfg.bar_values || cfg.stack_labels;
+        // Ordinary renderAll reuses the existing live subscription and controls.
+        // Workspaces retain _fwLiveWrap's leased disposal/recreation behavior.
+        if (taggedBars && !window._fwMetricsWorkspace && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) {
+            canvas._fwBarLive.draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+            return;
+        }
+        if (taggedBars && canvas._fwBarControls) canvas._fwBarControls.abort();
+        var barSignals = taggedBars ? new AbortController() : null;
+        if (barSignals) canvas._fwBarControls = barSignals;
+        var barListener = barSignals ? {signal: barSignals.signal} : undefined;
         var activeStackBy = cfg.stack_by || null;
         if (cfg.stack_by_options) {
             var stackSel = cfg.stack_toggle_id
@@ -348,7 +578,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     }
                     activeStackBy = cfg.stack_by_options[btn.textContent.trim()] || cfg.stack_by;
                     _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
-                });
+                }, barListener);
             }
         }
         var normalized = false;
@@ -369,14 +599,25 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     }
                     normalized = btn.textContent.trim() === 'Percentage';
                     _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
-                });
+                }, barListener);
             }
         }
         canvas.addEventListener('dblclick', function() {
             var c = window._chartInstances[id]; if (c && c.resetZoom) c.resetZoom();
-        });
+        }, barListener);
 
         function _mkSpec(spec) {
+            if (cfg.bar_values) {
+                spec.barValues = cfg.bar_values;
+                spec.barConfiguredStacked = cfg.stacked;
+            }
+            if (cfg.stack_labels) {
+                spec.stackLabels = cfg.stack_labels;
+                if (cfg.stack_labels.totals || cfg.stack_labels.percentages) {
+                    spec.stackNormalized = !!(activeStackBy && cfg.normalize_toggle && normalized);
+                    spec.stackLabelReason = _fwStackLabelEligibility(cfg, labelRows, activeStackBy, spec);
+                }
+            }
             if (cfg.line_style === 'adaptive') {
                 spec.lineStyle = cfg.line_style;
                 spec.tension = cfg.tension;
@@ -395,7 +636,9 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             return spec;
         }
 
+        var labelRows;
         function _drawLive(rows) {
+            labelRows = rows;
             var colors = window.getThemeColors().chart_colors;
             var isLine = cfg.chartType === 'line';
 
@@ -826,6 +1069,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     stacked: cfg.stacked, horizontal: cfg.horizontal, showLegend: datasets2.length > 1, yFmt: yFmt2, tooltip: tt2 }));
             }
         }
+        if (taggedBars) canvas._fwBarLive = {cfg: cfg, draw: _drawLive};
         window._fwLiveWrap(id, cfg, _drawLive);
         return;
     }
@@ -856,7 +1100,12 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
         lineStyle: cfg.line_style, tension: cfg.tension,
         headerSummary: cfg.header_summary,
-        comboAxes: cfg.combo_axes
+        comboAxes: cfg.combo_axes,
+        barValues: cfg.bar_values,
+        stackLabels: cfg.stack_labels,
+        stackNormalized: false,
+        stackLabelReason: cfg.stack_labels && (cfg.stack_labels.totals || cfg.stack_labels.percentages)
+            ? _fwStaticStackLabelEligibility(cfg) : ''
     });
 };
 
