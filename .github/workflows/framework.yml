@@ -101,7 +101,9 @@ jobs:
           # test_connections.py's OneDrive and Google Sheets tests run for
           # real in CI instead of skipping (they'd otherwise skip on a
           # core-only install).
-          pip install -r trellum/requirements.txt -r trellum/requirements-drivers.txt pytest pytest-cov playwright
+          # Exercise the optional Google ASN.1 backend and LDAP compatibility
+          # checks without adding test support to the framework runtime.
+          pip install -r trellum/requirements.txt -r trellum/requirements-drivers.txt pytest pytest-cov playwright rsa==4.9.1 ldap3==2.9.1
 
       # Without a browser, test_js_runtime.py and test_interactions.py skip
       # themselves -- roughly a hundred tests quietly doing nothing. Those are
