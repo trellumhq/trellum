@@ -325,6 +325,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Include public framework API and compatibility guides in the standalone wheel.
+
 - Shared report CSV downloads now quote headers and lone carriage returns,
   preserving field boundaries and exact text without changing ordinary cells.
 

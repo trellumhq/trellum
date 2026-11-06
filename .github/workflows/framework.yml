@@ -290,7 +290,7 @@ jobs:
           fi
           echo "wheel matches trellum.__version__ = $REPO_VERSION"
 
-      - name: The wheel carries AGPL metadata and notices
+      - name: The wheel carries documentation, analysis evidence and AGPL notices
         run: |
           python - <<'PY'
           import glob
@@ -308,21 +308,25 @@ jobs:
           ]
           if not any(path.parent.name == "evidence" for path in analysis_files):
               raise SystemExit("demo analysis has no packaged evidence files")
+          docs = list(Path("trellum/docs").rglob("*.md"))
+          if not docs:
+              raise SystemExit("framework source has no documentation files")
           required = {
               "trellum/LICENSE",
               "trellum/THIRD-PARTY.md",
               "trellum/demo/assistant.md",
               *(path.as_posix() for path in analysis_files),
+              *(path.as_posix() for path in docs),
           }
           with zipfile.ZipFile(wheel) as archive:
               names = set(archive.namelist())
               missing = sorted(required - names)
               if missing:
                   raise SystemExit(f"wheel is missing required files: {missing}")
-              for path in analysis_files:
+              for path in [*analysis_files, *docs]:
                   packaged = path.as_posix()
                   if archive.read(packaged) != path.read_bytes():
-                      raise SystemExit(f"wheel changed demo analysis file: {packaged}")
+                      raise SystemExit(f"wheel changed documentation or analysis file: {packaged}")
               metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode()
               if "License-Expression: AGPL-3.0-only" not in metadata:

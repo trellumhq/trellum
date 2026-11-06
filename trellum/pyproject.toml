@@ -142,6 +142,7 @@ packages = [
   "README.md",
   "LICENSE",
   "THIRD-PARTY.md",
+  "docs/*.md",
   "static/**/*",
 ]
 
