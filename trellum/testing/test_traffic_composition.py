@@ -10,10 +10,11 @@ import sys
 import pandas as pd
 import pytest
 
-from trellum.components import RenderContext, StackedBar, Toggle
+from trellum.components import LineChart, RenderContext, StackedBar, Toggle
 from trellum.components.charts.bar import stack_option_problems
 from trellum.themes import THEME_REGISTRY
 from trellum.validation.checks.visibility import _check_toggle_visible
+from trellum.validation.checks.chart_options import _check_chart_options
 from trellum.validation.result import ValidationResult
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,6 +57,9 @@ def test_strict_keyword_only_api_and_actual_baseline_default_markup_payload(tmp_
         historical = old.StackedBar(current.df, 'day', ['value'], 'Traffic', **options)
         assert render(current) == render(historical)
         assert render(chart(show_controls=True, height=None, **options)) == render(historical)
+        result = ValidationResult(slug='historical')
+        _check_chart_options([(historical, 'Traffic')], result)
+        assert result.summary['fail'] == 0
 
 
 @pytest.mark.parametrize('value', [True, False, 0, 127, 1201, 220.0, '220', [], {}])
@@ -65,6 +69,10 @@ def test_height_strict_and_mutation_diagnostic(value):
     changed = chart()
     changed.height = value
     assert stack_option_problems(changed)[0][0] == 'stacked-bar-height-invalid'
+    result = ValidationResult(slug='height')
+    _check_chart_options([(changed, 'Traffic')], result)
+    assert [(c.id, c.level, c.section) for c in result.checks] == [
+        ('stacked-bar-height-invalid', 'fail', 'Traffic')]
     with pytest.raises(ValueError, match='height'):
         render(changed)
 
@@ -128,6 +136,18 @@ def test_exact_native_owners_options_defaults_and_usage():
     result = ValidationResult(slug='legacy')
     _check_toggle_visible([(Toggle('legacy', ['A']), 'First'), (Toggle('legacy', ['A']), 'Second')], result)
     assert result.summary['fail'] == 0
+
+
+def test_shared_controls_coexist_with_lines_and_reject_a_line_local_owner():
+    owners = [Toggle('breakdown', ['Day']), Toggle('mode', ['Absolute', 'Percentage'])]
+    line = LineChart(pd.DataFrame({'day': ['2026-08-01'], 'value': [3]}),
+                     'day', ['value'], dataset_id='events')
+    assert validate_controls([*owners, line]).summary['fail'] == 0
+    line.stack_by_options = {'Day': 'day'}
+    line.stack_toggle_id = 'breakdown'
+    result = validate_controls([*owners, line])
+    assert [c.id for c in result.checks if c.level == 'fail'] == [
+        'stacked-bar-control-owner-invalid']
 
 
 def test_complete_event_fixture_partition_and_independent_denominators():

@@ -87,6 +87,10 @@ static duplicate-label entries.
 The [Funnel summary examples](../docs/report-funnel-summaries.md) show named
 stages, maximum counts and entry counts while retaining existing plot layouts.
 
+The [Traffic Composition examples](../docs/report-traffic-composition.md) compare
+local and shared controls, responsive and 220px plots, independent event/revenue
+denominators and collapsible source facts.
+
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal
 synthetic SQL through the existing `demo_db` connection, with no new tables.

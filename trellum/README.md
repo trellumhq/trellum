@@ -517,6 +517,10 @@ summary on a chart that plots several series without naming one are rejected the
 same way, and the validator reports `line-chart-height-invalid` and
 `line-chart-summary-invalid` for charts changed after construction.
 
+[Traffic Composition](docs/report-traffic-composition.md) demonstrates optional
+shared StackedBar breakdown/mode controls and `height=220`. Default local controls
+and responsive plot heights remain available.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.
@@ -1612,6 +1616,7 @@ Every report generation automatically runs a post-generation validator that chec
 | Annotation support | `annotations-enabled-no-events`, `annotations-studio-mismatch`, `annotations-non-date-x-axis` |
 | Column validation | `chart-column-missing`, `ratios-without-dataset-id`, `ratios-missing-keys`, `ratios-column-missing`, `stackedbar-option-column-missing` |
 | LineChart options | `line-chart-height-invalid`, `line-chart-summary-invalid`, `line-chart-tension-invalid` |
+| StackedBar options | `stacked-bar-height-invalid`, `stacked-bar-controls-invalid`, `stacked-bar-control-id-missing`, `stacked-bar-control-owner-invalid`, `stacked-bar-control-options-invalid` |
 | Toggle / Visible wiring | `visible-target-missing`, `visible-value-missing`, `toggle-unused`, `rawhtml-toggle-id-mismatch` |
 | Scope system | `scope-empty`, `scope-no-default` |
 | YAML schema | `yaml-missing-required`, `yaml-missing-data-sources`, `yaml-cron-invalid`, `report-description-weak` |

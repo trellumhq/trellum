@@ -403,11 +403,13 @@ class StackedBar(_ChartBase):
 def stack_option_problems(chart: StackedBar) -> list[tuple[str, str]]:
     """Strict opt-in controls/sizing diagnostics, also after author mutation."""
     problems = []
-    if type(chart.show_controls) is not bool:
+    show_controls = getattr(chart, "show_controls", True)
+    height = getattr(chart, "height", None)
+    if type(show_controls) is not bool:
         problems.append(("stacked-bar-controls-invalid", "StackedBar show_controls must be bool."))
-    if chart.height is not None and (type(chart.height) is not int or not 128 <= chart.height <= 1200):
+    if height is not None and (type(height) is not int or not 128 <= height <= 1200):
         problems.append(("stacked-bar-height-invalid", "StackedBar height must be None or an integer from 128 to 1200 (bool is not a height)."))
-    if chart.show_controls is False and chart.dataset_id:
+    if show_controls is False and chart.dataset_id:
         for requested, name in ((chart.stack_by_options, "stack_toggle_id"), (chart.normalize_toggle, "normalize_toggle_id")):
             value = getattr(chart, name)
             if requested and (not isinstance(value, str) or not value.strip() or value != value.strip()):

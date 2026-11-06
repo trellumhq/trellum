@@ -182,7 +182,7 @@ def _check_shared_stacked_controls(comps, result):
         for check_id, message in stack_option_problems(chart):
             if check_id != "stacked-bar-height-invalid":
                 result.fail(check_id, message, component="StackedBar", section=section)
-        if chart.show_controls is not False or not chart.dataset_id:
+        if getattr(chart, "show_controls", True) is not False or not chart.dataset_id:
             continue
         requests = []
         if chart.stack_by_options:
@@ -196,7 +196,7 @@ def _check_shared_stacked_controls(comps, result):
             local_duplicates = [c for c, _ in comps if isinstance(c, (StackedBar, LineChart))
                 and c.dataset_id and getattr(c, "show_controls", True) is not False and
                 ((c.stack_by_options and c.stack_toggle_id == tid) or
-                 (c.normalize_toggle and c.normalize_toggle_id == tid))]
+                 (getattr(c, "normalize_toggle", False) and c.normalize_toggle_id == tid))]
             if len(owners) != 1 or local_duplicates:
                 result.fail("stacked-bar-control-owner-invalid",
                     f"Shared StackedBar control '{tid}' requires exactly one native Toggle and no chart-local copy. "

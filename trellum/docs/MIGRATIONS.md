@@ -1,5 +1,15 @@
 # Framework Migration Guide
 
+## Unreleased: optional shared StackedBar controls and height
+
+Existing calls need no changes. To share breakdown/normalization controls, declare
+one native Toggle for each group and pass its ID with `show_controls=False` to
+the participating StackedBars. Owners must have matching options and IDs unique
+across the whole report. Optional `height=220` fixes the plot at 220px on desktop
+and phones; `None` retains current responsive heights. Rebuild matching assets;
+no host or database migration is required. See
+[Traffic Composition](report-traffic-composition.md) for complete native examples.
+
 ## Unreleased: optional FunnelChart summaries
 
 Existing calls need no changes. Opt in with keyword-only

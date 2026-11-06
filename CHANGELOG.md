@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional shared controls and fixed plot heights for StackedBar, with native
+  Traffic Composition examples and validation of shared control owners.
+
 - Optional FunnelChart header summaries for a named stage, largest current
   stage entry or stage-entry count, with native examples and validation.
 

@@ -83,15 +83,8 @@ section, then collapse it again if that is the intended captured state. This
 example retains that existing capture limitation. Native report PNG/PDF and CSV
 actions use their normal paths; no alternate renderer or export units are added.
 
-The chart-options dispatcher can consume the sizing diagnostic without repeating
-the visibility check's control errors:
-
-```python
-from trellum.components.charts.bar import stack_option_problems
-
-# Inside the existing component/section loop in checks/chart_options.py:
-if _comp_name(comp) == "StackedBar":
-    for check_id, message in stack_option_problems(comp):
-        if check_id == "stacked-bar-height-invalid":
-            result.fail(check_id, message, component="StackedBar", section=sec)
-```
+The shared chart-options dispatcher reports invalid plot heights. The visibility
+check reports control declarations and ownership, including collisions with a
+LineChart's local breakdown control. Ordinary LineCharts can coexist with shared
+StackedBar controls. Older StackedBars without the new option fields retain their
+default presentation during validation.

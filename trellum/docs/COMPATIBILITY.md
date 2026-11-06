@@ -1,5 +1,15 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional shared StackedBar controls and height
+
+Keyword-only `show_controls=True` and `height=None` preserve existing constructors,
+responsive plot sizes and local controls. Opt-in shared controls require explicit
+native Toggle IDs unique across the report, including inactive scopes. Explicit
+integer heights apply to the plot at every viewport. Plotted values, normalization,
+CSV units and independent legends retain their current semantics. Rebuild matching
+report assets; no host or database migration is required.
+See [Traffic Composition](report-traffic-composition.md).
+
 ## Unreleased: optional FunnelChart summaries
 
 Keyword-only `header_summary=None` preserves existing constructors, plots and

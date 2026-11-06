@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_traffic,
     examples_funnel_summaries,
     examples_doughnut_summaries,
     examples_line_results,
@@ -29,6 +30,7 @@ class ComponentShowcaseReport(BaseReport):
             "identified beside each example.</p>"
             '<p>Jump to <a href="#sec-overview-—-synthetic-acquisition-cohorts">Overview composition</a>, '
             '<a href="#sec-line-example-filters">line charts</a>, '
+            '<a href="#sec-traffic-composition-—-local-controls,-responsive-plots">Traffic composition</a>, '
             '<a href="#sec-line-styles:-density-follows-the-plot">line styles</a>, '
             '<a href="#sec-line-forecasts-—-supplied-horizon-and-opt-in-styling">line forecasts</a>, '
             '<a href="#sec-line-availability-—-selected-supplied-observations">line availability</a>, '
@@ -145,6 +147,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_doughnuts.add_sections(ctx)
         examples_doughnut_summaries.add_sections(ctx)
         examples_funnel_summaries.add_sections(ctx)
+        examples_traffic.add_sections(ctx)
 
         examples_pivots.add_sections(ctx)
         examples_hierarchies.add_sections(ctx)

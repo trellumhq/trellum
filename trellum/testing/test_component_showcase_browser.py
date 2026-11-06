@@ -140,6 +140,19 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             funnels.get_by_role('button', name='iOS', exact=True).click()
             expect(funnels.locator('.fw-chart-summary-value')).to_have_text(['20', '180', '3'])
             expect(summaries.locator('.fw-doughnut-summary-value')).to_have_text(['40', '30', '3'])
+            page.get_by_role('link', name='Traffic composition', exact=True).click()
+            traffic = page.locator('[id="sec-traffic-composition-—-shared-controls,-220px-plots"]')
+            traffic.scroll_into_view_if_needed()
+            traffic.get_by_role('button', name='iOS', exact=True).click()
+            traffic.locator('[data-toggle-id="showcase_traffic_shared_220_mode"]').get_by_role(
+                'button', name='Percentage', exact=True).click()
+            stacks = page.evaluate('''() => Object.entries(_reportData.components)
+                .filter(([id,cfg]) => cfg.stacked_bar_controls && cfg.dataset_id === 'showcase_traffic_shared_220')
+                .map(([id]) => ({height: document.getElementById(id).parentElement.getBoundingClientRect().height,
+                    firstTotal: _chartInstances[id].data.datasets.reduce((sum, ds) => sum + ds.data[0], 0)}))''')
+            assert len(stacks) == 2
+            assert all(s['height'] == 220 and abs(s['firstTotal'] - 100) < 1e-8 for s in stacks)
+            expect(funnels.locator('.fw-chart-summary-value')).to_have_text(['20', '180', '3'])
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()
             pivot = page.locator('.fw-section').filter(has=page.get_by_role(
