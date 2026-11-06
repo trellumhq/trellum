@@ -9,6 +9,10 @@ from typing import Any, Optional
 import pandas as pd
 
 from trellum.assets import load_css, load_js
+from trellum.components.charts._heatmap_summary import (
+    heatmap_input_reason,
+    heatmap_summary_config,
+)
 from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
@@ -57,8 +61,10 @@ class HeatmapChart(Component):
     #: Draw formatted cell values when they fit; exact values remain in tooltips.
     show_values: bool = field(default=True, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
+    header_summary: Optional[dict] = field(default=None, kw_only=True)
 
     def __post_init__(self):
+        heatmap_summary_config(self)
         _validate_header_context(self.header_context)
         if not isinstance(self.show_values, bool):
             raise ValueError("HeatmapChart show_values must be a bool")
@@ -71,6 +77,7 @@ class HeatmapChart(Component):
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary = heatmap_summary_config(self)
         cid = ctx.next_id()
 
         if self.dataset_id:
@@ -92,6 +99,7 @@ class HeatmapChart(Component):
                 cfg["normalize"] = self.normalize
             if self.drop_empty:
                 cfg["drop_empty"] = True
+            cfg.update(summary)
             ctx.register(cid, cfg)
         else:
             # Aggregate per (x, y) cell so multiple rows that share a
@@ -100,6 +108,8 @@ class HeatmapChart(Component):
             # points (last-write-wins for color, tooltip fans out
             # across the hidden rows). One row per cell is the only
             # shape the matrix renderer renders correctly.
+            input_reason = (heatmap_input_reason(self.df[self.value].tolist())
+                            if summary and summary["header_summary"]["stat"] != "count" else None)
             cells = self._aggregate_cells(self.df)
             x_labels = list(dict.fromkeys(c["x"] for c in cells))
             y_labels = list(dict.fromkeys(c["y"] for c in cells))
@@ -124,12 +134,15 @@ class HeatmapChart(Component):
                 cfg["normalize"] = self.normalize
             if self.drop_empty:
                 cfg["drop_empty"] = True
+            cfg.update(summary)
+            if input_reason is not None:
+                cfg["summary_input_reason"] = input_reason
             ctx.register(cid, cfg)
 
         return _chart_container_html(
             cid, self.title,
             extra_before=f'<div class="fw-heatmap-key" data-heatmap-key="{cid}"></div>',
-            header_context=self.header_context,
+            header_context=self.header_context, summary=bool(summary),
         )
 
     def _aggregate_cells(self, df: pd.DataFrame) -> list[dict]:

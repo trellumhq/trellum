@@ -1,6 +1,136 @@
+/* Arithmetic uses retained aggregate entries before color normalization. */
+function _fwHeatmapNumeric(v) {
+    return typeof v === 'number' && Number.isFinite(v) &&
+        (!Number.isInteger(v) || Number.isSafeInteger(v));
+}
+function _fwHeatmapInputReason(rows, column) {
+    return rows.every(function(row) { return _fwHeatmapNumeric(row[column]); }) ? '' :
+        'Supplied raw values include nonnumeric, missing, nonfinite or unsafe integer input; numeric summary withheld before drop_empty.';
+}
+function _fwHeatmapSummaryResult(cells, summary, inputReason) {
+    if (summary.stat === 'count') return {value: cells.length, reason: ''};
+    if (inputReason) return {value: null, reason: inputReason};
+    if (!cells.length) return {value: null, reason: 'No retained aggregate cell entries in the current result.'};
+    if (!cells.every(function(c) { return _fwHeatmapNumeric(c.v); }))
+        return {value: null, reason: 'Retained aggregate values include nonfinite or unsafe numeric results.'};
+    var value;
+    if (summary.stat === 'min' || summary.stat === 'max') {
+        value = cells[0].v;
+        cells.forEach(function(c) { value = summary.stat === 'min' ? Math.min(value,c.v) : Math.max(value,c.v); });
+    } else {
+        // Compensate in raw units first, retaining very small contributions
+        // after cancellation. Scale only if an intermediate total overflows.
+        // Mean need not construct a representable final total.
+        function compensated(scale) {
+            var total = 0, correction = 0;
+            cells.forEach(function(c) {
+                var v = c.v / scale, next = total + v;
+                correction += Math.abs(total) >= Math.abs(v) ? (total-next)+v : (v-next)+total;
+                total = next;
+            });
+            return [total,correction];
+        }
+        var divisor = summary.stat === 'mean' ? cells.length : 1;
+        var parts = compensated(1);
+        if (parts.every(Number.isFinite)) {
+            value = parts[0] / divisor + parts[1] / divisor;
+        } else {
+            var scale = cells.reduce(function(a,c) { return Math.max(a,Math.abs(c.v)); },0);
+            parts = compensated(scale || 1);
+            value = (parts[0] / divisor + parts[1] / divisor) * scale;
+        }
+    }
+    if (!_fwHeatmapNumeric(value)) return {value: null, reason: 'Summary arithmetic overflowed or produced a nonfinite or unsafe integer result.'};
+    return {value: value === 0 ? 0 : value, reason: ''};
+}
+function _fwHeatmapSummary(canvas, cfg, cells, inputReason) {
+    var id = canvas.id, descriptionId = id + '-heatmap-summary-scope';
+    var box = document.querySelector('[data-chart-summary="' + id + '"]');
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) {
+        return t && t !== descriptionId;
+    });
+    if (cfg.header_summary) {
+        if (!box) {
+            var before = document.querySelector('[data-heatmap-key="' + id + '"]') || canvas.parentElement;
+            var previous = before.previousElementSibling;
+            if (previous && previous.classList.contains('fw-chart-header-context')) previous = previous.previousElementSibling;
+            var head = document.createElement('div'); head.className = 'fw-chart-head';
+            if (previous && previous.classList.contains('fw-chart-title')) {
+                previous.before(head); head.appendChild(previous); previous.style.marginBottom = '';
+            } else if (before.previousElementSibling && before.previousElementSibling.classList.contains('fw-chart-header-context')) {
+                before.previousElementSibling.before(head);
+            } else before.before(head);
+            box = document.createElement('div'); box.dataset.chartSummary = id; head.appendChild(box);
+        }
+        box.className = 'fw-chart-summary fw-heatmap-summary';
+        var summary = cfg.header_summary, result = _fwHeatmapSummaryResult(cells, summary, inputReason);
+        function span(cls, text) {
+            var el = document.createElement('span'); el.className = cls; el.textContent = text; return el;
+        }
+        var text = result.value == null ? '—' : summary.stat === 'count' ? String(result.value) : getFormatter(summary.format)(result.value);
+        var scope = 'Current supplied or report-filtered aggregate coordinate-cell entries, including all retained entries outside zoom. ' +
+            'Absent coordinates are excluded, never made zero. ' +
+            (cfg.drop_empty ? 'drop_empty retains only cells whose x AND y groups have positive cells; zero-only and negative-only groups can be removed. ' : '') +
+            (summary.stat === 'count' ? 'Entry count is independent of numeric completeness; not source rows, distinct users, painted labels or matrix area. ' :
+                'Raw units before color normalization or log scaling. ' + (summary.stat === 'mean' ? 'Unweighted mean across retained aggregate cells, not source rows. ' : '') +
+                'All delivered raw values must be eligible, including values later excluded by drop_empty. ') +
+            'Source or warehouse completeness, coordinate identity and upstream precision are not established. ' + result.reason;
+        var description = span('fw-heatmap-summary-description',scope); description.id = descriptionId;
+        var children = [span('fw-chart-summary-label',summary.label), span('fw-chart-summary-value',text),
+            span('fw-heatmap-summary-scope','Current cell entries')];
+        if (result.reason) children.push(span('fw-heatmap-summary-reason',result.reason));
+        children.push(description); box.replaceChildren.apply(box,children); box.title = scope;
+        tokens.push(descriptionId);
+    } else if (box) {
+        var head = box.parentElement; box.remove();
+        if (head.classList.contains('fw-chart-head')) {
+            var title = head.querySelector('.fw-chart-title');
+            if (title) { title.style.marginBottom = '4px'; head.replaceWith(title); }
+            else if (!head.children.length) head.remove();
+        }
+    }
+    if (tokens.length) canvas.setAttribute('aria-describedby',tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+}
+
 window._fwRenderers['heatmap'] = function renderHeatmap(id, cfg) {
     var canvas = document.getElementById(id);
+    var bindings = window._fwHeatmapBindings || (window._fwHeatmapBindings = {});
+    if (bindings[id]) { bindings[id](); delete bindings[id]; }
+    if (window._fwMetricDrawLeases && window._fwMetricDrawLeases[id]) {
+        window._fwMetricDrawLeases[id](); delete window._fwMetricDrawLeases[id];
+    }
     if (!canvas) return;
+    var unsubscribe, onTheme, retired = false;
+    function retire() {
+        if (retired) return;
+        retired = true;
+        if (unsubscribe) unsubscribe();
+        if (onTheme) window.removeEventListener('fw-theme-change',onTheme);
+        canvas.ondblclick = null;
+        var chart = window._chartInstances[id];
+        if (chart && chart.canvas === canvas) { chart.destroy(); delete window._chartInstances[id]; }
+        _fwHeatmapSummary(canvas, {}, [], '');
+    }
+    bindings[id] = retire;
+    retire.canvas = canvas;
+    // One local observer for heatmap ownership only. No engine lifecycle hook.
+    if (!window._fwHeatmapObserver) {
+        window._fwHeatmapObserver = new MutationObserver(function() {
+            Object.keys(bindings).forEach(function(key) {
+                if (document.getElementById(key) !== bindings[key].canvas) {
+                    bindings[key](); delete bindings[key];
+                    if (window._fwMetricDrawLeases && window._fwMetricDrawLeases[key]) {
+                        window._fwMetricDrawLeases[key](); delete window._fwMetricDrawLeases[key];
+                    }
+                }
+            });
+            if (!Object.keys(bindings).length) {
+                window._fwHeatmapObserver.disconnect(); window._fwHeatmapObserver = null;
+            }
+        });
+        window._fwHeatmapObserver.observe(document.body,{childList:true,subtree:true});
+    }
 
     var enhanced = cfg.heatmap_style === 'sequential-v1';
     var key = document.querySelector('[data-heatmap-key="' + id + '"]');
@@ -56,7 +186,7 @@ window._fwRenderers['heatmap'] = function renderHeatmap(id, cfg) {
         return String(v);
     }
 
-    function _buildChart(cells, xLabels, yLabels) {
+    function _buildChart(cells, xLabels, yLabels, inputReason) {
         cells = cells || []; xLabels = xLabels || []; yLabels = yLabels || [];
         if (cfg.drop_empty) {
             /* Rows/columns whose every cell is empty or zero are dead space
@@ -71,6 +201,7 @@ window._fwRenderers['heatmap'] = function renderHeatmap(id, cfg) {
             yLabels = yLabels.filter(function(y) { return liveY[y]; });
             cells = cells.filter(function(c) { return liveX[c.x] && liveY[c.y]; });
         }
+        _fwHeatmapSummary(canvas, cfg, cells, inputReason);
         if (window._chartInstances[id]) {
             window._chartInstances[id].destroy();
             delete window._chartInstances[id];
@@ -342,17 +473,16 @@ window._fwRenderers['heatmap'] = function renderHeatmap(id, cfg) {
         window._chartInstances[id]._fwThemeManagedFonts = true;
     }
 
-    var bindings = window._fwHeatmapBindings || (window._fwHeatmapBindings = {});
-    if (bindings[id]) { bindings[id](); delete bindings[id]; }
-    if (window._fwMetricDrawLeases && window._fwMetricDrawLeases[id]) {
-        window._fwMetricDrawLeases[id](); delete window._fwMetricDrawLeases[id];
-    }
     canvas.ondblclick = null;
     if (cfg.dataset_id) {
         canvas.ondblclick = function() {
             var c = window._chartInstances[id]; if (c && c.resetZoom) c.resetZoom();
         };
         function draw(rows) {
+            if (retired) return;
+            if (document.getElementById(id) !== canvas) { retire(); delete bindings[id]; return; }
+            var inputReason = cfg.header_summary && cfg.header_summary.stat !== 'count'
+                ? _fwHeatmapInputReason(rows,cfg.value_col) : '';
             /* Per-cell aggregation: rows that share an (x, y) coordinate
                are summed into a single matrix point. The chartjs-chart-
                matrix plugin renders one rectangle per data entry — if
@@ -381,27 +511,23 @@ window._fwRenderers['heatmap'] = function renderHeatmap(id, cfg) {
                     }
                 }
             }
-            _buildChart(cells, xLabels, yLabels);
+            _buildChart(cells, xLabels, yLabels, inputReason);
         }
         if (window._fwMetricsWorkspace) {
             window._fwLiveWrap(id, cfg, draw);
         } else {
-            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, draw);
-            var onTheme = function() {
+            unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, draw);
+            onTheme = function() {
                 if (document.getElementById(id) !== canvas) {
                     bindings[id](); delete bindings[id]; return;
                 }
                 draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             };
             window.addEventListener('fw-theme-change', onTheme);
-            bindings[id] = function() {
-                unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
-                canvas.ondblclick = null;
-            };
             draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
         }
         return;
     }
 
-    _buildChart(cfg.cells, cfg.x_labels, cfg.y_labels);
+    _buildChart(cfg.cells, cfg.x_labels, cfg.y_labels, cfg.summary_input_reason);
 };

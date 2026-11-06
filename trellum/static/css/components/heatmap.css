@@ -22,3 +22,16 @@
     border: 1px solid var(--border-color); border-radius: var(--radius-control);
     font-size: var(--font-size-tooltip); overflow-wrap: anywhere;
 }
+
+/* Only opt-in heatmap headers get scope and unavailable-reason rows. */
+.fw-heatmap-summary { max-width: 100%; min-width: 0; }
+.fw-heatmap-summary .fw-chart-summary-label,
+.fw-heatmap-summary .fw-chart-summary-value { overflow-wrap: anywhere; }
+.fw-heatmap-summary-scope, .fw-heatmap-summary-reason {
+    flex-basis: 100%; font-size: var(--font-size-label); font-weight: normal;
+    color: var(--text-secondary); overflow-wrap: anywhere;
+}
+.fw-heatmap-summary-description {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
