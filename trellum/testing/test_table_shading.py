@@ -339,9 +339,11 @@ def test_default_off_matches_actual_dependency_baseline(shading_page, width):
     page, _, _, tmp = shading_page
     page.set_viewport_size({"width": width, "height": 1000})
     baseline = _baseline_module()
+    if baseline is None:
+        pytest.skip("Dependency baseline Git object is unavailable for visual comparison")
     frame = _examples().shading_fixture()
     captures = []
-    for name, cls in (("before", baseline.DataTable if baseline else DataTable), ("after", DataTable)):
+    for name, cls in (("before", baseline.DataTable), ("after", DataTable)):
         ctx = _context(tmp / name)
         ctx.add_section("Default table", [cls(frame, "Default table", static=True)])
         render_report(ctx, auto_refresh=False)
@@ -358,5 +360,4 @@ def test_default_off_matches_actual_dependency_baseline(shading_page, width):
         capture = table.screenshot(path=str(shots / f"default-{width}-{name}.png"))
         geometry = table.evaluate("e => Array.from(e.querySelectorAll('th,td')).map(c => {const r=c.getBoundingClientRect();return [r.x,r.width,r.height,getComputedStyle(c).backgroundColor]})")
         captures.append((capture, geometry))
-    if baseline:
-        assert captures[0] == captures[1]
+    assert captures[0] == captures[1]

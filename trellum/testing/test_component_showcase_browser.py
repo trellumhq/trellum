@@ -228,6 +228,16 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert context_canvas.get_attribute('aria-describedby').split().count(
                 context_canvas.get_attribute('id') + '-header-context') == 1
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='table shading', exact=True).click()
+            shading_section = page.locator('#sec-table-shading-—-filterable-cohort-metrics')
+            shading_section.get_by_role('button', name='iOS', exact=True).click()
+            expect(shading_section.locator('tbody tr')).to_have_count(3)
+            assert shading_section.locator('tbody tr td:nth-child(4)').evaluate_all(
+                "cells => cells.map(c => c.classList.contains('fw-table-shading-meets'))") == [True, True, False]
+            shading_section.locator('input[data-table-search]').fill('launch')
+            expect(shading_section.locator('.fw-table-note')).to_contain_text('2 matching')
+            assert shading_section.locator('.fw-table-shading-key').count() == 1
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
