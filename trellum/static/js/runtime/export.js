@@ -26,6 +26,146 @@
     }
     function _fwLoadExportLibs(names) { return Promise.all(names.map(_fwLoadExportLib)); }
 
+    // html2canvas 1.4.1 parses legacy colors only. Resolve modern computed
+    // colors through the browser, with one cache per capture. Canvas serializes
+    // relative sRGB without premultiplying/quantizing alpha through pixel reads.
+    function _fwCaptureColorConverter() {
+        var cache = new Map();
+        var context = document.createElement('canvas').getContext('2d');
+        return function(value) {
+            if (/^(?:rgba?|hsla?)\(/i.test(value) || /^#/.test(value) || value === 'transparent') return value;
+            if (/^[a-z]+$/i.test(value) && value.toLowerCase() !== 'currentcolor' && CSS.supports('color', value)) return value;
+            if (cache.has(value)) return cache.get(value);
+            var relative = 'color(from ' + value + ' srgb r g b / alpha)';
+            if (!context || /\bcurrentcolor\b|\bvar\s*\(/i.test(value) || !CSS.supports('color', relative))
+                throw new Error('Image capture cannot convert CSS color: ' + value);
+            context.fillStyle = '#010203';
+            context.fillStyle = relative;
+            var match = /^color\(srgb\s+([^\s]+)\s+([^\s]+)\s+([^\s/)]+)(?:\s*\/\s*([^\s)]+))?\)$/.exec(context.fillStyle);
+            if (!match) throw new Error('Image capture cannot convert CSS color: ' + value);
+            var channels = match.slice(1, 4).map(Number);
+            var alpha = match[4] === undefined ? 1 : Number(match[4]);
+            if (!channels.every(Number.isFinite) || !Number.isFinite(alpha))
+                throw new Error('Image capture cannot convert CSS color: ' + value);
+            var result = 'rgba(' + channels.map(function(n) {
+                return Math.round(Math.max(0, Math.min(1, n)) * 255);
+            }).join(', ') + ', ' + Math.max(0, Math.min(1, alpha)) + ')';
+            cache.set(value, result);
+            return result;
+        };
+    }
+
+    // Walk computed function tokens, keeping quoted strings and URL contents
+    // opaque. In particular, commas in nested gradients are not stop boundaries.
+    function _fwCapturePaint(value, convert, gradient) {
+        var modern = /^(?:color|color-mix|lab|lch|oklab|oklch|light-dark)$/i;
+        var out = '', i = 0;
+        while (i < value.length) {
+            var start = i, quote = value[i];
+            if (quote === '"' || quote === "'") {
+                i++;
+                while (i < value.length) {
+                    if (value[i] === '\\') i += 2;
+                    else if (value[i++] === quote) break;
+                }
+            } else if (/[a-z_-]/i.test(value[i])) {
+                while (i < value.length && /[a-z0-9_-]/i.test(value[i])) i++;
+                var name = value.slice(start, i);
+                if (value[i] === '(') {
+                    var inner = ++i, depth = 1, q = '';
+                    while (i < value.length && depth) {
+                        var c = value[i++];
+                        if (c === '\\') i++;
+                        else if (q) { if (c === q) q = ''; }
+                        else if (c === '"' || c === "'") q = c;
+                        else if (c === '(') depth++;
+                        else if (c === ')') depth--;
+                    }
+                    if (depth) throw new Error('Image capture cannot parse computed paint: ' + value);
+                    var token = value.slice(start, i);
+                    if (modern.test(name)) {
+                        var color = convert(token);
+                        if (gradient) { gradient.modern = true; gradient.colors.add(color); }
+                        out += color;
+                    } else if (name.toLowerCase() === 'url') out += token;
+                    else {
+                        var stops = /gradient$/i.test(name) ? {modern: false, colors: new Set()} : gradient;
+                        if (stops && /^(?:rgba?|hsla?)$/i.test(name)) stops.colors.add(token);
+                        var contents = _fwCapturePaint(value.slice(inner, i - 1), convert, stops);
+                        // Modern gradient interpolation can differ from the
+                        // vendor's legacy canvas gradients. Uniform stops (the
+                        // native table rules) are exact; do not silently alter
+                        // a custom multicolor gradient's interpolation.
+                        if (stops && stops !== gradient && stops.modern && stops.colors.size > 1)
+                            throw new Error('Image capture cannot preserve modern multicolor gradient interpolation.');
+                        out += name + '(' + contents + ')';
+                    }
+                    continue;
+                }
+                if (gradient && name.toLowerCase() === 'transparent') gradient.colors.add('transparent');
+            } else i++;
+            out += value.slice(start, i);
+        }
+        return out;
+    }
+
+    function _fwCaptureCompatible(target, options) {
+        var convert = _fwCaptureColorConverter();
+        var frames = [], existing = new Set(document.querySelectorAll('iframe.html2canvas-container'));
+        // The iframe cannot inherit :hover. Retain the currently painted native
+        // table row backgrounds, including threshold/alternating intersections.
+        var hoveredRows = [];
+        target.querySelectorAll('.fw-data-table tbody tr:hover').forEach(function(row) {
+            var host = row.closest('.fw-table-scroll');
+            if (host && host.id) hoveredRows.push({id: host.id, index: row.sectionRowIndex,
+                colors: Array.from(row.cells).map(function(cell) { return getComputedStyle(cell).backgroundColor; })});
+        });
+        function cleanup() { frames.forEach(function(frame) { frame.remove(); }); }
+        options.backgroundColor = convert(options.backgroundColor);
+        options.onclone = function(doc, root) {
+            var frame = doc.defaultView.frameElement;
+            if (frame && frames.indexOf(frame) < 0) frames.push(frame);
+            hoveredRows.forEach(function(row) {
+                var host = doc.getElementById(row.id);
+                var cloned = host && host.querySelectorAll('tbody tr')[row.index];
+                if (!cloned || cloned.cells.length !== row.colors.length)
+                    throw new Error('The report changed while capture was rendering. Capture the updated view again.');
+                row.colors.forEach(function(color, i) { cloned.cells[i].style.setProperty('background-color', convert(color), 'important'); });
+            });
+            // The vendor has already materialized ::before/::after as elements,
+            // with computed styles. Include them, inherited/currentColor paint,
+            // and the document backgrounds that its parser reads separately.
+            var nodes = new Set([doc.documentElement, doc.body, root]);
+            root.querySelectorAll('*').forEach(function(el) { nodes.add(el); });
+            var changes = [];
+            nodes.forEach(function(el) {
+                var style = doc.defaultView.getComputedStyle(el);
+                for (var i = 0; i < style.length; i++) {
+                    var property = style[i];
+                    if (property.indexOf('--') === 0 || (!/color$/.test(property)
+                        && ['background-image', 'box-shadow', 'text-shadow'].indexOf(property) < 0)) continue;
+                    var value = style.getPropertyValue(property);
+                    var compatible = _fwCapturePaint(value, convert);
+                    if (compatible !== value) changes.push([el, property, compatible]);
+                }
+            });
+            // Read every inherited/currentColor value before rounding any
+            // ancestor, so descendants keep their original computed paint.
+            changes.forEach(function(change) { change[0].style.setProperty(change[1], change[2], 'important'); });
+        };
+        var result;
+        try { result = html2canvas(target, options); }
+        catch (error) { result = Promise.reject(error); }
+        // The vendor appends its iframe synchronously, but does not destroy it
+        // on rejection (including an onclone error). Own only this call's clones.
+        document.querySelectorAll('iframe.html2canvas-container').forEach(function(frame) {
+            if (!existing.has(frame) && frames.indexOf(frame) < 0) frames.push(frame);
+        });
+        return Promise.resolve(result).then(function(canvas) { cleanup(); return canvas; }, function(error) {
+            cleanup(); throw error;
+        });
+    }
+
     function _fwExportCapture(cb, libs) {
         var btnLoad = document.getElementById('fwExportBtn');
         if (btnLoad) btnLoad.classList.add('running');
@@ -56,13 +196,13 @@
             });
         });
 
-        html2canvas(container, {
+        Promise.resolve().then(function() { return _fwCaptureCompatible(container, {
             backgroundColor: getComputedStyle(document.body).backgroundColor,
             scale: 2,
             useCORS: true,
             logging: false,
             windowWidth: container.scrollWidth,
-        }).then(function(canvas) {
+        }); }).then(function(canvas) {
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');
             cb(canvas, slug);
@@ -70,7 +210,7 @@
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');
             console.error('Export failed:', err);
-            _analysisMessage('The report could not be captured.', true);
+            _analysisMessage(err && err.message ? err.message : 'The report could not be captured.', true);
         });
     }
 
@@ -542,7 +682,7 @@
                 });
                 var restore = function() { hidden.forEach(function(row) { row[0].style.display = row[1]; }); };
                 return Promise.resolve().then(function() {
-                    return html2canvas(target, {backgroundColor: getComputedStyle(document.body).backgroundColor,
+                    return _fwCaptureCompatible(target, {backgroundColor: getComputedStyle(document.body).backgroundColor,
                         scale: 2, useCORS: true, logging: false});
                 }).then(function(image) {
                     var pending = _analysisPending();

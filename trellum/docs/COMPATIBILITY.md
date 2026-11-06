@@ -11,9 +11,22 @@ totals with reasons. ComparisonTable has no new totals argument; Pivot totals
 and CSV remain unchanged. Static typed numeric inputs are additive payload
 metadata. Rebuild matching Python/HTML/data/runtime assets; older runtimes
 do not render totals. No database or host migration is needed. Native captures
-include the rendered footer within the current bounded table viewport. The
-existing striped-table html2canvas color limitation remains. See
+include the rendered footer within the current bounded table viewport. See
 [Report data tables](report-data-tables.md#optional-totals-over-matching-delivered-rows).
+
+## Unreleased: native capture colors
+
+Rebuild report HTML/runtime assets to capture native striped and threshold-shaded
+tables, ComparisonTables, Pivot bands and theme-relative component colors with
+the bundled html2canvas. PNG, PDF and analysis-section captures convert modern
+computed colors to 8-bit sRGB in a temporary clone, retaining alpha and the
+current table viewport. On-screen styles, source data and CSV stay unchanged.
+This uses browser relative-color serialization; browsers unable to convert a
+color report a capture failure and restore controls. Custom multicolor modern
+gradients reject because the vendor cannot preserve their interpolation;
+uniform modern stops used by native table separators are supported. Other
+html2canvas CSS limitations still apply. No Python API, host or database
+migration is needed.
 
 ## Unreleased: DataTable ranked row-count selection
 

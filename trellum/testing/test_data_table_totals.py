@@ -315,7 +315,7 @@ def totals_page(tmp_path, native_browser):
         columns=["Label", "Rate"], searchable=True, sortable=True, totals={"Rate": {
             "agg": "ratio", "numerator": "Hidden numerator", "denominator": "Hidden denominator", "format": "ratio"}})])
     ctx.add_section("Bounded totals capture", [DataTable(_examples().campaign_frame(),
-        "Three matching, one displayed", static=True, max_rows=1, totals=_examples().declarations())])
+        "Three matching, three displayed", static=True, max_rows=3, totals=_examples().declarations())])
     render_report(ctx, auto_refresh=False)
     data = json.loads((tmp_path / "current/data.json").read_text())
     ids = [cid for cid, cfg in data["components"].items() if cfg["type"] == "table"]
@@ -508,15 +508,12 @@ def test_native_paint_phone_horizontal_scroll_and_section_capture(totals_page, w
             assert reason.bounding_box()["x"] >= 0
             scroller.evaluate("e=>e.scrollLeft=0")
     section.scroll_into_view_if_needed()
-    # Existing even-row color-mix paint is outside this unit's capture contract.
-    # Record the real native failure; do not replace it with a screenshot.
-    failure = section.evaluate("el=>fw.captureElementSnapshotForAnalysis(el).then(()=>null,e=>e.message)")
-    assert failure in (None, 'Attempting to parse an unsupported color function "color"')
-    if failure:
-        (evidence / f"totals-{width}-striped-capture-limitation.txt").write_text(failure)
+    capture = section.evaluate("el=>fw.captureElementSnapshotForAnalysis(el)")
+    (evidence / f"totals-{width}-striped-native-section.png").write_bytes(
+        base64.b64decode(capture["image"]["data_base64"]))
     section = page.locator(f"#{bounded}").locator('xpath=ancestor::*[contains(@class,"fw-section")][1]')
     section.scroll_into_view_if_needed()
-    assert section.locator("tbody tr").count() == 1
+    assert section.locator("tbody tr").count() == 3
     assert "3 matching rows" in section.locator(".fw-table-totals-note").inner_text()
     assert _footer(page, bounded)[1] == "$100.10"
     assert section.locator("tfoot").count() == section.locator(".fw-table-totals-note").count() == 1
@@ -570,10 +567,8 @@ def test_default_off_paint_matches_actual_required_dependency(totals_page, width
         page.locator(".fw-section").first.screenshot(path=str(evidence / f"default-{BASELINE[:7]}-{width}-{name}.png"), animations="disabled")
         captures.append((table.screenshot(animations="disabled"), geometry))
     assert captures[0] == captures[1]
-    # Confirm the capture limitation also affects the actual opt-out dependency.
-    failure = page.locator(".fw-section").first.evaluate(
-        "el=>fw.captureElementSnapshotForAnalysis(el).then(()=>null,e=>e.message)")
-    assert failure in (None, 'Attempting to parse an unsupported color function "color"')
+    capture = page.locator(".fw-section").first.evaluate("el=>fw.captureElementSnapshotForAnalysis(el)")
+    assert capture["format"] == "trellum-analysis-capture"
 
 
 

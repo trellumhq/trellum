@@ -210,13 +210,12 @@ negative zero is normalized. No compact notation hides authored precision.
 
 CSV remains **only matching source rows in current stable sort order**, with
 no total/footer or unit changes. Native report/section PNG and PDF capture
-the rendered footer and scope note in normal flow when the existing capture
-renderer supports the section’s styles. The vendored html2canvas currently
-rejects the existing even-row `color-mix` paint (`unsupported color function
-"color"`); this also affects default-off tables. A bounded one-visible-row
-section can be captured with its full matching-population total and scope.
-This option does not change body paint or the global capture runtime to work
-around that limitation. Captures retain the current bounded table display and horizontal scroll viewport; they do not expand
+the rendered footer and scope note in normal flow, including multi-row stripes
+and threshold fills. The capture runtime converts modern computed CSS colors
+to equivalent 8-bit sRGB with alpha in its temporary clone; it leaves on-screen
+styles intact. Rebuild HTML/runtime assets to pick up this compatibility fix.
+Other CSS features remain subject to the bundled html2canvas renderer's support.
+Captures retain the current bounded table display and horizontal scroll viewport; they do not expand
 hidden rows/columns or add an export-only total. This option adds no pinning,
 hierarchy, row drill-down or Pivot changes. ComparisonTable exposes no totals
 argument, and workspace definition catalogs ignore injected totals settings.

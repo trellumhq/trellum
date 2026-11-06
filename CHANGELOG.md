@@ -181,6 +181,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Native PNG, PDF and analysis-section captures now support modern computed
+  report colors in multi-row striped/shaded tables and Pivot bands. Temporary
+  clone conversion retains sRGB color, alpha and current table bounds without
+  changing on-screen styles. Rebuild report HTML/runtime assets to apply.
+
 - Clarify the Live Ops demo's embedded snapshot, 300-event result scope and
   separate top-15 actor ranking in its report introduction and gallery description.
 - Document both fixed-evidence analysis examples in the demo guide.
