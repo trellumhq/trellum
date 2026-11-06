@@ -99,6 +99,8 @@
         },
 
         removeDataset: function(dsId) {
+            var liveHooks = this._liveDatasets[dsId];
+            if (liveHooks && liveHooks.onDispose) liveHooks.onDispose();
             delete this._columnar[dsId];
             delete this._datasets[dsId];
             delete this._state[dsId];
@@ -212,6 +214,10 @@
             this._liveDatasets[dsId] = hooks;
             if (!this._state[dsId]) this._state[dsId] = {};
             if (!this._subscribers[dsId]) this._subscribers[dsId] = [];
+        },
+
+        unregisterLiveDataset: function(dsId, hooks) {
+            if (this._liveDatasets[dsId] === hooks) delete this._liveDatasets[dsId];
         },
 
         isLiveDataset: function(dsId) {
