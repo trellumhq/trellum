@@ -299,9 +299,7 @@
                     cfg.column ? [JSON.stringify(f.bucket)] : [], [f.raw,cfg.value,cfg.format,available ? 'available' : 'unavailable',
                         available ? 'complete' : 'unavailable',a.reason]);
             });
-            // The common writer does not quote headings or lone carriage
-            // returns. This fact export must preserve both without changing
-            // existing table exports or coercing raw numeric text.
+            // Preserve typed fact strings, raw numeric text and CRLF records.
             function csvCell(value) {
                 var valueText = String(value);
                 return /[,"\r\n]/.test(valueText) ? '"' + valueText.replace(/"/g, '""') + '"' : valueText;

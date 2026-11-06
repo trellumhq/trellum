@@ -1,5 +1,15 @@
 # Framework Migration Guide
 
+## Unreleased: optional CohortTable
+
+Existing reports need no changes. Import `CohortTable` from `trellum.components`
+for precomputed cohort cells with declared observation states and optional
+supplied forecasts. The new component does not replace PivotTable or calculate
+cohort maturity, pooled rates or model predictions. Rebuild matched report assets
+to use it; no host or database migration is needed.
+See [the cohort API](report-cohort-tables.md) for required provenance, whole-cohort
+filtering and snapshot bounds.
+
 ## Unreleased: optional HierarchyTable
 
 No existing report needs to change. Import `HierarchyTable` from

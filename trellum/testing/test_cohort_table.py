@@ -8,7 +8,8 @@ import pandas as pd
 import pytest
 
 from trellum.components.base import RenderContext
-from trellum.components.cohort_table import CohortTable, MAX_BYTES
+from trellum.components import CohortTable
+from trellum.components.cohort_table import MAX_BYTES
 from trellum.components.filterable import DataSource, FilterBar, LiveDataSource, ScopedDataSource
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
@@ -16,7 +17,6 @@ from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
 from trellum.validation.checks.cohort_table import check_cohort_tables
 from trellum.validation.result import ValidationResult
-from trellum.validation.walk import _all_components
 
 EXAMPLES_PATH = Path(__file__).resolve().parents[1] / 'demo/reports/component-showcase/examples_cohorts.py'
 spec = importlib.util.spec_from_file_location('cohort_examples', EXAMPLES_PATH)
@@ -31,10 +31,6 @@ def make(frame=None, title="", **kwargs):
 def diagnostic(ctx):
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
-    comps = _all_components(ctx)
-    ds_map = {c.id: c for c, _ in comps if isinstance(c, (DataSource, ScopedDataSource, LiveDataSource))}
-    check_cohort_tables(comps, ds_map, result)
-    result.ran('cohort tables (explicit pending integration hook)')
     return details, result
 
 

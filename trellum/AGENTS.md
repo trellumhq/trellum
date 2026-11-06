@@ -344,7 +344,7 @@ question.
 | Dual-axis bar + line | `ComboChart` |
 | Ratio metrics (ARPDAU, ARPPU, retention, conversion) | `LineChart(ratios=[{numerator, denominator, label}])` — never hand-roll the division in JS |
 | Ratio by category (CPD per comfort_zone, ARPPU by country) | `BarChart(ratios=[...], horizontal=True, sort='desc')` — categorical ratio bars |
-| Tables | `DataTable`, `ComparisonTable`, `PivotTable`, `HierarchyTable` (additive leaf facts only; see `docs/report-hierarchy-tables.md`) |
+| Tables | `DataTable`, `ComparisonTable`, `PivotTable`, `HierarchyTable` (additive leaf facts; `docs/report-hierarchy-tables.md`), `CohortTable` (precomputed cohort cells; `docs/report-cohort-tables.md`) |
 | Layout | `Grid`, `Panel`, `SplitPane`, `TabGroup` |
 | Card-panel grid | `Grid(card=True)` |
 | Cross-grain filter sync | `FilterBar(propagate_to={target_ds: {src_col: tgt_col}})` |

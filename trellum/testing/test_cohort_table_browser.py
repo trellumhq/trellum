@@ -88,6 +88,24 @@ def _csv(page, table):
         return list(csv.DictReader(stream))
 
 
+def test_shared_csv_preserves_header_and_cell_line_breaks(native_report):
+    from playwright.sync_api import sync_playwright
+    columns = ['cohort, identity', 'reason\rheader', 'quoted"header']
+    rows = [['same\rcohort', 'line\none', 'value"two'], [0, None, 'plain']]
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = _open(browser, native_report, 1280, [], [])
+        try:
+            with page.expect_download() as info:
+                page.evaluate('([cols,rows]) => _fwDownloadCsv(cols,rows,"special.csv")', [columns, rows])
+            with open(info.value.path(), encoding='utf-8', newline='') as stream:
+                exported = list(csv.reader(stream))
+            assert exported == [columns, rows[0], ['0', '', 'plain']]
+        finally:
+            page.close()
+            browser.close()
+
+
 @pytest.mark.parametrize('width', [1280, pytest.param(390, marks=pytest.mark.heavy)])
 def test_native_cohort_states_filters_lifecycle_and_captures(native_report, width):
     from playwright.sync_api import expect, sync_playwright
@@ -145,8 +163,10 @@ def test_native_cohort_states_filters_lifecycle_and_captures(native_report, widt
             expect(first.locator('tbody td')).to_have_count(30)
             # Programmatic partial selections, even on a dimension absent from
             # FilterBar controls, cannot be claimed as valid forecast scope.
+            first.locator('summary').focus()
             page.evaluate("_fwFilterEngine.setFilter('showcase_cohorts_supplied', 'injected', 'day', 'equals', 7)")
             expect(first.locator('.fw-cohort-error')).to_contain_text('slice precomputed')
+            assert first.locator('.fw-cohort-error').evaluate('e=>e===document.activeElement')
             assert first.locator('table').count() == 0
             page.evaluate("_fwFilterEngine.clearFilter('showcase_cohorts_supplied', 'injected')")
             expect(first.locator('tbody td')).to_have_count(30)

@@ -147,6 +147,28 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
             assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="cohort tables", exact=True).click()
+            cohort_section = page.locator('#sec-cohort-tables-—-supplied-snapshot-and-forecasts')
+            cohorts = cohort_section.locator('.fw-cohort').first
+            expect(cohorts.locator('tbody td')).to_have_count(30)
+            expect(cohorts.locator('tbody tr').first.locator('td').nth(1)).to_have_text('0.00%')
+            expect(cohorts.locator('[data-state="unavailable"]')).to_have_count(1)
+            cohort_section.get_by_role('button', name='iOS', exact=True).click()
+            expect(cohorts.locator('tbody td')).to_have_count(12)
+            with page.expect_download() as cohort_download:
+                cohorts.get_by_role('button', name='Download CSV', exact=True).click()
+            with open(cohort_download.value.path(), encoding='utf-8', newline='') as file:
+                cohort_rows = list(csv.DictReader(file))
+            assert len(cohort_rows) == 12
+            assert {r['cohort_month'] for r in cohort_rows} == {'2025-10', '2025-12'}
+            assert any(r['display_state'] == 'forecast' for r in cohort_rows)
+            cohort_section.get_by_role('button', name='Web', exact=True).click()
+            expect(cohorts.locator('.fw-cohort-empty')).to_contain_text('No cohorts match')
+            cohort_section.get_by_role('button', name='All', exact=True).click()
+            expect(cohorts.locator('tbody td')).to_have_count(30)
+            expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
+            assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="line styles", exact=True).click()
             density = page.locator('[data-tab-id="showcase_line_density"]')
             density.get_by_role('tab', name='Sparse: 12 daily observations', exact=True).click()

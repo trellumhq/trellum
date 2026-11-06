@@ -17,7 +17,7 @@
 .fw-cohort-table tbody td, .fw-cohort-table tfoot td { min-width: 106px; text-align: right; }
 .fw-cohort-table th[scope="row"], .fw-cohort-table th[rowspan] { position: sticky; left: 0; background: var(--bg-card); z-index: 1; text-align: left; }
 .fw-cohort-table tbody th { font-weight: 500; white-space: nowrap; }
-.fw-cohort-table td[data-state="forecast"] .fw-cohort-value { font-style: italic; border-bottom: 1px dotted currentColor; }
+.fw-cohort-table td[data-state="forecast"] .fw-cohort-value { font-style: italic; border-bottom: 1px dotted currentColor; color: var(--text-warning, var(--accent-yellow)); }
 .fw-cohort-cell-reason { display: block; font-size: var(--font-size-meta); color: var(--text-context, var(--text-secondary)); }
 .fw-cohort-table tfoot th, .fw-cohort-table tfoot td { border-top: 1px solid var(--border-color); font-size: var(--font-size-meta); }
 .fw-cohort-table tfoot th { max-width: 150px; overflow-wrap: anywhere; }

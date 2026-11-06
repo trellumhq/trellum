@@ -1,8 +1,7 @@
 """Independent synthetic, precomputed cohort observations and forecasts."""
 import pandas as pd
 
-from trellum.components import DataSource, FilterBar, PivotTable, RawHTML
-from trellum.components.cohort_table import CohortTable
+from trellum.components import CohortTable, DataSource, FilterBar, PivotTable, RawHTML
 
 POPULATION = {"label": "Synthetic acquisition cohorts; each cohort belongs wholly to one platform",
               "as_of": "2026-02-04T00:00:00+00:00", "timezone": "UTC",

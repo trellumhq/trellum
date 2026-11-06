@@ -533,6 +533,7 @@ same way, and the validator reports `line-chart-height-invalid` and
 | `PivotTable` | `(df, rows, cols, values, agg, dataset_id)` | Interactive pivot grid. Users can change dimensions and aggregation via dropdowns. `agg`: `sum`/`count`/`avg`. `value_format`. |
 | `ComparisonTable` | `(df, title, value_col, compare_cols, dataset_id)` | Table with period comparison columns. |
 | `HierarchyTable` | `(df, title="", *, rows, value, record_id, column=None, dataset_id=None)` | Expandable additive leaf-fact summaries. Totals and CSV include collapsed descendants; incomplete results stay explicit. [API and scope](docs/report-hierarchy-tables.md). |
+| `CohortTable` | `(df, title="", *, cohort, cohort_month, horizon, observed, observed_state, population)` | Precomputed cohort observations and supplied forecasts with explicit states, provenance and optional sampled milestones. [API and scope](docs/report-cohort-tables.md). |
 
 ### Controls
 

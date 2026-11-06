@@ -25,8 +25,10 @@ window._fwRenderers['cohort_table'] = function(id, cfg) {
             (p.source_time ? ' · Source time: ' + escape(p.source_time) : '') + '</p>';
     }
     function fail(message) {
+        var focused = content.contains(document.activeElement);
         selected = []; button.disabled = true;
-        content.innerHTML = context() + '<p class="fw-cohort-error" role="alert">Cohort scope invalid: ' + escape(message) + '</p>';
+        content.innerHTML = context() + '<p class="fw-cohort-error" role="alert" tabindex="-1">Cohort scope invalid: ' + escape(message) + '</p>';
+        if (focused) content.querySelector('.fw-cohort-error').focus({preventScroll:true});
     }
     try {
         if (!Array.isArray(cfg.data) || cfg.data.length > 7680 ||
@@ -127,7 +129,13 @@ window._fwRenderers['cohort_table'] = function(id, cfg) {
         var oldDetails = content.querySelector('details'), wasOpen = oldDetails && oldDetails.open;
         var focused = oldDetails && oldDetails.contains(document.activeElement);
         var scroll = content.querySelector('.fw-cohort-scroll'), left = scroll ? scroll.scrollLeft : 0;
-        if (!rows.length) { content.innerHTML = context() + '<p class="fw-cohort-empty" role="status">No cohorts match the current selection.</p>'; return; }
+        var scrollFocused = scroll && scroll.contains(document.activeElement);
+        if (!rows.length) {
+            var contentFocused = content.contains(document.activeElement);
+            content.innerHTML = context() + '<p class="fw-cohort-empty" role="status" tabindex="-1">No cohorts match the current selection.</p>';
+            if (contentFocused) content.querySelector('.fw-cohort-empty').focus({preventScroll:true});
+            return;
+        }
         var identities = Array.from(new Set(rows.map(function(r) { return r[cfg.cohort]; })));
         // Stable sort retains first-seen identities within the same month.
         identities = Array.from(groups.keys()).filter(function(c) { return identities.includes(c); })
@@ -188,6 +196,7 @@ window._fwRenderers['cohort_table'] = function(id, cfg) {
             '<p>Values and states are author-declared as of the supplied snapshot. No ratios, maturity, pooling, model fitting or validity policy are calculated.</p><ul>' + details + '</ul></details>';
         content.querySelector('.fw-cohort-scroll').scrollLeft = left;
         if (focused) content.querySelector('summary').focus({preventScroll:true});
+        else if (scrollFocused) content.querySelector('.fw-cohort-scroll').focus({preventScroll:true});
     }
     button.onclick = function() {
         if (!selected.length || scopeError(selected)) { draw(selected); return; }

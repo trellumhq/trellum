@@ -1,5 +1,16 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional CohortTable
+
+`CohortTable` is an additive component API for author-supplied snapshot cells.
+Existing constructors, PivotTable selectors, aggregations and KPI layouts stay
+unchanged. Filters select complete precomputed cohorts; partial or altered
+populations withhold the local result. Live sources, generated forecasts and
+arbitrary-precision object numerics are unsupported. CSV contains all selected
+source cells, while image exports retain the current horizontal view.
+See [cohort tables](report-cohort-tables.md) for provenance and resource bounds.
+Rebuild matching Python/HTML/data/runtime assets; no host migration is required.
+
 ## Unreleased: optional HierarchyTable
 
 `HierarchyTable` is a new snapshot-only component; existing table constructors,

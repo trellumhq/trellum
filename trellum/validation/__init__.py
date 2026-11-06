@@ -19,6 +19,7 @@ from typing import Any
 
 from trellum.validation.checks.annotations import _check_annotations
 from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.checks.cohort_table import check_cohort_tables
 from trellum.validation.checks.columns import _check_columns
 from trellum.validation.checks.datasource import (
     _check_dataset_id_integrity,
@@ -83,6 +84,7 @@ def validate_report(
                   _check_datasource_filterbar, ctx, comps, result)
     if ds_map is None:
         ds_map = {}
+    _run("cohort tables", check_cohort_tables, comps, ds_map, result)
     _run("dataset id integrity", _check_dataset_id_integrity, comps, ds_map, result)
     _run("slider filter columns", _check_slider_filter_columns, comps, result)
     _run("live queries", _check_live_queries, ctx, comps, result)

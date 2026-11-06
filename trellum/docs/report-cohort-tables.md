@@ -6,8 +6,7 @@ selectors, aggregations, totals, and defaults retain their behavior. Existing KP
 states and geometry are unaffected. This component adds no renderer dependency.
 
 ```python
-from trellum.components.cohort_table import CohortTable
-from trellum.components import DataSource, FilterBar
+from trellum.components import CohortTable, DataSource, FilterBar
 
 ctx.add_section("Acquisition cohorts", [
     DataSource("acquisition_cohorts", cells),
@@ -171,37 +170,18 @@ provenance disclosure is available to the reader and can be opened before
 capture; CSV always carries all declared metadata. A phone capture shows the
 current horizontal viewport, matching the existing native capture contract.
 
-## Integration hook
+## Native integration and examples
 
 The class registers its assets through normal component methods and the
-`cohort_table` entry in `_fwRenderers`. During initial integration, import it
-from `trellum.components.cohort_table`. The common export maintainer should add:
-
-```python
-from trellum.components.cohort_table import CohortTable
-# Add "CohortTable" to trellum.components.__all__.
-```
-
-The shared validator must call the dedicated check after building the effective
-`ds_map`, before suppression/deduplication, in `validate_report`:
-
-```python
-from trellum.validation.checks.cohort_table import check_cohort_tables
-
-_run("cohort tables", check_cohort_tables, comps, ds_map, result)
-```
-
-Alternatively, call `check_cohort_tables(comps, ds_map, result)` near the end of
-`_check_datasource_filterbar`, before returning `ds_map`. Choose one hook, not
-both. The check emits `cohort-table-invalid` failures and a
-`cohort-table-snapshot` pass on valid input. Tests explicitly invoke this check
-alongside the full native `compute_details(ctx)` / `validate_report` pipeline
-until the shared hook is integrated. The standard `_details.json` remains the
+`cohort_table` entry in `_fwRenderers`. Import it from `trellum.components`.
+The shared `validate_report` pipeline checks the effective source and filter
+scope in its cohort-tables group, emitting `cohort-table-invalid` failures or a
+`cohort-table-snapshot` pass. The standard `_details.json` remains the
 shared dataset/filter diagnostic schema; per-cell values and forecast
 provenance are retained in component data, the disclosure, and CSV.
 
-Import `examples_cohorts` in the component showcase generator and call
-`examples_cohorts.add_sections(ctx)`. Add a navigation link to
-`#sec-cohort-tables-—-supplied-snapshot-and-forecasts`. The module uses independent
+The component showcase's **cohort tables** link opens supplied observations and
+forecasts, optional milestone, observed-only and existing PivotTable examples.
+Its `examples_cohorts.add_sections(ctx)` module uses independent
 `showcase_cohorts_supplied` and `showcase_cohorts_observed` datasets and named
 sections; no private renderer or source data is needed.

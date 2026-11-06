@@ -555,7 +555,7 @@ def test_filterable_types_auto_discovered():
         "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart",
         "DoughnutChart", "HeatmapChart", "ScatterChart", "FunnelChart",
         "TreemapChart", "KpiRow", "DataTable", "ComparisonTable", "PivotTable",
-        "HierarchyTable",
+        "HierarchyTable", "CohortTable",
     }
     discovered = _get_filterable_types()
     assert discovered == expected, (

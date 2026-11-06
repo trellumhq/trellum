@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional CohortTable for precomputed observations and supplied forecasts, with
+  provenance, whole-cohort filtering, sampled milestones and raw CSV export.
+  Added independent native examples; existing PivotTable selectors are unchanged.
+
 - Optional HierarchyTable with expandable additive leaf-fact summaries, exact
   decimal totals, explicit completeness states and CSV independent of expansion.
   Snapshot validation rejects ambiguous identities and incomplete source scope;
@@ -200,6 +204,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 
 ### Fixed
+
+- Shared report CSV downloads now quote headers and lone carriage returns,
+  preserving field boundaries and exact text without changing ordinary cells.
 
 - Native PNG, PDF and analysis-section captures now support modern computed
   report colors in multi-row striped/shaded tables and Pivot bands. Temporary
