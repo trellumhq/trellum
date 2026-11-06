@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ report.name }} — trellum{% endblock %}
 {% block content %}
 <div class="panel ui-notice-page wide">
@@ -19,43 +20,12 @@
   </p>
   <p style="margin-top:16px">
     {% if can_rebuild %}
-      <button type="button" class="ui-btn primary" id="reportRebuildNow"
+      <button type="button" class="ui-btn primary" id="reportRebuildNow" data-report-rebuild
         data-run-url="{{ prefix }}/api/reports/{{ report.slug }}/run">Rebuild now</button>
     {% endif %}
     <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/">Back to {{ studio_name }}</a>
   </p>
+{% if can_rebuild %}<p class="muted" role="status" data-rebuild-status hidden></p>{% endif %}
 </div>
-{% if can_rebuild %}
-{% comment %}A real button + a script-src 'self' listener, matching
-report_storage_outage.html's identical reasoning: no javascript: href, no
-inline onclick.{% endcomment %}
-<script>
-(function () {
-    function getCookie(name) {
-        var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-        return m ? decodeURIComponent(m[1]) : '';
-    }
-    var btn = document.getElementById('reportRebuildNow');
-    btn.addEventListener('click', function () {
-        btn.disabled = true;
-        btn.textContent = 'Queuing…';
-        fetch(btn.dataset.runUrl, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: '{}'
-        }).then(function (resp) {
-            if (!resp.ok) throw new Error('request failed');
-            btn.textContent = 'Rebuild queued — this can take a few minutes';
-        }).catch(function () {
-            btn.disabled = false;
-            btn.textContent = 'Rebuild now';
-        });
-    });
-})();
-</script>
-{% endif %}
+<script src="{% static 'report-notice.js' %}" defer></script>
 {% endblock %}

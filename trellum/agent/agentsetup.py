@@ -19,6 +19,9 @@ Two delivery paths, deliberately:
 * :func:`install_session_hooks` is opt-in and machine-wide. Convenient, but
   invisible in the repository and easy to have without knowing -- which is why
   it is not the primary path.
+
+Everything written into the project can be taken back out:
+:mod:`trellum.agent.agentremoval` (``trellum setup project --remove``).
 """
 from __future__ import annotations
 
@@ -92,23 +95,32 @@ re-reads your whole context, so four separate calls cost four times the context,
 not four times the content. `guide report` returns the whole authoring contract
 at once.
 
-Build. `--no-serve` exits when the build is done; without it the command starts
-a preview server and never returns:
+Build. `--no-serve` exits when the build is done:
 
 ```
 {py} -m trellum.run reports/<slug> --no-serve
 {py} -m trellum.new <slug>
 ```
 
-Serve only when a human is going to look. It blocks until killed, so run it in
-the background, and wait for its `Serving at` line before opening the URL — it
-rebuilds the report before it binds the port. A single report is served at `/`,
-not at `/<slug>`:
+When a person will review a local report, start review mode. It prints the
+preview URL and enables feedback:
 
 ```
-{py} -m trellum.run reports/<slug>
-{py} -m trellum.run --all --serve      every report, index at /
+{py} -m trellum review start reports/<slug>
+{py} -m trellum review poll --report <slug>
 ```
+Keep the report-scoped poll active. Apply feedback, rebuild with `--no-serve`,
+then reply and continue polling:
+
+```
+{py} -m trellum.run reports/<slug> --no-serve
+{py} -m trellum review poll --report <slug> --session <session> --reply "what changed"
+```
+
+Continue until the user ends review; use `review end` if they ask you to wrap
+up. Build-only work stops after `--no-serve`. If someone explicitly asks for a
+plain preview without feedback, use `{py} -m trellum serve --background` and
+share its printed URL.
 {portal}
 A report is not finished until the validator reports no FAILs.
 """
@@ -169,21 +181,6 @@ def hook_interpreter(root: str | os.PathLike[str] | None = None) -> str:
     return exe.as_posix()
 
 
-def _is_ours(group: dict) -> bool:
-    """Is this hook group one we wrote?
-
-    Matches on `-m trellum` rather than the leading token, because the leading
-    token is an interpreter path that differs per machine.
-    """
-    for h in group.get("hooks") or []:
-        cmd = h.get("command")
-        if not isinstance(cmd, str):
-            continue
-        if "-m trellum" in cmd or cmd.split()[0:1] == [MARKER]:
-            return True
-    return False
-
-
 def hook_config(root: str | os.PathLike[str] | None = None) -> dict:
     """The two hooks, as they appear in a settings.json.
 
@@ -215,18 +212,32 @@ def merge_hooks(settings: dict,
     Marker-based rather than positional, so re-running repairs rather than
     duplicating, and somebody else's hooks are never touched.
     """
-    settings = dict(settings)
-    hooks = dict(settings.get("hooks") or {})
-    changed = False
+    from trellum.agent.agentremoval import strip_hooks
+
+    cleaned, _ = strip_hooks(settings)
+    hooks = dict(cleaned.get("hooks") or {})
     for event, groups in hook_config(root).items():
-        existing = [g for g in (hooks.get(event) or []) if not _is_ours(g)]
-        merged = existing + groups
-        if merged != (hooks.get(event) or []):
-            hooks[event] = merged
-            changed = True
-    if changed:
-        settings["hooks"] = hooks
-    return settings, changed
+        existing = hooks.get(event) or []
+        # Repair the historical bare command, without dropping its neighbours.
+        kept = []
+        for group in existing:
+            if (isinstance(group, dict) and set(group) == {"matcher", "hooks"}
+                    and group["matcher"] == groups[0]["matcher"]
+                    and isinstance(group["hooks"], list)):
+                left = [h for h in group["hooks"] if h != {"type": "command", "command": "trellum"}]
+                if left:
+                    kept.append({**group, "hooks": left})
+            else:
+                kept.append(group)
+        hooks[event] = kept + groups
+    result = {**cleaned, "hooks": hooks}
+    return result, result != settings
+
+
+def dump_json(data: dict) -> str:
+    """How every JSON file we touch is written back: 2-space indent, readable
+    non-ASCII kept as typed (not turned into ``\\uXXXX`` escapes), final newline."""
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 def _update_json_file(path: Path, merge) -> str:
@@ -246,7 +257,7 @@ def _update_json_file(path: Path, merge) -> str:
         return "current"
     status = "updated" if path.is_file() else "created"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    path.write_text(dump_json(merged), encoding="utf-8")
     return status
 
 
@@ -312,6 +323,13 @@ itself — ask it rather than reading its source.** Run from the repository root
 ```
 
 `trellum` alone is not on PATH, so name the interpreter as shown.
+
+For human-facing local previews, the current default is
+`{py} -m trellum review start reports/<slug>`. Keep
+`{py} -m trellum review poll --report <slug>` active; rebuild with `--no-serve`
+before replying with the feedback session, and continue until the user ends
+review. Follow `{py} -m trellum guide review` for the full loop. Build-only work
+stops after the build; use plain preview only when explicitly requested.
 {portal}{end}
 """
 
@@ -335,9 +353,30 @@ def _merge_signpost(existing: str, py: str, portal: str = "") -> tuple[str, bool
         if current == block:
             return existing, False
         return existing[:start] + block + existing[end + len(BLOCK_END):], True
-    separator = "" if existing.endswith("\n\n") else (
-        "\n" if existing.endswith("\n") else "\n\n")
+    # One blank line between their text and our block. The separator is chosen
+    # so removal can take back exactly what was added: a newline-terminated
+    # file gets one more newline, never a normalised amount.
+    separator = "\n" if existing else ""
     return existing + separator + block + "\n", True
+
+
+def read_exact(path: Path) -> str | None:
+    """File text with its line endings untouched; None when unreadable.
+
+    ``Path.read_text`` translates CRLF to LF and ``write_text`` then writes the
+    platform's ending, which would quietly rewrite every line of somebody
+    else's file.
+    """
+    try:
+        with open(path, encoding="utf-8", newline="") as handle:
+            return handle.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def write_exact(path: Path, text: str) -> None:
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
 
 
 def write_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
@@ -370,12 +409,11 @@ def write_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
             path.write_text(pointer, encoding="utf-8")
             results.append((name, "created"))
             continue
-        try:
-            existing = path.read_text(encoding="utf-8")
-        except OSError:
+        existing = read_exact(path)
+        if existing is None:
             results.append((name, "unreadable"))
             continue
-        if existing == pointer:
+        if existing.replace("\r\n", "\n") == pointer:
             # Our own file, unchanged: re-running must not append a signpost
             # to the full pointer it wrote last time.
             results.append((name, "current"))
@@ -384,7 +422,7 @@ def write_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
         if not changed:
             results.append((name, "current"))
             continue
-        path.write_text(merged, encoding="utf-8")
+        write_exact(path, merged)
         results.append((name, "appended"))
 
     settings = root / ".claude" / "settings.json"
@@ -393,41 +431,53 @@ def write_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
     return results
 
 
-def remove_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
-    """Strip our signpost block, leaving the user's own content untouched.
+def command_for(root: str | os.PathLike[str], tail: str) -> str:
+    """A ``trellum`` command to paste into a terminal for the project at *root*.
 
-    The counterpart to appending: anything we add to a file we do not own, we
-    must be able to take back out.
+    From the project root it is the same interpreter the pointers name. From
+    anywhere else the relative interpreter would not resolve, so the absolute
+    one is used and the project is passed as ``--dest``.
     """
-    root = Path(root)
-    results: list[tuple[str, str]] = []
-    for name in ("CLAUDE.md", "AGENTS.md"):
-        path = root / name
-        if not path.is_file():
-            results.append((name, "absent"))
-            continue
-        try:
-            existing = path.read_text(encoding="utf-8")
-        except OSError:
-            results.append((name, "unreadable"))
-            continue
-        start = existing.find(BLOCK_START)
-        end = existing.find(BLOCK_END)
-        if start == -1 or end == -1 or end < start:
-            results.append((name, "no block"))
-            continue
-        stripped = (existing[:start].rstrip("\n")
-                    + "\n" + existing[end + len(BLOCK_END):].lstrip("\n"))
-        path.write_text(stripped.rstrip("\n") + "\n", encoding="utf-8")
-        results.append((name, "removed"))
-    for name in MCP_FILES:
-        path = root / name
-        if not path.is_file():
-            results.append((name, "absent"))
-            continue
-        status = _update_json_file(path, _without_our_server)
-        results.append((name, {"current": "no entry", "updated": "removed"}.get(status, status)))
-    return results
+    import shlex
+
+    root = Path(root).resolve()
+    if root == Path.cwd().resolve():
+        return f"{shlex.quote(hook_interpreter(root))} -m trellum {tail}"
+    return f"{shlex.quote(Path(sys.executable).as_posix())} -m trellum {tail} --dest {shlex.quote(str(root))}"
+
+
+def setup_summary(root: str | os.PathLike[str], rows: list[tuple[str, str]]) -> list[str]:
+    """Where the guidance and hooks went, how to check them, how to undo them.
+
+    Shared by ``trellum init`` and ``trellum setup project`` so both end the
+    same way. *rows* is what :func:`write_project_files` returned; a file it
+    could not read is not listed as set up.
+    """
+    done = [name for name, status in rows if status != "unreadable"]
+    guidance = [n for n in done if n in ("CLAUDE.md", "AGENTS.md")]
+    hooks = [n for n in done if n == ".claude/settings.json"]
+    lines = ["Agent setup:"]
+    if guidance:
+        lines.append(f"  guidance  {', '.join(guidance)}")
+    if hooks:
+        lines.append(f"  hooks     {', '.join(hooks)}  (SessionStart, PostToolUse)")
+    if len(lines) == 1:
+        return []
+    lines += [f"  check     {command_for(root, 'doctor')}",
+              f"  remove    {command_for(root, 'setup project --remove')}"
+              "   (only Trellum's parts; your own content stays)"]
+    return lines
+
+
+def remove_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
+    """Take out what :func:`write_project_files` and ``write_mcp_files`` added.
+
+    ``[(relative_path, status)]``; see :mod:`trellum.agent.agentremoval` for
+    what is removed, what is kept, and why.
+    """
+    from trellum.agent import agentremoval
+
+    return [(row.name, row.status) for row in agentremoval.remove(root)]
 
 
 # ── the portal: server entry, key, and what doctor checks ─────────────────
@@ -458,14 +508,6 @@ def merge_mcp(config: dict, server: dict) -> tuple[dict, bool]:
     if servers.get(MARKER) == server:
         return config, False
     servers[MARKER] = server
-    return {**config, "mcpServers": servers}, True
-
-
-def _without_our_server(config: dict) -> tuple[dict, bool]:
-    servers = dict(config.get("mcpServers") or {})
-    if MARKER not in servers:
-        return config, False
-    del servers[MARKER]
     return {**config, "mcpServers": servers}, True
 
 

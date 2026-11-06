@@ -269,7 +269,7 @@ def execute(action: Action, *, renew_every: float | None = None) -> str | None:
     was therefore not published.
     """
     from apps.reports.models import Report
-    from apps.reports.scan import ReportQuotaExceeded, sync_studio_registry
+    from apps.reports.scan import RegistrySyncWarning, sync_studio_registry
     from apps.runner.gitsync import studio_sync_lock
 
     stop = threading.Event()
@@ -304,8 +304,8 @@ def execute(action: Action, *, renew_every: float | None = None) -> str | None:
             try:
                 count = sync_studio_registry(action.studio)
                 warning = ""
-            except ReportQuotaExceeded as exc:
-                # Reports that fit are registered: terminal success + warning.
+            except RegistrySyncWarning as exc:
+                # Valid entries are registered: terminal success + warning.
                 warning = str(exc)[:300]
                 count = Report.objects.filter(
                     studio=action.studio, present_in_scan=True

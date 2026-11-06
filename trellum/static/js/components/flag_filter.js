@@ -10,9 +10,13 @@ window._fwFilterTypes['flag'] = {
                 if (grp) {
                     grp.querySelectorAll('.fw-toggle-btn').forEach(function(btn) {
                         btn.classList.remove('active');
+                        btn.setAttribute('aria-pressed', 'false');
                         var t = btn.textContent.trim();
-                        if (urlVal === 'exclude' && t.indexOf('Exclude') === 0) btn.classList.add('active');
-                        else if (urlVal === 'only' && t.indexOf('Only') === 0) btn.classList.add('active');
+                        if ((urlVal === 'exclude' && t.indexOf('Exclude') === 0) ||
+                            (urlVal === 'only' && t.indexOf('Only') === 0)) {
+                            btn.classList.add('active');
+                            btn.setAttribute('aria-pressed', 'true');
+                        }
                     });
                 }
             }

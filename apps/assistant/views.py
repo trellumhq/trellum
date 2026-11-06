@@ -24,6 +24,7 @@ from datetime import timedelta
 from functools import wraps
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -41,7 +42,9 @@ from apps.core.audit import audit
 from apps.core.http import json_body
 from apps.core.permissions import require_studio_role
 from apps.core.public_assets import public_asset
-from apps.core.report_access import can_view_report, raw_scope_reports, selected_report_access_block_reason
+from apps.core.report_access import (
+    can_view_report, raw_scope_reports, report_content_block_reason, visible_reports,
+)
 from apps.core.request_access import request_org_access
 
 logger = logging.getLogger(__name__)
@@ -179,19 +182,11 @@ def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     restricted = not request.org_roles.has_full_studio_visibility(request.studio)
     report = None
     if ok and restricted:
-        if selected_report_access_block_reason():
+        match = _REPORT_PATH_RE.search(request.GET.get("path") or "")
+        report = _report_for(request.studio, match.group(1)) if match else None
+        if report is None or not can_view_report(request.user, report, request=request):
             ok = False
-            reason = "Selected report access is temporarily unavailable."
-        else:
-            match = _REPORT_PATH_RE.search(request.GET.get("path") or "")
-            report = _report_for(request.studio, match.group(1)) if match else None
-            from apps.reports.models import Report
-
-            if report is None or not raw_scope_reports(
-                request.user, Report.objects.filter(pk=report.pk), request=request
-            ).exists():
-                ok = False
-                reason = "Open a report you can view to use the AI assistant."
+            reason = "Open a report you can view to use the AI assistant."
     toolbox = AssistantToolbox(
         request.studio,
         actor=request.user,
@@ -243,8 +238,6 @@ def _session_rows(request):
         user=request.user, org=request.org, studio=request.studio
     ).select_related("report", "alert_run__rule")
     restricted = not request.org_roles.has_full_studio_visibility(request.studio)
-    if restricted and selected_report_access_block_reason():
-        return rows.none()
     if not restricted:
         return rows.filter(Q(scope=AssistantSession.SCOPE_FULL) | Q(
             scope=AssistantSession.SCOPE_REPORT,
@@ -254,7 +247,7 @@ def _session_rows(request):
         ))
     from apps.reports.models import Report
 
-    permitted = raw_scope_reports(
+    permitted = visible_reports(
         request.user,
         Report.objects.filter(studio=request.studio, present_in_scan=True),
         request=request,
@@ -300,14 +293,18 @@ def sessions(request, org_slug, studio_slug):  # noqa: ARG001
     report = _report_for(request.studio, report_slug)
     full = request.org_roles.has_full_studio_visibility(request.studio)
     if not full:
-        if selected_report_access_block_reason():
-            return JsonResponse(
-                {"error": "Selected report access is temporarily unavailable."}, status=503
-            )
         if not report_slug:
             return JsonResponse({"error": "A report is required for this conversation."}, status=400)
-        if report is None or not can_view_report(request.user, report, request=request):
+        from apps.reports.models import Report
+
+        if report is None or not raw_scope_reports(
+            request.user, Report.objects.filter(pk=report.pk), request=request
+        ).exists():
             raise Http404
+        if report_content_block_reason(request.user, report, request=request):
+            return JsonResponse(
+                {"error": "Report access is unavailable. Contact your administrator."}, status=503
+            )
     session = AssistantSession.objects.create(
         user=request.user,
         org=request.org,
@@ -335,10 +332,6 @@ def from_alert(request, org_slug, studio_slug, run_id):
         AlertRun.objects.select_related("rule__report"), pk=run_id, rule__studio=request.studio
     )
     full = request.org_roles.has_full_studio_visibility(request.studio)
-    if not full and selected_report_access_block_reason():
-        return JsonResponse(
-            {"error": "Selected report access is temporarily unavailable."}, status=503
-        )
     if not can_view_report(request.user, run.rule.report, request=request):
         raise Http404
     session = AssistantSession.objects.create(
@@ -363,7 +356,14 @@ def session_detail(request, org_slug, studio_slug, session_id):  # noqa: ARG001
               message_count=session.to_summary()["message_count"])
         session.delete()
         return JsonResponse({"ok": True})
-    return JsonResponse(session.to_full())
+    from apps.assistant.source_tools import check_history
+    try:
+        check_history(session, actor=request.user, studio=request.studio)
+    except PermissionDenied:
+        return JsonResponse({"error": "Source access changed. Start a new conversation with your current permissions."}, status=403)
+    response = JsonResponse(session.to_full())
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 # ── The turn: SSE ───────────────────────────────────────────────────────────
@@ -398,8 +398,16 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
     session = _get_session(request, session_id)
     body = json_body(request)
     message = (body.get("message") or "").strip()
-    if not message:
+    resume_id = body.get("resume_source_query")
+    if not message and not resume_id:
         return JsonResponse({"error": "missing 'message'"}, status=400)
+    from apps.assistant.source_tools import check_history, resume
+    try:
+        check_history(session, actor=request.user, studio=request.studio)
+    except PermissionDenied:
+        return JsonResponse({"error": "Source access changed. Start a new conversation with your current permissions."}, status=403)
+    if session.state.get("_source_pending") and not resume_id:
+        return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
 
     page = body.get("page") or {}
     if session.scope == AssistantSession.SCOPE_REPORT and isinstance(page, dict):
@@ -458,6 +466,35 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         return JsonResponse(
             {"error": "A reply is still streaming in another tab.", "code": "busy"}, status=409
         )
+    # Reload after claiming: another completed turn may have changed the state
+    # between the initial access check and this conditional update.
+    session.refresh_from_db(fields=["state", "title"])
+    try:
+        check_history(session, actor=user, studio=request.studio)
+    except PermissionDenied:
+        AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+        return JsonResponse({"error": "Source access changed. Start a new conversation."}, status=403)
+    if not resume_id:
+        if session.state.get("_source_pending"):
+            AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+            return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
+        session.state["_source_steps"] = 0
+        session.state["_question_clock"] = timezone.now().isoformat()
+        if not session.transcript:
+            session.title = infer_title(message)
+    resumed_evidence = None
+    if resume_id:
+        try:
+            if not resume(session, actor=user, studio=request.studio, query_id=resume_id):
+                AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+                return JsonResponse({"error": "The source read is still running."}, status=409)
+            message = None
+            resumed_evidence = next((e.get("provenance") for e in reversed(session.transcript)
+                                     if e.get("role") == "tool" and (e.get("provenance") or {}).get("query_id") == str(resume_id)), None)
+        except Exception as exc:
+            AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+            # Never expose UUID parsing, SQL, or driver exceptions.
+            return JsonResponse({"error": "This source read cannot resume this conversation."}, status=403 if isinstance(exc, PermissionDenied) else 400)
 
     def events():
         # turn_start goes out BEFORE the prompt is assembled. Building it walks
@@ -466,7 +503,14 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         # an idle connection and no way to show that anything was happening.
         yield _frame({"type": "turn_start", "session_id": session.pk, "model": config.model})
         try:
-            system_blocks = build_system_prompt(toolbox)
+            if resumed_evidence:
+                check_history(session, actor=user, studio=request.studio)
+                yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
+            answer_text = []
+            answer_bytes = 0
+            from datetime import datetime
+            question_clock = session.state.get("_question_clock")
+            system_blocks = build_system_prompt(toolbox, now=datetime.fromisoformat(question_clock) if question_clock else None)
             for event in llm.stream_turn(
                 config,
                 session.state,
@@ -477,6 +521,24 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 remaining=remaining,
                 deadline_s=deadline_s,
             ):
+                # Publish a complete server-rendered answer only at done.
+                # Usage, source pauses and errors cannot flush partial text.
+                if event.get("type") == "text_delta":
+                    answer_bytes += len(event.get("text", "").encode())
+                    if answer_bytes > 65536:
+                        raise ValueError("Answer exceeds the delivery bound.")
+                    answer_text.append(event)
+                    continue
+                if event.get("type") in ("usage", "done", "tool_use", "tool_result", "source_wait"):
+                    check_history(session, actor=user, studio=request.studio)
+                if event.get("type") == "done":
+                    for buffered in answer_text:
+                        yield _frame(buffered)
+                    answer_text.clear()
+                    answer_bytes = 0
+                elif event.get("type") in ("error", "source_wait", "tool_use", "tool_result"):
+                    answer_text.clear()
+                    answer_bytes = 0
                 if event.get("type") == "keepalive":
                     # An SSE comment, not an event: keeps the connection warm
                     # through a long tool call without the client parsing it.

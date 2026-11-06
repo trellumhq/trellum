@@ -47,6 +47,8 @@
       slug: install/verify-images
     - title: Upgrades
       slug: install/upgrades
+    - title: Verify upgrade and rollback
+      slug: install/upgrade-drill
 
 - section: Portal guide
   summary: "Day-to-day use: structure, access, identity."
@@ -85,6 +87,8 @@
       slug: portal/annotations-calendar
     - title: The AI assistant
       slug: portal/ai-assistant
+    - title: Evaluating assistant answers
+      slug: portal/assistant-evaluation
 
 # The framework is AGPL-3.0-only and documents itself in its own README.
 # These pages orient readers and link to that reference rather than duplicating it.

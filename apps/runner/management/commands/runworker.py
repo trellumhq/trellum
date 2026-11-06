@@ -230,6 +230,13 @@ class Command(BaseCommand):
                 is_runner=is_runner, pools=settings.TRELLUM_RUNNER_POOLS, worker_id=worker_id
             )
 
+        source_query_thread = None
+        if not opts["once"]:
+            from apps.assistant.source_queries import start_for_worker as start_source_queries
+            source_query_thread = start_source_queries(
+                is_runner=is_runner, pools=settings.TRELLUM_RUNNER_POOLS, worker_id=worker_id
+            )
+
         last_reap = time.time()  # _recover_stale_runs already ran above
         try:
             while not shutdown.is_set():
@@ -267,6 +274,8 @@ class Command(BaseCommand):
                     break
                 time.sleep(1)
         finally:
+            if source_query_thread is not None:
+                source_query_thread.stop()
             if maintenance_thread is not None:
                 maintenance_thread.stop()
             if summary_thread is not None:

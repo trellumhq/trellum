@@ -11,6 +11,14 @@
 <meta property="og:title" content="{% block og_title %}{{ BRAND }} — {{ TAGLINE }}{% endblock %}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{{ SITE_BASE_URL }}{{ request.path }}">
+<meta property="og:image" content="{{ SITE_BASE_URL }}{% static 'media/nova-play-social.png' %}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="672">
+<meta property="og:image:alt" content="Nova Play game analytics in Trellum: player KPIs and daily active users by platform, using synthetic data.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ SITE_BASE_URL }}{% static 'media/nova-play-social.png' %}">
+<meta name="twitter:image:alt" content="Nova Play game analytics in Trellum: player KPIs and daily active users by platform, using synthetic data.">
 {% include "_theme_boot.html" %}
 <link rel="stylesheet" href="{% static 'site.css' %}?v={{ ASSET_V }}">
 {% block head_extra %}{% endblock %}

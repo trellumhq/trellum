@@ -188,7 +188,8 @@ With an external database, append `docker-compose.external-db.yml` as well.
 
 !!! warning "Upgrade helper compatibility"
     This path selects images with `TRELLUM_VERSION`. The current upgrade and
-    rollback helpers change only `TRELLUM_IMAGE`, which this overlay ignores;
+    rollback helpers change `TRELLUM_IMAGE` and `TRELLUM_RUNNER_IMAGE`, which
+    this overlay ignores;
     those helpers cannot switch the selected release without adaptation.
     Follow the limitations in the [upgrade guide](/docs/latest/install/upgrades/)
     and verify any upgrade/rollback procedure on a separate instance first.

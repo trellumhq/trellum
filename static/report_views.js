@@ -91,7 +91,10 @@
             options.headers['X-CSRFToken'] = getCookie('csrftoken');
         }
         return fetch(url, options).then(function (resp) {
-            if (resp.status === 401) window.location = '/login';
+            if (resp.status === 401) {
+                if (window.TrellumReportSession) window.TrellumReportSession.expired();
+                else window.location = '/login';
+            }
             return resp;
         });
     }
@@ -270,6 +273,9 @@
         var m = window.location.pathname.match(/^(\/s\/[a-z0-9-]+\/[a-z0-9-]+)\/r\/([A-Za-z0-9_-]+)\//);
         if (!m) return;
         var prefix = m[1], slug = m[2];
+        // Same studio-role gate as the Share item: see report_share.js.
+        var access = window.__trellumReportAccess;
+        if (access && access.developer !== true) return;
         var mount = function () {
             if (_registered || !window.__reportMenu) return;
 

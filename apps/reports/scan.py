@@ -24,7 +24,15 @@ _STALE_BUILD_WINDOW_DAYS = 7
 logger = logging.getLogger(__name__)
 
 
-class ReportQuotaExceeded(Exception):
+class RegistrySyncWarning(Exception):
+    """Some entries were rejected after the rest of the registry was synced."""
+
+
+class ReportAdmissionRejected(ValidationError, RegistrySyncWarning):
+    """New report audiences were rejected; existing rows remain authoritative."""
+
+
+class ReportQuotaExceeded(RegistrySyncWarning):
     """The studio's repo holds more reports than the org's quota allows.
 
     Raised *after* the reports that fit have been synced, so the studio keeps
@@ -78,6 +86,26 @@ def _priority(config: dict) -> int:
         return 99
 
 
+def _creation_audience(studio, config: dict, kind: str) -> str:
+    """Validate the initial audience for a new registry row."""
+    from apps.core.report_access import selected_report_access_block_reason
+
+    audience = config.get("initial_audience", (
+        studio.default_analysis_audience if kind == Report.KIND_ANALYSIS
+        else studio.default_report_audience
+    ))
+    if audience not in (Report.AUDIENCE_STUDIO, Report.AUDIENCE_PRIVATE):
+        raise ReportAdmissionRejected("initial_audience must be studio or private.")
+    if audience == Report.AUDIENCE_PRIVATE:
+        reason = selected_report_access_block_reason()
+        if reason:
+            raise ReportAdmissionRejected(
+                f"Private audience is unavailable: {reason}. Configure private "
+                "report access before publishing this new item."
+            )
+    return audience
+
+
 def sync_studio_registry(studio) -> int:
     """Scan ``<studio>/project/reports`` and upsert Report rows.
 
@@ -85,8 +113,8 @@ def sync_studio_registry(studio) -> int:
     from the scan are kept (runs/favorites reference them) but flagged
     ``present_in_scan=False``.
 
-    Raises :class:`ReportQuotaExceeded` when the org's report cap would be
-    exceeded, *after* syncing everything that fits: reports arrive by git push,
+    Raises :class:`RegistrySyncWarning` for rejected new audiences or when the
+    org's report cap would be exceeded, *after* syncing valid entries. Reports arrive by git push,
     so there is no request to refuse, and dropping the whole sync would make a
     single report over the line look like the portal had lost the studio.
     """
@@ -97,13 +125,41 @@ def sync_studio_registry(studio) -> int:
     reports_dir = str(studio.reports_dir)
     entries = scan_report_configs(reports_dir, include_hidden=False) if os.path.isdir(reports_dir) else []
 
-    # Sorted so "which reports fit under the cap" is stable between scans
-    # rather than depending on directory iteration order.
-    entries = sorted(entries, key=lambda e: e["slug"])
+    rejected = 0
+    rejected_slugs: set[str] = set()
+    problems: list[str] = []
+
+    def record_rejection(slug, exc):
+        nonlocal rejected
+        rejected += 1
+        rejected_slugs.add(slug)
+        if len(problems) < 3:
+            problems.append(f"{slug[:64]}: {'; '.join(exc.messages)}")
+
+    # Reject unsupported creations before assigning quota slots, so they do
+    # not crowd out valid entries. A second check in create_defaults protects
+    # creation if an existing row is deleted after this snapshot.
+    known = set(Report.objects.filter(
+        studio=studio, slug__in=[entry["slug"] for entry in entries],
+    ).values_list("slug", flat=True))
+    eligible = []
+    for entry in entries:
+        if entry["slug"] not in known:
+            config = entry.get("config") or {}
+            try:
+                _creation_audience(studio, config, config.get("kind", Report.KIND_REPORT))
+            except ReportAdmissionRejected as exc:
+                record_rejection(entry["slug"], exc)
+                continue
+        eligible.append(entry)
+    # Stable quota admission regardless of directory iteration order.
+    entries = sorted(eligible, key=lambda e: e["slug"])
     overage = _apply_report_cap(studio, entries)
 
     now = dj_tz.now()
-    seen: set[str] = set()
+    # A rejection must not mark an existing/concurrently registered identity
+    # missing: the manifest is still present even if creation was refused.
+    seen: set[str] = set(rejected_slugs)
     for entry in entries:
         # YAML timestamps are native date/datetime objects. Store their ISO
         # representation so the JSON config column accepts annotation dates.
@@ -111,12 +167,6 @@ def sync_studio_registry(studio) -> int:
         slug = entry["slug"]
         seen.add(slug)
         kind = config.get("kind", Report.KIND_REPORT)
-        audience = config.get("initial_audience", (
-            studio.default_analysis_audience if kind == Report.KIND_ANALYSIS
-            else studio.default_report_audience
-        ))
-        if audience not in (Report.AUDIENCE_STUDIO, Report.AUDIENCE_PRIVATE):
-            raise ValidationError("initial_audience must be studio or private.")
         # Analyses are published snapshots; a YAML cron must never refresh them.
         schedule = (config.get("schedule") or {}) if kind == Report.KIND_REPORT else {}
         defaults = {
@@ -135,14 +185,20 @@ def sync_studio_registry(studio) -> int:
         }
         from django.db import transaction
         from .report_experiment_projection import sync_declarations
-        with transaction.atomic():
-            row, _ = Report.objects.update_or_create(
-                studio=studio,
-                slug=slug,
-                defaults=defaults,
-                create_defaults={**defaults, "audience": audience},
-            )
-            sync_declarations(row)
+        try:
+            with transaction.atomic():
+                row, _ = Report.objects.update_or_create(
+                    studio=studio,
+                    slug=slug,
+                    defaults=defaults,
+                    # Django resolves this callable only on creation. Existing
+                    # rows (including removed/re-added ones) keep their stored
+                    # audience under update_or_create's row lock.
+                    create_defaults={**defaults, "audience": lambda: _creation_audience(studio, config, kind)},
+                )
+                sync_declarations(row)
+        except ReportAdmissionRejected as exc:
+            record_rejection(slug, exc)
     from django.db import transaction
     from .source_summary import invalidate_reports
 
@@ -159,13 +215,26 @@ def sync_studio_registry(studio) -> int:
         sync_studio_repo_theme(studio)
     except Exception:  # noqa: BLE001 - a config.yaml problem must never sink the report scan
         logger.exception("config.yaml theme sync failed for studio=%s", studio.pk)
+    quota_message = ""
     if overage:
         dropped, cap = overage
-        raise ReportQuotaExceeded(
+        quota_message = (
             f"{dropped} report(s) were not registered: this organization is "
             f"limited to {cap} reports. Raise the quota, or remove reports "
             f"from the repository."
         )
+    if rejected:
+        # Put both causes before entry details: the maintenance outcome keeps
+        # only the first 300 characters of this author-facing warning.
+        message = f"{rejected} new item(s) were not registered: unsupported initial audience. "
+        if quota_message:
+            message += f"{quota_message} "
+        message += " ".join(problems)
+        if rejected > len(problems):
+            message += f" ({rejected - len(problems)} more rejected entries.)"
+        raise ReportAdmissionRejected(message)
+    if quota_message:
+        raise ReportQuotaExceeded(quota_message)
     return len(seen)
 
 

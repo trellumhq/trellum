@@ -91,7 +91,10 @@
             options.headers['X-CSRFToken'] = getCookie('csrftoken');
         }
         return fetch(url, options).then(function (resp) {
-            if (resp.status === 401) window.location = '/login';
+            if (resp.status === 401) {
+                if (window.TrellumReportSession) window.TrellumReportSession.expired();
+                else window.location = '/login';
+            }
             return resp;
         });
     }

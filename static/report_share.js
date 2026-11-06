@@ -167,7 +167,10 @@
             options.headers['X-CSRFToken'] = getCookie('csrftoken');
         }
         return fetch(url, options).then(function (resp) {
-            if (resp.status === 401) window.location = '/login';
+            if (resp.status === 401) {
+                if (window.TrellumReportSession) window.TrellumReportSession.expired();
+                else window.location = '/login';
+            }
             return resp;
         });
     }
@@ -848,6 +851,13 @@
         var m = window.location.pathname.match(/^(\/s\/[a-z0-9-]+\/[a-z0-9-]+)\/r\/([A-Za-z0-9_-]+)\//);
         if (!m) return;
         var prefix = m[1], slug = m[2];
+        // The portal resolves the viewer's studio role when it serves the page
+        // (window.__trellumReportAccess, static/report_session.js), so a
+        // viewer never sends the developer-only request below. The request
+        // still answers 403 to anyone the role check rejects. A page served
+        // without that marker keeps the original probe.
+        var access = window.__trellumReportAccess;
+        if (access && access.developer !== true) return;
         var mount = function () {
             if (_registered || !window.__reportMenu) return;
 
@@ -855,7 +865,10 @@
             // 403 here (viewer, not developer/admin) leaves the report page
             // looking exactly as if this script weren't loaded. The payload
             // from this same call seeds the drawer on first open so opening
-            // it doesn't cost a second round trip.
+            // it doesn't cost a second round trip. The payload also carries
+            // the organization's sharing policy, so Share stays available
+            // while sharing is switched off: existing links can still be
+            // revoked and the policy explained.
             apiFetch(prefix + '/api/reports/' + encodeURIComponent(slug) + '/share_links')
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (d) {

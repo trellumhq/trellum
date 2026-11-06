@@ -19,7 +19,8 @@ trellum/                             # the repo root IS the package
 ├── agent/                       # What the framework tells an agent about itself
 │   ├── agentdoc.py              # Topics, component signatures, validator check ids
 │   │                            #   -- all derived from the code, never hand-kept
-│   └── agentsetup.py            # CLAUDE.md / AGENTS.md pointers, session hooks
+│   ├── agentsetup.py            # CLAUDE.md / AGENTS.md pointers, session hooks
+│   └── agentremoval.py          # `setup project --remove`: take back only what setup wrote
 │
 ├── cli/                         # `python -m trellum ...`
 │   ├── __init__.py              # Argument parsing, dispatch, main()

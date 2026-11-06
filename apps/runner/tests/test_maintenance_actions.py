@@ -301,6 +301,40 @@ class TestWorker:
         assert state == "succeeded" and a.reports == 1
         assert "not registered" in a.warning and a.message == maint.MSG_WARNING
 
+    def test_private_admission_is_success_with_bounded_author_warning(
+        self, developer, studio_tree, write_report, settings,
+    ):
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+        write_report("a-private", initial_audience="private")
+        write_report("z-valid")
+        a = self.admit(studio_tree, developer)
+        _, state = self.run()
+        a.refresh_from_db()
+        assert state == "succeeded" and a.reports == 1
+        assert "a-private" in a.warning and "Private audience" in a.warning
+        assert len(a.warning) <= 300 and a.message == maint.MSG_WARNING
+        assert list(studio_tree.reports.values_list("slug", flat=True)) == ["z-valid"]
+
+    def test_combined_audience_and_quota_warning_keeps_both_causes(
+        self, developer, studio_tree, write_report, settings,
+    ):
+        from apps.orgs.models import OrgQuota
+
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+        settings.TRELLUM_QUOTAS_ENABLED = True
+        OrgQuota.objects.create(org=studio_tree.org, max_reports=1)
+        write_report("a-private", initial_audience="private")
+        write_report("b-valid")
+        write_report("c-over-quota")
+        a = self.admit(studio_tree, developer)
+        _, state = self.run()
+        a.refresh_from_db()
+        assert state == "succeeded" and a.reports == 1
+        assert "unsupported initial audience" in a.warning
+        assert "limited to 1 reports" in a.warning
+        assert len(a.warning) <= 300
+        assert list(studio_tree.reports.values_list("slug", flat=True)) == ["b-valid"]
+
     def test_failure_hides_exception_text_and_paths(self, developer, studio_tree, monkeypatch):
         from apps.reports import scan
 

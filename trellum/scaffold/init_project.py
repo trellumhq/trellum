@@ -164,8 +164,12 @@ def init_project(target: str | None = None, *, timezone: str | None = None,
     # itself, and falls back to reading its source.
     from trellum.agent import agentsetup
 
-    for name, status in agentsetup.write_project_files(root):
+    agent_rows = agentsetup.write_project_files(root)
+    for name, status in agent_rows:
         print(f"  {status:<8} {name}")
+    summary = agentsetup.setup_summary(root, agent_rows)
+    if summary:
+        print("\n" + "\n".join(summary))
 
     print("\nDone. Next steps:")
     print("  1. Copy .env.example to .env and add your database credentials")

@@ -75,8 +75,8 @@ def test_legal_pages_describe_the_static_site(client):
     terms = " ".join(client.get("/terms/").content.decode().split())
     cookies = client.get("/cookies/").content.decode()
     assert "GitHub's privacy statement" in privacy
-    assert "former unsubscribe URL no longer processes requests" in privacy
-    assert "old records were deleted automatically" in privacy
+    for retired_term in ("brevo", "waitlist", "unsubscribe"):
+        assert retired_term not in (privacy + terms + cookies).lower()
     assert "AGPL-3.0-only" in terms
     assert "Third-party and contributor notices retain their own terms" in terms
     assert "under MIT" not in terms
@@ -89,7 +89,7 @@ def test_robots_and_sitemap(client):
     robots = client.get("/robots.txt").content.decode()
     sitemap = client.get("/sitemap.xml").content.decode()
     assert "Sitemap: https://trellum.dev/sitemap.xml" in robots
-    assert "Disallow: /demo/" in robots
+    assert "Disallow:" not in robots
     for path in ("/", "/privacy/", "/terms/", "/cookies/", "/tour/", "/docs/latest/"):
         assert f"https://trellum.dev{path}" in sitemap
 

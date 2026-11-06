@@ -826,7 +826,7 @@ class StudioGitSync:
         Returns ``(changed_slugs, published)``; a failed publish records a
         ``RepoPublish`` error row and leaves the project dir and
         ``last_synced_sha`` untouched."""
-        from apps.reports.scan import ReportQuotaExceeded, sync_studio_registry
+        from apps.reports.scan import RegistrySyncWarning, sync_studio_registry
         from apps.studios.models import RepoPublish
         from trellum.runner import scan_report_configs
 
@@ -885,8 +885,8 @@ class StudioGitSync:
         warnings: list[str] = []
         try:
             sync_studio_registry(self.studio)
-        except ReportQuotaExceeded as exc:
-            # The reports that fit are live. Surface the overage on the repo
+        except RegistrySyncWarning as exc:
+            # Valid reports are live. Surface rejected entries on the repo
             # row, where the org admin already looks when a sync misbehaves.
             warnings.append(str(exc))
             logger.info(f"{self.studio}: {exc}")
