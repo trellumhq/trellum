@@ -24,6 +24,31 @@ selected source names and raw units, without outcome columns. Explicit condition
 formats, including an empty dict, globally suppress automatic context colors.
 See [report comparison tables](report-comparison-tables.md) for the full contract.
 
+## Unreleased: compact doughnuts and optional center totals
+
+Rebuilding applies a compact ring and wrapping category/value/share HTML legend.
+Narrow panels stack the ring above the legend, which can increase chart height
+so every name and value remains reachable. This layout uses local panel width;
+ordinary line-chart heights do not apply. A keyword-only `center_total=False`
+option enables a labeled total without changing ring dimensions. `center_label`,
+`value_format` and `precision` control its explicit units and display. Existing
+positional constructor arguments and static duplicate-row grain are preserved.
+Static `show_labels=True` is now honored as it already was for bound charts.
+
+Shares and optional totals include all categories in the current supplied or
+filtered result, including legend-hidden categories. Legend buttons change only
+arc visibility; CSV still exports all raw chart categories and values. Native
+visible-arc geometry may differ from these explicitly labeled all-category
+shares. New totals/shares require complete finite nonnegative numeric inputs;
+zero totals have undefined shares, and empty/incomplete/signed/overflowing
+results show a dash/reason. Authors are responsible for additive quantities.
+Legacy signed/incomplete arc behavior, aggregation, redraw visibility reset and
+cross-filter selection-memory limitations remain unchanged.
+
+No host, exporter or artifact migration is required. Older markup without the
+new HTML legend wrapper keeps a safe native canvas legend fallback. See
+[report doughnuts](report-doughnuts.md) for API, formatting and population details.
+
 ## Unreleased: DataTable search, sort and CSV population
 
 Rebuilding applies compact spacing, subtle row shading and right-aligned numeric

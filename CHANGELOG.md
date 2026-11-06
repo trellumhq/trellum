@@ -13,6 +13,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   units, favorable directions and unavailable reasons, with textual change
   outcomes and static/filterable comparison examples. Raw CSV units are retained.
 
+- Compact report doughnut rings with wrapping value/share legends, keyboard
+  visibility controls, optional labeled center totals and explicit value formatting.
+  Shares and CSV retain all current-result categories; total/share context explains
+  empty, zero, incomplete, signed and nonfinite inputs. Added deterministic
+  doughnut showcase examples, honored static percentage-label options, and
+  enabled CSV downloads in reports containing only doughnut charts.
+
 - Added optional alignment, full-number and precision presentation to KPI
   components, stacked MiniKpi labels, and mobile expansion for filtered KPI rows.
 - Standalone report `Dropdown` labels, searchable wrapping choices and disabled
