@@ -50,6 +50,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         command.add_argument("--durations", type=nonnegative, default=20, help="number of slowest tests to report (default: 20)")
         command.add_argument("--junitxml", type=Path, help="JUnit output path (default: .data-test/results/<command>.xml)")
         command.add_argument("--collect-only", action="store_true", help="collect the selected tests without running them")
+        command.add_argument("--fail-fast", action="store_true", help="stop after the first test failure and write the available results")
         command.add_argument("--dry-run", action="store_true", help="print the command without starting pytest")
     args = parser.parse_args(argv)
     if args.suite == "local" and args.create_db and not args.reuse_db:
@@ -77,6 +78,8 @@ def pytest_command(args: argparse.Namespace) -> list[str]:
     ]
     if args.collect_only:
         command.append("--collect-only")
+    if args.fail_fast:
+        command.append("-x")
     if args.suite == "local":
         if args.reuse_db:
             command.append("--reuse-db")
