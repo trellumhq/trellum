@@ -1,0 +1,16 @@
+name: Report Component Showcase
+slug: component-showcase
+description: >-
+  Explore reusable report components and their optional settings in one place.
+  Deterministic synthetic daily revenue and activity examples demonstrate
+  responsive charts, filtering and scoped summaries without a database.
+version: 0.1.0
+studio: framework
+category: Components
+tags: [components, examples, charts, tables, metrics, layouts]
+theme: trellum dark
+data_sources: []
+display:
+  icon: panels-top-left
+  color: "#4e79a7"
+  priority: 0

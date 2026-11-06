@@ -8,6 +8,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
+- A database-free report component showcase in the demo gallery, with interactive
+  LineChart size and filtered-summary examples.
+
+### Added
 
 - `LineChart(height=...)`: the plotting area is 220px (`"balanced"`, the
   default) at every viewport width, with optional `"compact"` (160px) and
