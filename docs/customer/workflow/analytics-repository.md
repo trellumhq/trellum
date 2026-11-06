@@ -153,3 +153,8 @@ otherwise surfaces *after* a dashboard ships, when it is expensive.
 
 - [Ad-hoc analysis](/docs/latest/workflow/ad-hoc-analysis/)
 - [Working with AI agents](/docs/latest/workflow/working-with-ai-agents/)
+
+## Validate changes before merging
+
+Use the [CI validation recipe](/docs/latest/workflow/validate-in-ci/) to build
+your reports on pull requests and fail the check on validation errors.
