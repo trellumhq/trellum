@@ -90,30 +90,22 @@ class Panel(Component):
 
 @dataclass
 class Grid(Component):
-    """CSS grid layout for arranging children in columns.
+    """Panel-width grid with at most ``columns`` equal-width tracks.
 
-    Each child is wrapped in its own ``<div>`` so multi-element
-    components (e.g. title + canvas) occupy exactly one grid cell.
-
-    Args:
-        children: List of component instances.
-        columns: Number of grid columns.
-        card: If True, each cell gets a card-panel wrapper (background,
-              border, border-radius, padding).
-        min_width: Tile mode. When set, the columns are
-            ``repeat(auto-fill, minmax(<min_width>px, 1fr))`` and ``columns``
-            is ignored: the row fits as many tiles as the width allows and
-            reflows on its own, with no breakpoints to keep in sync. Each
-            cell is then a TILE -- a glance, not a page -- so the charts
-            inside it are shortened and their titles dropped (grid.css). A
-            ``LineChart`` is the exception: it keeps its title and its own
-            ``height``.
-            A chart stops being readable much under 320px.
+    Each child's full output occupies one cell. ``min_width`` is the preferred
+    minimum cell width in pixels (0 selects 320px); a narrower panel uses one
+    cell that fits. ``columns``, ``card`` and ``min_width`` keep their positional
+    arguments. Titles and local chart breakdown/normalization controls stay visible.
+    Keyword-only ``show_titles=False`` or ``show_controls=False`` omits redundant
+    chart context within this grid, stopping at each nested Grid boundary.
+    Chart heights and explicit author sizing are unchanged by this layout.
     """
     children: List[Any]
     columns: int = 2
     card: bool = False
     min_width: int = 0
+    show_titles: bool = field(default=True, kw_only=True)
+    show_controls: bool = field(default=True, kw_only=True)
 
     _component_type: str = field(default="grid", init=False, repr=False)
 
@@ -124,14 +116,16 @@ class Grid(Component):
             child_html = ctx.render_child(child)
             items.append(f'<div class="{cls}">{child_html}</div>')
         inner = "\n".join(items)
-        if self.min_width:
-            grid_cls = "fw-grid fw-grid-auto"
-            cols = f"repeat(auto-fill, minmax({self.min_width}px, 1fr))"
-        else:
-            grid_cls = "fw-grid"
-            cols = f"repeat({self.columns}, 1fr)"
+        grid_cls = "fw-grid fw-grid-auto" if self.min_width else "fw-grid"
+        # The percentage floor limits the number of auto-filled tracks, while
+        # min(100%, ...) lets even a panel narrower than min_width fit one cell.
+        minimum = self.min_width or 320
+        floor = f"calc((100% - {self.columns - 1} * var(--spacing-md)) / {self.columns})"
+        cols = f"repeat(auto-fill, minmax(min(100%, max({minimum}px, {floor})), 1fr))"
         return (
             f'<div class="{grid_cls}" '
+            f'data-show-titles="{str(self.show_titles).lower()}" '
+            f'data-show-controls="{str(self.show_controls).lower()}" '
             f'style="grid-template-columns: {cols};">'
             f'{inner}</div>'
         )
@@ -143,39 +137,65 @@ class Grid(Component):
 
 @dataclass
 class SplitPane(Component):
-    """Side-by-side two-panel layout.
+    """Two panes that keep ``ratio`` while both preferred minimums fit.
 
-    Args:
-        left: Component (usually Section or Panel) for the left side.
-        right: Component for the right side.
-        ratio: CSS ratio string like "1:1" or "2:1".
+    ``ratio`` retains its third positional argument (e.g. "2:1"). Keyword-only
+    ``left_min_width`` and ``right_min_width`` default to 320 CSS pixels each,
+    including any child Panel framing. Minimums are soft when stacked: even a
+    narrower container fits without overflowing. Left always precedes right.
+    Each side owns its full rendered output, including chart context/legends.
     """
     left: Any
     right: Any
     ratio: str = "1:1"
+    left_min_width: float = field(default=320, kw_only=True)
+    right_min_width: float = field(default=320, kw_only=True)
 
     _component_type: str = field(default="split_pane", init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        self._pane_sizes()
+
+    def _pane_sizes(self) -> tuple[float, float, float, float]:
+        import math
+
+        try:
+            left, right = (float(p) for p in self.ratio.split(":"))
+            left_min, right_min = float(self.left_min_width), float(self.right_min_width)
+        except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("SplitPane needs a two-part positive ratio and positive pane minimums") from exc
+        values = (left, right, left_min, right_min)
+        if any(not math.isfinite(v) or v <= 0 for v in values):
+            raise ValueError("SplitPane ratio and pane minimums must be finite and positive")
+        # Each grow factor is at least one, so a pane fills its own line after
+        # wrapping (flex factors below one can leave unused space on that line).
+        weight = min(left, right)
+        left, right = left / weight, right / weight
+        if not math.isfinite(left) or not math.isfinite(right):
+            raise ValueError("SplitPane ratio exceeds the supported size range")
+        # Proportional bases ensure flex growth preserves the ratio exactly;
+        # merely growing two unrelated minimum widths would distort the panes.
+        scale = max(left_min / left, right_min / right)
+        left_basis, right_basis = left * scale, right * scale
+        if any(not math.isfinite(v) or v <= 0 for v in (scale, left_basis, right_basis)):
+            raise ValueError("SplitPane ratio and pane minimums exceed the supported size range")
+        return left, right, left_basis, right_basis
+
     def render_html(self, ctx: RenderContext) -> str:
-        parts = self.ratio.split(":")
-        fr = " ".join(f"{p}fr" for p in parts)
+        left, right, left_basis, right_basis = self._pane_sizes()
         left_html = ctx.render_child(self.left)
         right_html = ctx.render_child(self.right)
         return (
-            f'<div class="fw-split" '
-            f'style="grid-template-columns: {fr};">'
-            f'{left_html}{right_html}</div>'
+            '<div class="fw-split">'
+            f'<div class="fw-split-pane" style="--fw-pane-grow:{left:g};'
+            f'--fw-pane-basis:{left_basis:g}px;">{left_html}</div>'
+            f'<div class="fw-split-pane" style="--fw-pane-grow:{right:g};'
+            f'--fw-pane-basis:{right_basis:g}px;">{right_html}</div></div>'
         )
 
     @classmethod
     def css(cls) -> str:
-        return """\
-.fw-split {
-    display: grid; gap: var(--spacing-lg);
-}
-@media (max-width: 900px) {
-    .fw-split { grid-template-columns: 1fr !important; }
-}"""
+        return load_css("components/split_pane.css")
 
 
 @dataclass

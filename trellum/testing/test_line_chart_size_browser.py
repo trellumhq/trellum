@@ -134,8 +134,7 @@ def test_line_chart_sizes_title_and_summary_in_page_and_tiles(tmp_path, width):
             # 11 revenue / 6 users per day, in the chart's own one-decimal format.
             assert ratio["summary"] == "Latest ARPU1.8"
 
-            # Tile grid: bars lose their title and keep the 200px tile height; line
-            # charts keep their title, summary and own size.
+            # Grids retain context and every chart family's own plotting height.
             tile, tile_compact = box("Tile default"), box("Tile compact")
             plain, bar_title = box("Tile plain"), page.evaluate(
                 "Array.from(document.querySelectorAll('.fw-grid-auto .fw-chart-title'))"
@@ -146,12 +145,12 @@ def test_line_chart_sizes_title_and_summary_in_page_and_tiles(tmp_path, width):
                 assert page.evaluate(_PAINT, chart["canvasId"])["painted"] > 500
             assert tile["summaryVisible"] and tile["summary"] == "Tile avg11"
             assert tile_compact["summary"] == "Tile compact avg11"
-            assert bar_title == [0]
+            assert bar_title == [1]
             assert page.evaluate("""() => {
                 const bar = Array.from(document.querySelectorAll('.fw-grid-auto .fw-chart-container'))
                     .find(el => !el.classList.contains('fw-line-chart'));
                 return bar.getBoundingClientRect().height;
-            }""") == 200
+            }""") == (320 if width == 1280 else 180)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
             if shots:

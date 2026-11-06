@@ -861,12 +861,10 @@ def test_grid_min_width_lays_out_auto_fill_tiles():
     ctx = _make_ctx()
     html = Grid(children=[RawHTML(html="<p>a</p>")], columns=2,
                 min_width=340).render_html(ctx)
-    # auto-fill, not the fixed column count -- and the class grid.css keys
-    # the tile treatment (short chart, no title, no breakdown toggle) off.
-    assert "repeat(auto-fill, minmax(340px, 1fr))" in html
-    assert "fw-grid-auto" in html
+    assert "repeat(auto-fill, minmax(min(100%, max(340px," in html
+    assert " / 2)" in html and "fw-grid-auto" in html
     plain = Grid(children=[RawHTML(html="<p>a</p>")], columns=2).render_html(ctx)
-    assert "repeat(2, 1fr)" in plain and "fw-grid-auto" not in plain
+    assert "max(320px," in plain and "fw-grid-auto" not in plain
 
 
 def test_grid_card_mode():
