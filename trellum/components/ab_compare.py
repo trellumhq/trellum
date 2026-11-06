@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 
 import pandas as pd
 
@@ -253,6 +253,7 @@ class ABCompare(Component):
         iters: int = 2000,
         pre_window_days: int | None = None,
         validate: bool = True,
+        outcome_type: Literal["purchase", "engagement"] = "purchase",
         default_mode: str = "all_users",
         title: str = "",
         test_name: str = "",
@@ -261,6 +262,10 @@ class ABCompare(Component):
         start_date: str = "",
     ) -> "ABCompare":
         """One per-user frame with a variant column -> the finished component.
+
+        ``outcome_type`` defaults to ``"purchase"``; pass ``"engagement"``
+        when the rate metric describes a non-purchase outcome. The validator
+        then skips only payer/revenue consistency checks.
 
         Declared :class:`trellum.stats.Metric` objects carry YOUR column
         names; internally everything delegates to the same (unchanged)
@@ -279,6 +284,7 @@ class ABCompare(Component):
             user_col=user_col, exposure_col=exposure_col, n_days=n_days,
             winsor_pct=winsor_pct, iters=iters, include=tuple(modes),
             pre_window_days=pre_window_days, validate=validate,
+            outcome_type=outcome_type,
         )
         srm = None
         if expected_split is not None:

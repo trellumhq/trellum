@@ -10,6 +10,7 @@ from django.template.loader import render_to_string
 from django.test import RequestFactory
 
 UI_CSS = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
+MANAGEMENT_JS = (settings.BASE_DIR / "static" / "management.js").read_text(encoding="utf-8")
 SHELL_CSS = (settings.BASE_DIR / "static" / "console-shell.css").read_text(encoding="utf-8")
 
 
@@ -32,6 +33,8 @@ def _page(browser, html, width, theme):
     context = browser.new_context(viewport={"width": width, "height": 900})
     page = context.new_page()
     page.set_content(html, wait_until="load")
+    # set_content has no origin from which to load the template static asset.
+    page.add_script_tag(content=MANAGEMENT_JS)
     page.evaluate("theme => document.documentElement.setAttribute('data-theme', theme)", theme)
     page.add_style_tag(content=UI_CSS)
     page.add_style_tag(content=SHELL_CSS)
@@ -191,6 +194,7 @@ def test_tall_member_menu_scrolls_without_closing_then_page_scroll_closes(browse
     context = browser.new_context(viewport={"width": 320, "height": 400})
     page = context.new_page()
     page.set_content(_members_html(), wait_until="load")
+    page.add_script_tag(content=MANAGEMENT_JS)
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
     page.add_style_tag(content=UI_CSS)
     page.add_style_tag(content=SHELL_CSS)

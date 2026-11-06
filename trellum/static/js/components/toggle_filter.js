@@ -11,7 +11,11 @@ window._fwFilterTypes['toggle'] = {
                 if (grp) {
                     grp.querySelectorAll('.fw-toggle-btn').forEach(function(btn) {
                         btn.classList.remove('active');
-                        if (btn.textContent.trim() === urlVal) btn.classList.add('active');
+                        btn.setAttribute('aria-pressed', 'false');
+                        if (btn.textContent.trim() === urlVal) {
+                            btn.classList.add('active');
+                            btn.setAttribute('aria-pressed', 'true');
+                        }
                     });
                 }
             } else if (fc.default && fc.default !== 'All') {

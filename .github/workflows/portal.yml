@@ -29,7 +29,7 @@ jobs:
     outputs:
       portal: ${{ steps.diff.outputs.portal }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: Classify the diff
@@ -48,7 +48,7 @@ jobs:
     name: fast checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Verify CI selection, aggregate and report helpers
         run: |
@@ -140,7 +140,8 @@ jobs:
     if: needs.changes.outputs.portal == 'yes'
     name: django unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Leave time for setup and reports around the complete ordinary suite.
+    timeout-minutes: 20
     container:
       # Keep this tag aligned with the Playwright pin in requirements-django.txt.
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
@@ -163,14 +164,14 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-${{ runner.arch }}-noble-py3.12-${{ hashFiles('requirements-django.txt', 'requirements-test.txt') }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
@@ -225,7 +226,9 @@ jobs:
         # Docker integration runs in the sandbox jobs, where bind-mount paths
         # belong to the daemon's host rather than this test container. Heavy
         # tests are opt-in: see the django-heavy-tests job.
-        run: python scripts/test.py portal --workers 2 --junitxml .test-results/portal.xml --durations 20
+        # Stop on a failure so its traceback and JUnit report are available
+        # before later tests can consume the remaining job budget.
+        run: python scripts/test.py portal --workers 2 --fail-fast --junitxml .test-results/portal.xml --durations 20
 
       - name: Summarize test outcomes and timings
         if: always()
@@ -233,7 +236,7 @@ jobs:
 
       - name: Keep sanitized test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: portal-test-results
           path: .test-results/ci/portal/
@@ -284,14 +287,14 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-${{ runner.arch }}-noble-py3.12-${{ hashFiles('requirements-django.txt', 'requirements-test.txt') }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
@@ -315,7 +318,7 @@ jobs:
 
       - name: Keep sanitized test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: heavy-test-results
           path: .test-results/ci/heavy/
@@ -332,7 +335,7 @@ jobs:
     name: report sandbox
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Plain `docker build`, deliberately. A buildx layer cache
       # (setup-buildx + build-push-action, cache-from/cache-to type=gha) was
@@ -361,7 +364,7 @@ jobs:
           docker run --rm -e DJANGO_SETTINGS_MODULE=trellum_portal.settings.build \
             trellum:dev python manage.py check
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
           cache: pip
@@ -388,12 +391,12 @@ jobs:
       matrix:
         docker: ["v25.0.5", "v26.1.4"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-docker-action@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5 # v5.6.0
         with:
           version: ${{ matrix.docker }}
           set-host: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
           cache: pip
@@ -457,11 +460,11 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0      # tags, so we can find the previous release
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
@@ -617,9 +620,9 @@ jobs:
       E2E_EMAIL: e2e@demo.local
       E2E_PASSWORD: E2e-pass-w0rd
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
           cache: pip
@@ -745,11 +748,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - run: python -m pip install -r requirements-test.txt
@@ -770,7 +773,7 @@ jobs:
         run: python scripts/portal_e2e.py --shard L0 --artifacts "$RUNNER_TEMP/portal-e2e-chromium"
       - name: WebKit production hasher smoke
         run: python scripts/portal_e2e.py --shard L0 --browser webkit --real-hasher --artifacts "$RUNNER_TEMP/portal-e2e-webkit"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: portal-live-browser-evidence
@@ -782,7 +785,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Require every applicable portal check
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
