@@ -12,12 +12,18 @@ from trellum.scaffold.project_context import FILES
 RECORD = '.trellum/project-context.json'
 DIRECTORIES = ('.trellum', 'context', 'analysis', 'analysis/results')
 IGNORE = 'analysis/results/.gitignore'
+_WINDOWS = os.name == 'nt'
 _FLAGS = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0)
 
 
 @contextmanager
 def directory(root, name='', created=None):
     """Pin each directory without following symlinks, including during cleanup."""
+    if _WINDOWS:
+        from trellum.scaffold.context_windows import directory as windows_directory
+        with windows_directory(root, name, created) as path:
+            yield path
+        return
     if not hasattr(os, 'O_NOFOLLOW') or os.open not in os.supports_dir_fd:
         raise OSError('safe directory-relative scaffold access is unavailable')
     fd = os.open(root, _FLAGS)
@@ -41,6 +47,9 @@ def directory(root, name='', created=None):
 
 
 def read_file(fd, name):
+    if not isinstance(fd, int):
+        from trellum.scaffold.context_windows import read_file as windows_read
+        return windows_read(fd, name)
     handle = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
     with os.fdopen(handle, 'rb') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -49,6 +58,25 @@ def read_file(fd, name):
         if len(data) > 1024 * 1024:
             raise ValueError('file too large to verify')
         return data
+
+
+def access(fd, name):
+    """Address a leaf beneath a pinned POSIX descriptor or Windows directory."""
+    return (name, {'dir_fd': fd}) if isinstance(fd, int) else (fd / name, {})
+
+
+def delete(fd, name, *, directory=False):
+    path, kwargs = access(fd, name)
+    if not isinstance(fd, int):
+        from trellum.scaffold.context_windows import check
+        check(path, directory=directory)
+    (os.rmdir if directory else os.unlink)(path, **kwargs)
+
+
+def create(fd, name, mode):
+    path, kwargs = access(fd, name)
+    return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                   | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0), mode, **kwargs)
 
 
 def load(root):
@@ -76,17 +104,19 @@ def save(root, data):
     with directory(root, '.trellum') as fd:
         temp = f'.project-context-{uuid.uuid4().hex}.tmp'
         try:
-            handle = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                             0o600, dir_fd=fd)
+            handle = create(fd, temp, 0o600)
             with os.fdopen(handle, 'w', encoding='utf-8') as stream:
                 stream.write(json.dumps(data, sort_keys=True, indent=2) + '\n')
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temp, 'project-context.json', src_dir_fd=fd, dst_dir_fd=fd)
-            os.fsync(fd)
+            if isinstance(fd, int):
+                os.replace(temp, 'project-context.json', src_dir_fd=fd, dst_dir_fd=fd)
+                os.fsync(fd)
+            else:
+                os.replace(fd / temp, fd / 'project-context.json')
         finally:
             try:
-                os.unlink(temp, dir_fd=fd)
+                delete(fd, temp)
             except FileNotFoundError:
                 pass
 
@@ -108,15 +138,20 @@ def seed(root):
             created = []
             try:
                 with directory(root, parent, created) as fd:
-                    handle = os.open(leaf, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                                     0o666, dir_fd=fd)
+                    handle = create(fd, leaf, 0o666)
                     with os.fdopen(handle, 'wb') as stream:
                         stream.write(content.encode('utf-8'))
                     # Never replace the initial identity, even after a missing file is reseeded.
                     data['files'].setdefault(name, hashlib.sha256(content.encode('utf-8')).hexdigest())
                     rows.append((name, 'created'))
             except FileExistsError:
-                rows.append((name, 'current'))
+                try:
+                    with directory(root, parent) as fd:
+                        read_file(fd, leaf)
+                except (OSError, ValueError):
+                    rows.append((name, 'unreadable'))
+                else:
+                    rows.append((name, 'current'))
             except OSError:
                 rows.append((name, 'unreadable'))
             data['directories'].extend(p for p in created if p not in data['directories'])
@@ -135,7 +170,7 @@ def remove_file(root, name, digest):
                 return 'kept', 'edited since setup; left untouched'
             if name == IGNORE and any(entry != leaf for entry in os.listdir(fd)):
                 return 'kept', 'local results remain; ignore protection retained'
-            os.unlink(leaf, dir_fd=fd)
+            delete(fd, leaf)
     except FileNotFoundError:
         return 'absent', ''
     except (OSError, ValueError):
@@ -163,7 +198,7 @@ def remove(root):
         parent, _, leaf = name.rpartition('/')
         try:
             with directory(root, parent) as fd:
-                os.rmdir(leaf, dir_fd=fd)  # Empty only; symlinks cannot be followed.
+                delete(fd, leaf, directory=True)  # Empty only; symlinks cannot be followed.
         except FileNotFoundError:
             pass
         except OSError:
@@ -175,11 +210,11 @@ def remove(root):
             save(root, data)
         else:
             with directory(root, '.trellum') as fd:
-                os.unlink('project-context.json', dir_fd=fd)
+                delete(fd, 'project-context.json')
             if '.trellum' in data['directories']:
                 with directory(root) as fd:
                     try:
-                        os.rmdir('.trellum', dir_fd=fd)
+                        delete(fd, '.trellum', directory=True)
                     except OSError:
                         pass  # Other metadata is never ours to remove.
     except FileNotFoundError:
