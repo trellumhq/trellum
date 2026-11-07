@@ -100,6 +100,11 @@ def test_native_keyboard_sort_focus_and_pointer_parity(tmp_path, width, monkeypa
             if not file.is_file() and path.startswith("before/"):
                 file = tmp_path / path.removeprefix("before/")
             if file.is_file():
+                # Bound tables retain their first measured column widths. Both
+                # versions must measure the loaded font, not a fallback whose
+                # timing varies with browser cache and the rest of the suite.
+                if file.name == "data.json":
+                    page.wait_for_function("document.fonts.status === 'loaded'", timeout=10000)
                 route.fulfill(path=str(file), content_type=mimetypes.guess_type(file)[0]
                               or "application/octet-stream")
             else:
