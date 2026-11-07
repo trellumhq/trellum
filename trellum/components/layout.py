@@ -106,13 +106,26 @@ class Grid(Component):
     min_width: int = 0
     show_titles: bool = field(default=True, kw_only=True)
     show_controls: bool = field(default=True, kw_only=True)
+    color_cycle: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="grid", init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.color_cycle not in (None, "theme"):
+            raise ValueError("Grid color_cycle must be None or 'theme'")
 
     def render_html(self, ctx: RenderContext) -> str:
         cls = "fw-grid-card" if self.card else "fw-grid-item"
         items = []
+        eligible_types = {"line_chart", "area_chart", "bar_chart"}
+        slot = 0
         for child in self.children:
+            # Slots follow authored children, including ineligible/overridden
+            # tiles, so filters and responsive wrapping cannot shift colors.
+            if self.color_cycle == "theme" and getattr(child, "_component_type", None) in eligible_types:
+                if self._eligible_color_cycle_child(child):
+                    ctx.grid_color_slots[id(child)] = slot
+                slot += 1
             child_html = ctx.render_child(child)
             items.append(f'<div class="{cls}">{child_html}</div>')
         inner = "\n".join(items)
@@ -129,6 +142,30 @@ class Grid(Component):
             f'style="grid-template-columns: {cols};">'
             f'{inner}</div>'
         )
+
+    @staticmethod
+    def _eligible_color_cycle_child(child: Any) -> bool:
+        if getattr(child, "category_colors", None):
+            return False
+        if getattr(child, "dataset_id", None):
+            # Reactive category splits retain their authored meaning even if
+            # current filters happen to leave only one visible series.
+            if getattr(child, "stack_by", None) or getattr(child, "stack_by_options", None):
+                return False
+        if getattr(child, "_component_type", None) == "bar_chart":
+            return (not getattr(child, "stacked", False)
+                    and not getattr(child, "ratios", None)
+                    and not getattr(child, "net_color", False)
+                    and len(getattr(child, "y_cols", None) or [getattr(child, "y", "")]) == 1)
+        if getattr(child, "_component_type", None) == "line_chart":
+            ys = getattr(child, "y", "")
+            return (not getattr(child, "stack_by", None)
+                    and not getattr(child, "stack_by_options", None)
+                    and not getattr(child, "ratios", None)
+                    and len(ys if isinstance(ys, list) else [ys]) == 1)
+        ys = getattr(child, "y", "")
+        return (not getattr(child, "stacked", False)
+                and len(ys if isinstance(ys, list) else [ys]) == 1)
 
     @classmethod
     def css(cls) -> str:

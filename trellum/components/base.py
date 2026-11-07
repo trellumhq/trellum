@@ -125,6 +125,14 @@ class RenderContext:
         #: param bindings into the LiveDataSource's registered config and to
         #: know whether it must render its live/standalone posture at all.
         self.live_datasets: dict[str, dict] = {}
+        #: Per-render Grid theme-color assignments keyed by object identity.
+        self.grid_color_slots: dict[int, int] = {}
+
+    def grid_color(self, component: Any) -> str | None:
+        slot = self.grid_color_slots.get(id(component))
+        if slot is None or not self.theme.chart_colors:
+            return None
+        return self.theme.chart_colors[slot % len(self.theme.chart_colors)]
 
     def next_id(self) -> str:
         self._counter += 1

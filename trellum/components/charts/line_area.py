@@ -504,6 +504,8 @@ class LineChart(_ChartBase):
                 cfg["show_labels"] = True
             if self.colors:
                 cfg["colors"] = list(self.colors)
+            elif ctx.grid_color(self):
+                cfg["grid_color"] = ctx.grid_color(self)
             cfg.update(self._summary_config())
             cfg.update(self._style_config())
             cfg.update(category_config)
@@ -522,7 +524,7 @@ class LineChart(_ChartBase):
             for i, (col, label) in enumerate(zip(y_cols, y_labels)):
                 has_custom_color = self.colors and i < len(self.colors)
                 color = (self.colors[i] if has_custom_color
-                         else theme.chart_colors[i % len(theme.chart_colors)])
+                         else (ctx.grid_color(self) or theme.chart_colors[i % len(theme.chart_colors)]))
                 values = ([None] * len(self.df) if col not in self.df and i in declared
                           else _clean_list(self.df[col].tolist()))
                 if i in declared:
@@ -618,12 +620,14 @@ class AreaChart(_ChartBase):
                 cfg["y_format"] = self.y_format
             if self.show_labels:
                 cfg["show_labels"] = True
+            if ctx.grid_color(self):
+                cfg["grid_color"] = ctx.grid_color(self)
             ctx.register(cid, cfg)
         else:
             theme = ctx.theme
             datasets = []
             for i, (col, label) in enumerate(zip(y_cols, y_labels)):
-                color = theme.chart_colors[i % len(theme.chart_colors)]
+                color = ctx.grid_color(self) or theme.chart_colors[i % len(theme.chart_colors)]
                 datasets.append({
                     "label": label,
                     "data": _clean_list(self.df[col].tolist()),

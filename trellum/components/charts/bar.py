@@ -175,6 +175,8 @@ class BarChart(_ChartBase):
                 cfg["y_max"] = self.y_max
             if self.show_labels:
                 cfg["show_labels"] = True
+            if ctx.grid_color(self):
+                cfg["grid_color"] = ctx.grid_color(self)
             ctx.register(cid, cfg)
         else:
             theme = ctx.theme
@@ -183,7 +185,7 @@ class BarChart(_ChartBase):
                 df_to_render = self._apply_static_top_n(df_to_render, cols)
             datasets = []
             for i, (col, label) in enumerate(zip(cols, col_labels)):
-                color = theme.chart_colors[i % len(theme.chart_colors)]
+                color = ctx.grid_color(self) or theme.chart_colors[i % len(theme.chart_colors)]
                 datasets.append({
                     "label": label,
                     "data": _clean_list(df_to_render[col].tolist()),
