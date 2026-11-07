@@ -422,6 +422,7 @@ Backends are registered via `set_output_backend()`, typically in a project-level
 | 4 | `_check_theme` | Invalid theme names, cached getThemeColors, hardcoded Chart.js colors |
 | 5 | `_check_annotations` | Missing events.yaml, studio mismatch, non-date x-axis, custom charts without buildAnnotations |
 | 6 | `_check_columns` | Missing DataFrame columns for chart x/y/y_cols, ratio keys, KPI aggregation types |
+| 6b | `_check_chart_options` | LineChart `height` and `header_summary` (stat, series selection, format, label, stack_by conflicts) |
 | 7 | `_check_toggle_visible` | Visible targeting non-existent Toggle, invalid toggle values, RawHTML toggle ID mismatches |
 | 8 | `_check_scopes` | Empty scopes, multiple scope info |
 | 9 | `_check_yaml_schema` | Missing recommended YAML fields, missing data_sources, invalid cron |

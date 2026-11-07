@@ -1,0 +1,10 @@
+name: Live Result Examples
+slug: live-result-examples
+description: "Deterministic synthetic platform/day observations with native live-query selection, snapshot identity, returned-row scope and a local platform subset."
+version: 0.1.0
+studio: nova-play
+category: Showcase
+tags: [live-query, synthetic, showcase]
+theme: trellum light
+data_sources:
+  - demo_db

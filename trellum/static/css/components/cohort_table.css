@@ -1,0 +1,34 @@
+.fw-cohort { min-width: 0; max-width: 100%; color: var(--text-main); }
+.fw-cohort-content { min-width: 0; clear: both; }
+.fw-cohort > .fw-csv-btn { float: right; }
+.fw-cohort-context, .fw-cohort-legend, .fw-cohort-note, .fw-cohort-details {
+    font-size: var(--font-size-meta); line-height: 1.5; overflow-wrap: anywhere;
+    color: var(--text-context, var(--text-secondary)); margin: 8px 0;
+}
+.fw-cohort-scroll { overflow-x: auto; max-width: 100%; overscroll-behavior-x: contain; }
+.fw-cohort-scroll:focus-visible, .fw-cohort-details summary:focus-visible {
+    outline: 2px solid var(--text-main); outline-offset: -2px;
+}
+.fw-cohort-table { width: 100%; border-collapse: separate; border-spacing: 0;
+    font-size: var(--font-size-table); font-variant-numeric: tabular-nums; }
+.fw-cohort-table caption { text-align: left; font-size: var(--font-size-meta); padding: 4px 0 8px; }
+.fw-cohort-table th, .fw-cohort-table td { padding: 7px 12px; border-bottom: 1px solid var(--border-color); }
+.fw-cohort-table thead th { text-align: center; color: var(--text-secondary); font-weight: 600; }
+.fw-cohort-table tbody td, .fw-cohort-table tfoot td { min-width: 106px; text-align: right; }
+.fw-cohort-table th[scope="row"], .fw-cohort-table th[rowspan] { position: sticky; left: 0; background: var(--bg-card); z-index: 1; text-align: left; }
+.fw-cohort-table tbody th { font-weight: 500; white-space: nowrap; }
+.fw-cohort-table td[data-state="forecast"] .fw-cohort-value { font-style: italic; border-bottom: 1px dotted currentColor; color: var(--text-warning, var(--accent-yellow)); }
+.fw-cohort-cell-reason { display: block; font-size: var(--font-size-meta); color: var(--text-context, var(--text-secondary)); }
+.fw-cohort-table tfoot th, .fw-cohort-table tfoot td { border-top: 1px solid var(--border-color); font-size: var(--font-size-meta); }
+.fw-cohort-table tfoot th { max-width: 150px; overflow-wrap: anywhere; }
+.fw-cohort-identity { display: block; min-width: 100px; max-width: 180px; overflow-wrap: anywhere; font-size: var(--font-size-meta); }
+.fw-cohort-details summary { cursor: pointer; }
+.fw-cohort-details ul { padding-left: 20px; }
+.fw-cohort-empty, .fw-cohort-error { padding: 14px 0; overflow-wrap: anywhere; }
+/* Explicit closed-content visibility also survives native canvas capture. */
+.fw-cohort-details:not([open]) > :not(summary) { display: none; }
+.fw-cohort-details summary { display: block; list-style: none; }
+.fw-cohort-details summary::-webkit-details-marker { display: none; }
+.fw-cohort-details summary::before { content: '▸ '; }
+.fw-cohort-details[open] summary::before { content: '▾ '; }
+.fw-cohort-table th[scope="row"], .fw-cohort-table th[rowspan] { min-width: 112px; }

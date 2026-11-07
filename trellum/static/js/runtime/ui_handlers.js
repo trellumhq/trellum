@@ -61,47 +61,145 @@
         }
     });
 
-    // ── Tab click handler (button mode) ────────────────────
+    // Each new group owns its panels explicitly. Older generated markup has
+    // consecutive sibling panels: stop at the next control, never descend.
+    function _fwTabButtons(control) {
+        var root = control.closest('.fw-tab-root');
+        var group = control.matches('.fw-tab-group') ? control :
+            (root && Array.from(root.querySelectorAll('.fw-tab-group')).find(function(g) {
+                return g.closest('.fw-tab-root') === root;
+            }));
+        return group ? Array.from(group.children).filter(function(el) {
+            return el.matches('.fw-tab-btn');
+        }) : [];
+    }
+
+    function _fwTabPanels(control) {
+        var root = control.closest('.fw-tab-root');
+        if (root) return Array.from(root.querySelectorAll('.fw-tab-panel')).filter(function(p) {
+            return p.closest('.fw-tab-root') === root;
+        });
+        var panels = [];
+        var el = control.nextElementSibling;
+        while (el) {
+            if (el.matches('.fw-tab-panel')) panels.push(el);
+            else if (el.matches('.fw-tab-group, select.fw-tab-dropdown, .fw-tab-root') ||
+                (!el.matches('.ss-main, .ss-content') && el.querySelector('.fw-tab-group, select.fw-tab-dropdown, .fw-tab-root'))) break;
+            el = el.nextElementSibling;
+        }
+        return panels;
+    }
+
+    function _fwSelectTab(control, index) {
+        var panels = _fwTabPanels(control);
+        if (!Number.isInteger(index) || index < 0 || index >= panels.length) return;
+        var buttons = _fwTabButtons(control);
+        buttons.forEach(function(btn, i) {
+            btn.classList.toggle('active', i === index);
+            btn.setAttribute('aria-selected', String(i === index));
+            btn.tabIndex = i === index ? 0 : -1;
+        });
+        panels.forEach(function(panel, i) { panel.style.display = i === index ? '' : 'none'; });
+        var root = control.closest('.fw-tab-root');
+        var select = root ? Array.from(root.querySelectorAll('select.fw-tab-dropdown')).find(function(s) {
+            return s.closest('.fw-tab-root') === root;
+        }) : (control.matches('select') ? control : null);
+        if (select) {
+            select.value = String(index);
+            if (select.slim && select.slim.getSelected()[0] !== select.value) {
+                select._fwSyncingTab = true;
+                try { select.slim.setSelected(select.value, false); }
+                finally { select._fwSyncingTab = false; }
+            }
+        }
+        // Lazy charts initialize through their existing visibility observer.
+        // Already initialized charts need their new visible panel dimensions.
+        requestAnimationFrame(function() {
+            panels[index].querySelectorAll('canvas').forEach(function(canvas) {
+                if (!canvas.getClientRects().length) return;
+                var chart = (window._chartInstances || {})[canvas.id];
+                if (chart) chart.resize();
+            });
+        });
+    }
+
     document.addEventListener('click', function(e) {
-        const btn = e.target.closest('.fw-tab-btn');
+        var btn = e.target.closest('.fw-tab-btn');
         if (!btn) return;
-        const group = btn.closest('.fw-tab-group');
+        var group = btn.closest('.fw-tab-group');
         if (!group) return;
-        const btns = Array.from(group.querySelectorAll('.fw-tab-btn'));
-        btns.forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        const idx = btns.indexOf(btn);
-        _showTabPanel(group, idx);
+        _fwSelectTab(group, _fwTabButtons(group).indexOf(btn));
         if (window._fwUrlSync && group.dataset.tabId) window._fwUrlSync.write();
     });
 
-    // ── Tab dropdown handler ─────────────────────────────
-    document.addEventListener('change', function(e) {
-        const sel = e.target.closest('.fw-tab-dropdown');
-        if (!sel) return;
-        const idx = parseInt(sel.value, 10);
-        _showTabPanel(sel, idx);
-        if (window._fwUrlSync && sel.dataset.tabId) window._fwUrlSync.write();
+    document.addEventListener('keydown', function(e) {
+        var btn = e.target.closest('.fw-tab-btn');
+        if (!btn) return;
+        var group = btn.closest('.fw-tab-group');
+        if (!group) return;
+        var buttons = _fwTabButtons(group), index = buttons.indexOf(btn);
+        var vertical = group.getAttribute('aria-orientation') === 'vertical';
+        if (e.key === 'Home') index = 0;
+        else if (e.key === 'End') index = buttons.length - 1;
+        else if (e.key === (vertical ? 'ArrowDown' : 'ArrowRight')) index = (index + 1) % buttons.length;
+        else if (e.key === (vertical ? 'ArrowUp' : 'ArrowLeft')) index = (index + buttons.length - 1) % buttons.length;
+        else return;
+        e.preventDefault();
+        buttons[index].focus();
+        buttons[index].click();
     });
 
-    // ── Init Slim Select on tab dropdowns ──────────────────
+    document.addEventListener('change', function(e) {
+        var select = e.target.closest('select.fw-tab-dropdown');
+        if (!select || select._fwSyncingTab) return;
+        _fwSelectTab(select, Number(select.value));
+        if (window._fwUrlSync && select.dataset.tabId) window._fwUrlSync.write();
+    });
+
     document.addEventListener('DOMContentLoaded', function() {
-        if (typeof SlimSelect === 'undefined') return;
-        document.querySelectorAll('.fw-tab-dropdown').forEach(function(sel) {
-            var ssWrap = sel.parentElement;
-            var ss = new SlimSelect({
-                select: sel,
-                settings: {
-                    showSearch: false,
-                    allowDeselect: false
-                },
-                events: {
-                    afterChange: function(newVal) {
-                        sel.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                }
+        // Preserve initialization of older generated dropdown groups, without
+        // opting them into new presentation metadata or changing their search.
+        if (typeof SlimSelect !== 'undefined') {
+            document.querySelectorAll('select.fw-tab-dropdown:not([data-fw-choice])').forEach(function(select) {
+                if (!select.slim) new SlimSelect({select: select,
+                    settings: {showSearch: false, allowDeselect: false},
+                    events: {afterChange: function() {
+                        select.dispatchEvent(new Event('change', {bubbles: true}));
+                    }}
+                });
             });
-            if (ssWrap) ssWrap.classList.add('fw-tab-ss-wrap');
+        }
+        if (typeof ResizeObserver === 'undefined') return;
+        // Browsers may blur a newly hidden control before ResizeObserver runs.
+        // Remember focus until another element receives it, so reflow can hand
+        // it to the equivalent visible navigation control.
+        var lastFocused = document.activeElement;
+        document.addEventListener('focusin', function(e) { lastFocused = e.target; });
+        var observer = new ResizeObserver(function(entries) {
+            entries.forEach(function(entry) {
+                var root = entry.target;
+                if (!root.getClientRects().length) return;
+                var focused = document.activeElement;
+                var select = root.querySelector('.fw-tab-nav select.fw-tab-dropdown');
+                var picker = select && select.slim;
+                if (entry.contentRect.width > 520 && picker && picker.settings.isOpen) {
+                    var inSearch = picker.render.content.main.contains(focused);
+                    picker.close();
+                    if (inSearch) root.querySelector('.fw-tab-btn.active').focus({preventScroll: true});
+                }
+                if ((!focused || focused === document.body) && lastFocused &&
+                    !lastFocused.getClientRects().length) focused = lastFocused;
+                if (!focused || focused.closest('.fw-tab-root') !== root ||
+                    !focused.closest('.fw-tab-nav')) return;
+                if (focused.getClientRects().length) return;
+                var target = entry.contentRect.width <= 520 ?
+                    (root.querySelector('.fw-tab-choice .ss-main') || root.querySelector('.fw-tab-choice select')) :
+                    root.querySelector('.fw-tab-btn.active');
+                if (target) target.focus({preventScroll: true});
+            });
+        });
+        document.querySelectorAll('.fw-tab-root[data-tab-mode="sidebar"]').forEach(function(root) {
+            observer.observe(root);
         });
     });
 

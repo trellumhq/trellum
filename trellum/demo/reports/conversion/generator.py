@@ -1,14 +1,13 @@
-"""Conversion -- the store-to-purchase story, per title and in aggregate.
+"""Store-to-purchase observations by title, date and device.
 
-Merged from two reports that queried the same table (acquisition-funnel and
-purchase-flow), because the demo shows features and one page can carry both:
-the multi-scope switcher gives each title its own funnel, and the Sankey
-states the portfolio-wide flow -- including where the leavers go, which a
-funnel chart cannot draw. Signature charts say what they demonstrate in
-their titles, because this is a demo.
+The title switcher keeps funnel and device detail together. A native Sankey
+reconciles adjacent aggregate stage counts using the same date/device filters.
+These illustrative links do not establish observed individual transitions.
 """
 
 from datetime import timedelta
+
+import pandas as pd
 
 from trellum import BaseReport
 from trellum.components import (
@@ -18,15 +17,16 @@ from trellum.components import (
     FilterBar,
     FunnelChart,
     KpiRow,
-    RawHTML,
+    SankeyChart,
     ScopedDataSource,
 )
 from trellum.data import query_df
 
-from . import custom_sections, queries
+from . import queries
 
 _LOOKBACK_DAYS = 120
 _DEFAULT_FILTER_DAYS = 30
+_FUNNEL_STAGES = ("store_view", "item_view", "add_to_cart", "checkout", "purchase")
 
 # Every scope must emit the same sections and components in the same order --
 # only the default scope renders HTML, and the others supply data for it.
@@ -59,14 +59,17 @@ class ConversionReport(BaseReport):
         # overwrite earlier ones in data.json.
         ds = f"funnel_{scope_key}"
         ds_device = f"device_{scope_key}"
+        ds_flow = f"flow_{scope_key}"
+        flow, stages = self._build_flow(df)
 
         ctx.add_section("", [
             DataSource(ds, df),
+            DataSource(ds_flow, flow),
             FilterBar(ds, df, filters=[
                 {"column": "event_date", "label": "Date Range",
                  "type": "date_range", "default_days": _DEFAULT_FILTER_DAYS},
                 {"column": "device", "label": "Device"},
-            ]),
+            ], propagate_to={ds_flow: {"event_date": "event_date", "device": "device"}}),
         ])
 
         ctx.add_section("Conversion", [
@@ -90,18 +93,20 @@ class ConversionReport(BaseReport):
                       y_format="number", dataset_id=ds),
         ])
 
-        # ── Where they go ────────────────────────────────────────────
-        # The flow for THIS title: each scope ships its own payload under
-        # "_flow_<scope>", and the one shared JS reads whichever scope is
-        # active -- so the diagram follows the title switcher. A sankey is
-        # RawHTML because a link between stages is a relationship no chart
-        # component expresses; static per scope because the link geometry is
-        # a difference between stages, computed once in pandas.
+        # Adjacent stage observations retain their date/device grain. The
+        # native edges diagram follows the same filters as the funnel; it
+        # makes no claim to have reconstructed individual complete paths.
         ctx.add_section("Where They Go", [
-            RawHTML(html=custom_sections.CUSTOM_HTML,
-                    js=custom_sections.CUSTOM_JS,
-                    data_key=f"_flow_{scope_key}",
-                    data=self._build_flow(df)),
+            SankeyChart(
+                flow, "Stage-count reconciliation", mode="edges",
+                stages=stages, weight="users", unit="stage users",
+                source="from_node", target="to_node",
+                source_stage="from_stage", target_stage="to_stage",
+                dataset_id=ds_flow, height=320,
+                header_context=("Illustrative links derived from aggregate stage counts, "
+                                "not observed transitions. Net differences are reconciled "
+                                "per date and device."),
+            ),
         ])
 
         # ── Device drill-down on a scoped view of the same data ──────
@@ -121,54 +126,36 @@ class ConversionReport(BaseReport):
         ])
 
     @staticmethod
-    def _build_flow(df) -> dict:
-        """Turn stage totals into Sankey links, including the drop-off.
+    def _build_flow(df):
+        """Derive adjacent edges at the supplied date/title/device grain.
 
-        Aggregation happens here in pandas rather than in SQL, per the
-        framework rule -- and it has to, because a Sankey link is a
-        *difference* between consecutive stages, which is awkward in the query
-        and impossible to re-derive client-side from pre-grouped rows.
+        Independently sampled stage counts may increase. In that case an
+        explicit additional-arrivals node reconciles the next stage rather
+        than introducing a negative exit or silently changing the funnel.
         """
-        if df.empty:
-            return {"links": [], "labels": {}}
-
-        stages = (df.groupby(["step_order", "step"], as_index=False)["users"]
-                    .sum()
-                    .sort_values("step_order"))
-        by_device = (df[df["step_order"] == stages["step_order"].min()]
-                     .groupby("device", as_index=False)["users"].sum()
-                     .sort_values("users", ascending=False))
-
-        first_step = stages.iloc[0]["step"]
-        links = [{"from": row["device"], "to": first_step,
-                  "flow": int(row["users"])}
-                 for _, row in by_device.iterrows() if row["users"] > 0]
-
-        rows = list(stages.itertuples(index=False))
-        for current, nxt in zip(rows, rows[1:]):
-            carried = int(nxt.users)
-            lost = int(current.users) - carried
-            if carried > 0:
-                links.append({"from": current.step, "to": nxt.step,
-                              "flow": carried})
-            if lost > 0:
-                links.append({"from": current.step,
-                              "to": f"left after {current.step}",
-                              "flow": lost})
-
-        # Chart.js labels nodes by key; give the drop-off nodes something
-        # readable rather than the raw key.
-        labels = {f"left after {r.step}": "left" for r in rows}
-        labels.update({r.step: r.step.replace("_", " ") for r in rows})
-
-        # Pin the columns. Left to its own devices the plugin puts every node
-        # with no outgoing links in the final column, so all four drop-offs
-        # stack on the right and their links become long bands crossing the
-        # whole diagram. Placing each drop-off in the column of the stage it
-        # failed to reach puts the loss next to its cause, which is the whole
-        # point of drawing this as a flow.
-        columns = {}
-        for i, r in enumerate(rows):
-            columns[r.step] = i + 1                    # devices occupy column 0
-            columns[f"left after {r.step}"] = i + 2    # beside the next stage
-        return {"links": links, "labels": labels, "columns": columns}
+        # The warehouse declares this stage order. An absent stage stays
+        # absent rather than making its neighbours appear adjacent.
+        if not set(df["step"].dropna()) <= set(_FUNNEL_STAGES):
+            raise ValueError("Unexpected fact_funnel stage")
+        stages = [{"key": step, "label": step.replace("_", " ").title()}
+                  for step in _FUNNEL_STAGES]
+        columns = ["event_date", "title", "device", "from_stage", "to_stage",
+                   "from_node", "to_node", "users"]
+        rows = []
+        for keys, group in df.groupby(["event_date", "title", "device"], observed=True):
+            counts = group.groupby("step", observed=True)["users"].sum()
+            for current, nxt in zip(stages, stages[1:]):
+                # Missing stage observations are not invented zeroes.
+                if current["key"] not in counts or nxt["key"] not in counts:
+                    continue
+                before, after = int(counts[current["key"]]), int(counts[nxt["key"]])
+                base = dict(zip(("event_date", "title", "device"), keys))
+                base.update(from_stage=current["key"], to_stage=nxt["key"])
+                for source, target, weight in [
+                    (current["label"], nxt["label"], min(before, after)),
+                    (current["label"], "Net exits", max(before - after, 0)),
+                    ("Additional arrivals", nxt["label"], max(after - before, 0)),
+                ]:
+                    if weight:
+                        rows.append({**base, "from_node": source, "to_node": target, "users": weight})
+        return pd.DataFrame(rows, columns=columns), stages

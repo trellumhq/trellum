@@ -126,7 +126,10 @@
         return lum > 0.35 ? '#111' : '#fff';
     }
 
-    function _buildAnnotations(events, labels) {
+    // An optional collector is used by owned LineChart event modes. Associate the
+    // original event with the annotation here, at the one eligibility/snap path;
+    // never recover dates or identities from positioned category labels.
+    function _buildAnnotations(events, labels, dated) {
         var _wh = window._reportData && window._reportData._weekday_highlight;
         if ((!events || !events.length) && !_wh) return {};
         if (!labels || !labels.length) return {};
@@ -150,9 +153,16 @@
         // server sent is shown verbatim.
         var activeScope = window._currentScope;
         var minD = labels[0], maxD = labels[labels.length - 1];
-        var annos = {};
+        var annos = {}, identities = new Map();
         (events || []).forEach(function(ev, i) {
             var evType = ev.type || 'release';
+            // Source metadata + occurrence distinguishes duplicate declarations
+            // without changing identity when a filter removes earlier events.
+            if (dated) {
+                var source = JSON.stringify([ev.date, ev.end_date || '', ev.label, evType, ev.studio || '']);
+                var occurrence = identities.get(source) || 0;
+                identities.set(source, occurrence + 1);
+            }
             if (_annoVisible[evType] === false) return;
             if (activeScope && ev.studio && ev.studio !== 'shared' && ev.studio !== activeScope) return;
             if (ev.date > maxD || (ev.end_date || ev.date) < minD) return;
@@ -191,6 +201,10 @@
             }
             var key = (annos['ev_box_' + i] ? 'ev_box_' : 'ev_line_') + i;
             annos[key]._fwEvent = ev;
+            if (dated) {
+                annos[key].label.display = false;
+                dated.push({key: key, index: i, identity: source + ':' + occurrence, event: ev, annotation: annos[key]});
+            }
         });
         // Recurring weekday markers — thin vertical lines drawn on every
         // chart label whose weekday matches the report's config. Computed
@@ -217,6 +231,536 @@
         return annos;
     }
 
+    function _eventIdentity(d) {
+        return d.identity || 'source:' + d.index;
+    }
+    function _eventDate(d) {
+        var date = String(d.event.date);
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return Number(date.slice(8, 10)) + ' ' + months[Number(date.slice(5, 7)) - 1];
+    }
+    function _eventColor(d) {
+        var style = _ANNO_STYLES[d.event.type] || _ANNO_STYLES.release;
+        return style.border || style.color;
+    }
+    function _eventRow(d) {
+        var row = document.createElement('li'), name = document.createElement('strong');
+        row.dataset.eventItem = _eventIdentity(d);
+        row.dataset.eventFocus = _eventIdentity(d);
+        row.tabIndex = -1;
+        row.style.setProperty('--event-color', _eventColor(d));
+        name.textContent = String(d.event.label == null ? '' : d.event.label);
+        var date = document.createElement('time');
+        date.dateTime = String(d.event.date);
+        date.textContent = String(d.event.date) + (d.event.end_date ? ' – ' + d.event.end_date : '') + ' · ' + (d.event.type || 'release');
+        row.append(name, date);
+        if (d.annotation.xMin !== d.event.date || d.annotation.xMax !== (d.event.end_date || d.event.date)) {
+            var mapping = document.createElement('span');
+            mapping.className = 'fw-event-mapping';
+            mapping.textContent = 'Plot position uses the existing date buckets/clipping: ' + d.annotation.xMin +
+                (d.annotation.xMin !== d.annotation.xMax ? ' – ' + d.annotation.xMax : '') + '. Original dates shown above.';
+            row.append(mapping);
+        }
+        return row;
+    }
+    // DOM annotation owner. Rail height is outside the canvas container: no
+    // data geometry, source dataset, tooltip or drag handler changes are needed.
+    function _adaptiveEventLabelsPlugin(previous, dated) {
+        var rail, root, key, panel, list, title, exportKey, chartRef;
+        var groups = [], eligible = [], selected = previous && previous.selected || [];
+        var owner = previous && previous.owner, pendingFocus = previous && previous.focusKey;
+        var restoreFocus = pendingFocus && document.activeElement === document.body;
+        var scroll = previous && previous.scroll || 0, signature = '', controls = new Map();
+        var listeners = new AbortController(), removal;
+        function focusKey() {
+            var active = document.activeElement;
+            return (rail && rail.contains(active) || root && root.contains(active)) ? active.dataset.eventFocus : null;
+        }
+        function focusChart(chart) {
+            if (!chart.canvas.hasAttribute('tabindex')) chart.canvas.tabIndex = -1;
+            if (!chart.canvas.hasAttribute('aria-label') && !chart.canvas.hasAttribute('aria-labelledby'))
+                chart.canvas.setAttribute('aria-label', chart.canvas.dataset.fwTitle || 'Report chart');
+            chart.canvas.focus({preventScroll: true});
+        }
+        function describe(chart, add) {
+            var id = chart.canvas.id + '-adaptive-events';
+            var tokens = (chart.canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) { return t && t !== id; });
+            if (add) tokens.push(id);
+            if (tokens.length) chart.canvas.setAttribute('aria-describedby', tokens.join(' '));
+            else chart.canvas.removeAttribute('aria-describedby');
+        }
+        function highlight(chart) {
+            var selectedSet = new Set(selected), byKey = new Map();
+            dated.forEach(function(d) {
+                byKey.set(d.key, d);
+                var a = d.annotation;
+                if (d.baseWidth === undefined) d.baseWidth = a.borderWidth;
+                a.borderWidth = selectedSet.has(_eventIdentity(d)) ? d.baseWidth + 2 : d.baseWidth;
+            });
+            // Resolve the annotation plugin's element options too, without a
+            // recursive update or adding another source annotation.
+            var plugin = window['chartjs-plugin-annotation'];
+            if (plugin) plugin.getAnnotations(chart).forEach(function(el) {
+                var d = byKey.get(el.options.id);
+                if (d) el.options.borderWidth = d.annotation.borderWidth;
+            });
+        }
+        function updatePanel(chart, keepScroll) {
+            var previousScroll = keepScroll ? list.scrollTop : 0;
+            var selectedSet = new Set(selected);
+            var rows = eligible.filter(function(d) { return selectedSet.has(_eventIdentity(d)); });
+            panel.hidden = !rows.length;
+            title.textContent = rows.length === 1 ? rows[0].event.label : rows.length + ' events · original dates';
+            list.firstChild.replaceChildren.apply(list.firstChild, rows.map(_eventRow));
+            list.scrollTop = previousScroll;
+            controls.forEach(function(items, button) {
+                button.setAttribute('aria-expanded', String(!panel.hidden && button.dataset.eventControl === owner));
+            });
+            highlight(chart);
+        }
+        function close(chart, returnFocus) {
+            selected = [];
+            updatePanel(chart, false);
+            chart.draw();
+            if (returnFocus) {
+                var button = Array.from(controls.keys()).find(function(b) { return b.dataset.eventControl === owner; });
+                if (button) button.focus({preventScroll: true}); else focusChart(chart);
+            }
+        }
+        function build(chart) {
+            rail = document.createElement('div'); rail.className = 'fw-event-rail';
+            rail.id = chart.canvas.id + '-event-rail';
+            root = document.createElement('div'); root.className = 'fw-adaptive-events';
+            root.id = chart.canvas.id + '-adaptive-events';
+            key = document.createElement('div'); key.className = 'fw-event-key';
+            panel = document.createElement('div'); panel.className = 'fw-event-panel'; panel.hidden = true;
+            panel.id = chart.canvas.id + '-event-panel';
+            var closeButton = document.createElement('button'); closeButton.type = 'button';
+            closeButton.className = 'fw-event-close'; closeButton.textContent = '×';
+            closeButton.setAttribute('aria-label', 'Close event details'); closeButton.dataset.eventFocus = 'close';
+            title = document.createElement('h4'); title.tabIndex = -1; title.dataset.eventFocus = 'details';
+            list = document.createElement('div'); list.className = 'fw-adaptive-event-list';
+            list.tabIndex = 0; list.dataset.eventFocus = 'list'; list.setAttribute('role', 'region');
+            list.setAttribute('aria-label', 'Exact event details'); list.append(document.createElement('ol'));
+            panel.append(closeButton, title, list);
+            exportKey = document.createElement('div'); exportKey.className = 'fw-event-export-key'; exportKey.hidden = true;
+            root.append(key, panel, exportKey);
+            closeButton.addEventListener('click', function() { close(chartRef, true); }, {signal: listeners.signal});
+            [root, rail].forEach(function(el) {
+                el.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && selected.length) { e.preventDefault(); close(chartRef, true); }
+                }, {signal: listeners.signal});
+                el.addEventListener('click', function(e) {
+                    var button = e.target.closest('[data-event-control]');
+                    if (!button || !controls.has(button)) return;
+                    owner = button.dataset.eventControl;
+                    selected = controls.get(button).map(_eventIdentity);
+                    updatePanel(chartRef, false); chartRef.draw(); title.focus({preventScroll: true});
+                }, {signal: listeners.signal});
+            });
+        }
+        function button(chart, items, text, control) {
+            var el = document.createElement('button'); el.type = 'button'; el.textContent = text;
+            el.dataset.eventControl = control; el.dataset.eventFocus = control;
+            el.setAttribute('aria-controls', panel.id); el.setAttribute('aria-expanded', 'false');
+            el.setAttribute('aria-label', items.length === 1 ? text + ' · ' + items[0].event.label + ' · ' + items[0].event.date : text + ' · Show exact event names and dates');
+            el.style.setProperty('--event-color', _eventColor(items[0]));
+            controls.set(el, items); return el;
+        }
+        function reconcile(chart) {
+            chartRef = chart;
+            if (!root) build(chart); else scroll = list.scrollTop;
+            var focused = focusKey() || (restoreFocus && pendingFocus);
+            pendingFocus = null; restoreFocus = false;
+            var slot = chart.canvas.parentElement;
+            if (eligible.length) {
+                if (rail.nextElementSibling !== slot) slot.before(rail);
+                if (slot.nextElementSibling && slot.nextElementSibling.id === chart.canvas.id + '-month-context') slot = slot.nextElementSibling;
+                if (slot.nextElementSibling !== root) slot.after(root);
+            } else {
+                // Empty populations retain no sibling nodes either. Existing
+                // legend/title lookup contracts then remain intact.
+                rail.remove(); root.remove();
+            }
+            rail.hidden = root.hidden = !eligible.length;
+            rail.style.marginLeft = chart.chartArea.left + 'px';
+            rail.style.marginRight = Math.max(0, chart.width - chart.chartArea.right) + 'px';
+            describe(chart, !!eligible.length);
+            var eligibleIds = new Set(eligible.map(_eventIdentity));
+            selected = selected.filter(function(id) { return eligibleIds.has(id); });
+            var next = JSON.stringify([groups.map(function(g) { return [g.text, g.left, g.width, g.events.map(function(d) { return [d.index, d.event, d.annotation.xMin, d.annotation.xMax]; })]; }), chart.width <= 600]);
+            if (next !== signature) {
+                controls.clear(); rail.replaceChildren(); key.replaceChildren();
+                groups.forEach(function(g) {
+                    var control = 'rail:' + JSON.stringify(g.events.map(_eventIdentity));
+                    var el = button(chart, g.events, g.text, control);
+                    el.style.left = (g.left - chart.chartArea.left) + 'px'; el.style.width = g.width + 'px'; rail.append(el);
+                });
+                if (groups.some(function(g) { return g.events.length > 1; })) {
+                    key.append(button(chart, eligible, 'View all ' + eligible.length + ' events', 'all'));
+                } else if (chart.width <= 600 || groups.some(function(g) { return g.compact; })) {
+                    eligible.forEach(function(d) { key.append(button(chart, [d], _eventDate(d) + ' · ' + d.event.label, 'key:' + _eventIdentity(d))); });
+                }
+                var exportHeading = document.createElement('strong'); exportHeading.textContent = 'Event key · original dates';
+                var exportList = document.createElement('ol');
+                eligible.forEach(function(d) { exportList.append(_eventRow(d)); });
+                exportKey.replaceChildren(exportHeading, exportList);
+                exportKey.dataset.clustered = String(groups.some(function(g) { return g.events.length > 1; }));
+                signature = next;
+            }
+            // Membership/width changes may replace a cluster control. Keep the
+            // return target attached to a surviving original identity.
+            if (selected.length && !Array.from(controls.keys()).some(function(b) { return b.dataset.eventControl === owner; })) {
+                var replacement = Array.from(controls.keys()).find(function(b) { return controls.get(b).some(function(d) { return _eventIdentity(d) === selected[0]; }); });
+                if (replacement) owner = replacement.dataset.eventControl;
+            }
+            updatePanel(chart, true); list.scrollTop = scroll;
+            if (focused) {
+                var target = Array.from(root.querySelectorAll('[data-event-focus]')).concat(Array.from(rail.querySelectorAll('[data-event-focus]')))
+                    .find(function(el) { return el.dataset.eventFocus === focused && !el.closest('[hidden]'); });
+                if (!target && eligible.length) target = rail.querySelector('button');
+                if (target) target.focus({preventScroll: true}); else focusChart(chart);
+            }
+        }
+        function layout(chart) {
+            var area = chart.chartArea, x = chart.scales.x;
+            groups = []; eligible = [];
+            if (!area || !x || area.width <= 0) return;
+            var labelIndexes = new Map(chart.data.labels.map(function(label, i) { return [label, i]; }));
+            dated.forEach(function(d) {
+                var start = x.getPixelForValue(labelIndexes.get(d.annotation.xMin));
+                var end = x.getPixelForValue(labelIndexes.get(d.annotation.xMax));
+                if (!Number.isFinite(start) || !Number.isFinite(end) || Math.max(start, end) < area.left || Math.min(start, end) > area.right) return;
+                groups.push({anchor: Math.max(area.left, Math.min(area.right, start)), events: [d]});
+            });
+            groups.sort(function(a, b) { return a.anchor - b.anchor || a.events[0].event.date.localeCompare(b.events[0].event.date) || a.events[0].index - b.events[0].index; });
+            eligible = groups.map(function(g) { return g.events[0]; }).sort(function(a, b) { return a.event.date.localeCompare(b.event.date) || a.index - b.index; });
+            var source = groups;
+            source.forEach(function(g, i) { g.first = g.last = i; });
+            var ctx = chart.ctx; ctx.save(); ctx.font = '12px ' + Chart.defaults.font.family;
+            function measure(g) {
+                var first = source[g.first].events[0], last = source[g.last].events[0], count = g.last - g.first + 1;
+                g.compact = chart.width <= 600;
+                g.text = count === 1 ? _eventDate(first) + (g.compact ? '' : ' · ' + first.event.label) :
+                    count + ' events · ' + _eventDate(first) + (first.event.date !== last.event.date ? '–' + _eventDate(last) : '');
+                if (count === 1 && ctx.measureText(g.text).width + 20 > area.width) {
+                    g.compact = true; g.text = _eventDate(first);
+                }
+                g.width = Math.min(area.width, Math.max(44, ctx.measureText(g.text).width + 20));
+                g.left = Math.max(area.left, Math.min(area.right - g.width, g.anchor - g.width / 2));
+            }
+            // Stack merging is linear after sorting. Each source event is kept
+            // once; full names are always reachable through View all.
+            var fitted = [];
+            groups.forEach(function(item) {
+                var g = {anchor: item.anchor, first: item.first, last: item.last};
+                measure(g);
+                while (fitted.length && fitted[fitted.length - 1].left + fitted[fitted.length - 1].width + 6 > g.left) {
+                    var prev = fitted.pop(); g.first = prev.first; g.anchor = prev.anchor; measure(g);
+                }
+                fitted.push(g);
+            });
+            fitted.forEach(function(g) { g.events = source.slice(g.first, g.last + 1).map(function(item) { return item.events[0]; }); });
+            groups = fitted; ctx.restore(); chart._fwEventMarkers = groups;
+        }
+        return {
+            id: 'fwAdaptiveEvents',
+            beforeInit: function(chart) {
+                chart._fwDatedEvents = dated;
+                chart._fwTakeEventDetails = function() { return {selected: selected.slice(), owner: owner, focusKey: focusKey(), scroll: list ? list.scrollTop : 0}; };
+                removal = new MutationObserver(function() {
+                    if (document.getElementById(chart.canvas.id) === chart.canvas) return;
+                    var id = chart.canvas.id;
+                    chart.destroy();
+                    if (window._chartInstances[id] === chart) delete window._chartInstances[id];
+                });
+                removal.observe(document.body, {childList: true, subtree: true});
+            },
+            afterUpdate: function(chart) { layout(chart); reconcile(chart); },
+            beforeDestroy: function(chart) {
+                chart.canvas._fwEventDetailsState = chart._fwTakeEventDetails();
+                listeners.abort(); if (removal) removal.disconnect(); describe(chart, false);
+                if (rail) rail.remove(); if (root) root.remove();
+                delete chart._fwEventMarkers; delete chart._fwDatedEvents; delete chart._fwTakeEventDetails;
+            }
+        };
+    }
+    // Called from the shared export clone contract. Only captured descendants
+    // change; the screen's disclosure, scroll and focus are never touched.
+    window._fwPrepareEventCapture = function(doc, root, scale) {
+        var selector = '.fw-adaptive-events:not([hidden])';
+        var owners = Array.from(root.querySelectorAll(selector));
+        if (root.matches(selector)) owners.unshift(root);
+        if (!owners.length) return;
+        owners.forEach(function(owner) {
+            var key = owner.querySelector('.fw-event-export-key');
+            if (key && key.dataset.clustered === 'true') key.hidden = false;
+            owner.querySelectorAll('.fw-adaptive-event-list').forEach(function(list) {
+                list.style.maxHeight = 'none'; list.style.overflow = 'visible'; list.scrollTop = 0;
+            });
+        });
+        var box = root.getBoundingClientRect(), ratio = scale || 1;
+        if (box.width * ratio > 16384 || box.height * ratio > 16384 || box.width * box.height * ratio * ratio > 32000000)
+            throw new Error('Event capture exceeds the 16,384px / 32 megapixel image limit. Select a smaller chart or section.');
+    };
+
+    // Per-chart native canvas plugin. It adds no layout padding, datasets or
+    // annotation geometry. Canvas drawing is included in existing PNG/PDF paths.
+    function _lineEventLabelsPlugin(previous, dated, mode) {
+        if (mode === 'adaptive') {
+            // A compatibility-mode owner may have handed its old disclosure
+            // over during a mode change. Adaptive owns fresh DOM on both sides
+            // of the plot, so retire that disclosure rather than stranding it.
+            if (previous && previous.root) {
+                if (previous.root.contains(document.activeElement)) previous.focusKey = 'details';
+                previous.root.remove();
+            }
+            return _adaptiveEventLabelsPlugin(previous, dated);
+        }
+        var root = previous && previous.root, signature = '', handedOff = false;
+        var pendingFocus = previous && previous.focusKey;
+        var restoreFocus = pendingFocus && document.activeElement === document.body;
+        var listeners = new AbortController();
+        var groups = [], pressed = null, beganOutside = false;
+        function focusKey() {
+            var active = document.activeElement;
+            return root && root.contains(active) ? active.dataset.eventFocus || 'summary' : null;
+        }
+        function describe(chart, add) {
+            var id = chart.canvas.id + '-event-details';
+            var tokens = (chart.canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+            tokens = tokens.filter(function(t) { return t !== id; });
+            if (add) tokens.push(id);
+            if (tokens.length) chart.canvas.setAttribute('aria-describedby', tokens.join(' '));
+            else chart.canvas.removeAttribute('aria-describedby');
+        }
+        function summary() { return root && root.querySelector('summary'); }
+        function reconcile(chart) {
+            if (!groups.length) {
+                var returnToChart = focusKey() || (restoreFocus && pendingFocus);
+                pendingFocus = null;
+                if (root) {
+                    // Keep open preference for a subsequent nonempty selection,
+                    // but reserve no row and leave no stale event descriptions.
+                    root.hidden = true;
+                    root.querySelector('.fw-event-list').replaceChildren();
+                }
+                describe(chart, false);
+                if (returnToChart) {
+                    // The summary is hidden too. Keep focus on the owning chart,
+                    // without adding a sequential tab stop or taking focus from
+                    // an unrelated filter. Preserve any authored canvas name.
+                    var canvas = chart.canvas;
+                    if (!canvas.hasAttribute('tabindex')) canvas.tabIndex = -1;
+                    if (!canvas.hasAttribute('aria-label') && !canvas.hasAttribute('aria-labelledby'))
+                        canvas.setAttribute('aria-label', canvas.dataset.fwTitle || 'Report chart');
+                    canvas.focus({preventScroll: true});
+                }
+                signature = '';
+                return;
+            }
+            if (!root) {
+                root = document.createElement('details');
+                root.className = 'fw-event-details';
+                root.id = chart.canvas.id + '-event-details';
+                root.open = !!(previous && previous.open);
+                var heading = document.createElement('summary');
+                heading.dataset.eventFocus = 'summary';
+                var note = document.createElement('p');
+                note.className = 'fw-event-note';
+                note.textContent = 'Events in displayed range. A marker such as “2 · 3” means group 2 contains 3 events, not a metric value. Numbers may change with width or selection. Dates below are original dates; marks use the chart’s existing date mapping.';
+                var list = document.createElement('div');
+                list.className = 'fw-event-list';
+                root.append(heading, note, list);
+            }
+            var slot = chart.canvas.parentElement;
+            if (slot.nextElementSibling && slot.nextElementSibling.id === chart.canvas.id + '-month-context')
+                slot = slot.nextElementSibling;
+            if (slot.nextElementSibling !== root) slot.after(root);
+            root.hidden = false;
+            describe(chart, true);
+            var count = groups.reduce(function(n, g) { return n + g.events.length; }, 0);
+            summary().textContent = 'Events in displayed range · ' + count + (count === 1 ? ' event' : ' events') +
+                ' · ' + groups.length + (groups.length === 1 ? ' group' : ' groups');
+            var next = JSON.stringify(groups.map(function(g) {
+                return g.events.map(function(d) { return [d.index, d.event.label, d.event.date, d.event.end_date, d.event.type]; });
+            }));
+            if (next === signature) return;
+            var focused = focusKey() || (restoreFocus && pendingFocus);
+            pendingFocus = null;
+            var content = root.querySelector('.fw-event-list');
+            // Reuse per-event nodes when membership/width changes. Stable keys
+            // come from source identity, never the local marker number.
+            var items = new Map(Array.from(content.querySelectorAll('[data-event-item]')).map(function(item) {
+                return [item.dataset.eventFocus, item];
+            }));
+            var fragment = document.createDocumentFragment();
+            groups.forEach(function(g, i) {
+                var section = document.createElement('section');
+                section.dataset.eventGroup = String(i + 1);
+                var heading = document.createElement('h4');
+                heading.tabIndex = -1;
+                heading.dataset.eventFocus = 'group:' + g.events[0].index;
+                heading.textContent = 'Group ' + (i + 1) + ' · ' + g.events.length + (g.events.length === 1 ? ' event' : ' events');
+                var list = document.createElement('ul');
+                g.events.forEach(function(d) {
+                    var key = 'event:' + d.index;
+                    var item = items.get(key) || document.createElement('li');
+                    item.dataset.eventFocus = key;
+                    item.dataset.eventItem = String(d.index);
+                    item.tabIndex = -1;
+                    // Literal text only, including hostile report-authored names.
+                    item.textContent = String(d.event.label == null ? '' : d.event.label) + ' — ' + String(d.event.date) +
+                        (d.event.end_date ? ' – ' + String(d.event.end_date) : '') + ' · ' + String(d.event.type || 'release');
+                    list.appendChild(item);
+                });
+                section.append(heading, list);
+                fragment.appendChild(section);
+            });
+            content.replaceChildren(fragment);
+            signature = next;
+            if (focused) {
+                var target = Array.from(root.querySelectorAll('[data-event-focus]')).find(function(el) {
+                    return el.dataset.eventFocus === focused;
+                }) || summary();
+                target.focus({preventScroll: true});
+            }
+        }
+        function layout(chart) {
+            var area = chart.chartArea, x = chart.scales.x;
+            groups = [];
+            chart._fwEventMarkers = groups;
+            if (!area || !x || area.width <= 0) return;
+            dated.forEach(function(d) {
+                var a = d.annotation, labels = chart.data.labels;
+                var start = x.getPixelForValue(labels.indexOf(a.xMin));
+                var end = x.getPixelForValue(labels.indexOf(a.xMax));
+                if (!Number.isFinite(start) || !Number.isFinite(end) ||
+                        Math.max(start, end) < area.left || Math.min(start, end) > area.right) return;
+                groups.push({anchor: Math.max(area.left, Math.min(area.right, start)), events: [d]});
+            });
+            groups.sort(function(a, b) { return a.anchor - b.anchor || a.events[0].index - b.events[0].index; });
+            var clustered = [];
+            groups.forEach(function(g) {
+                var last = clustered[clustered.length - 1];
+                if (last && g.anchor - last.anchor <= 52) last.events.push(g.events[0]);
+                else clustered.push(g);
+            });
+            groups = clustered;
+            var ctx = chart.ctx;
+            ctx.save();
+            var size = window._fwFontPx('--font-size-label', 12);
+            ctx.font = '600 ' + size + 'px ' + Chart.defaults.font.family;
+            // Clamping can collide even when starts were far apart. Merge and
+            // renumber until all final measured boxes fit. Each pass removes a
+            // group; even arbitrarily dense plots retain every event in a group.
+            var merged;
+            do {
+                merged = false;
+                groups.forEach(function(g, i) {
+                    ctx.font = '600 ' + size + 'px ' + Chart.defaults.font.family;
+                    g.text = String(i + 1) + (g.events.length > 1 ? ' · ' + g.events.length : '');
+                    var textWidth = ctx.measureText(g.text).width;
+                    var fittedSize = Math.min(size, size * Math.max(1, area.width - 12) / textWidth);
+                    g.font = '600 ' + fittedSize + 'px ' + Chart.defaults.font.family;
+                    ctx.font = g.font;
+                    g.width = Math.min(area.width, ctx.measureText(g.text).width + 12);
+                    g.height = fittedSize + 10;
+                    g.left = Math.max(area.left, Math.min(area.right - g.width, g.anchor - g.width / 2));
+                    g.top = area.top + 3;
+                });
+                for (var i = 1; i < groups.length; i++) {
+                    if (groups[i - 1].left + groups[i - 1].width + 4 > groups[i].left) {
+                        groups[i - 1].events = groups[i - 1].events.concat(groups[i].events);
+                        groups.splice(i, 1);
+                        merged = true;
+                        break;
+                    }
+                }
+            } while (merged);
+            ctx.restore();
+            chart._fwEventMarkers = groups;
+        }
+        function hit(chart, e) {
+            var point = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+            var box = chart.canvas.getBoundingClientRect();
+            var x = (point.clientX - box.left) * chart.width / box.width;
+            var y = (point.clientY - box.top) * chart.height / box.height;
+            return groups.find(function(g) {
+                return x >= g.left && x <= g.left + g.width && y >= g.top && y <= g.top + g.height;
+            });
+        }
+        return {
+            id: 'fwLineEventLabels',
+            beforeInit: function(chart) {
+                chart._fwDatedEvents = dated;
+                chart._fwTakeEventDetails = function() { handedOff = true; return {root: root}; };
+                // Capture before Chart.js and drag-zoom's native listeners. Only
+                // marker hits are consumed; normal plotting interactions pass.
+                ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click', 'dblclick'].forEach(function(type) {
+                    chart.canvas.addEventListener(type, function(e) {
+                        if (type === 'pointercancel') { pressed = null; beganOutside = false; return; }
+                        var group = hit(chart, e);
+                        var down = type === 'pointerdown' || type === 'mousedown' || type === 'touchstart';
+                        if (down && !group) { pressed = null; beganOutside = true; return; }
+                        if (type === 'click' && beganOutside) { beganOutside = false; return; }
+                        if ((type === 'pointerup' || type === 'mouseup' || type === 'touchend') && !pressed) return;
+                        if (!group && !pressed) return;
+                        if (down) {
+                            pressed = group;
+                            beganOutside = false;
+                            if (type === 'pointerdown') chart.canvas.setPointerCapture(e.pointerId);
+                        }
+                        e.preventDefault(); e.stopImmediatePropagation();
+                        if (type !== 'click' && type !== 'touchend') return;
+                        pressed = null;
+                        if (!group) return;
+                        if (!root) return;
+                        root.open = true;
+                        var i = groups.indexOf(group);
+                        var heading = root.querySelector('[data-event-group="' + (i + 1) + '"] h4');
+                        if (heading) {
+                            heading.scrollIntoView({block: 'nearest'});
+                            heading.focus({preventScroll: true});
+                        }
+                    }, {capture: true, passive: false, signal: listeners.signal});
+                });
+            },
+            afterUpdate: function(chart) { layout(chart); reconcile(chart); },
+            afterDraw: function(chart) {
+                var ctx = chart.ctx;
+                ctx.save();
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                var css = getComputedStyle(document.documentElement);
+                groups.forEach(function(g) {
+                    ctx.font = g.font;
+                    ctx.fillStyle = css.getPropertyValue('--bg-card').trim() || '#fff';
+                    ctx.fillRect(g.left, g.top, g.width, g.height);
+                    ctx.strokeStyle = css.getPropertyValue('--text-secondary').trim() || '#666';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(g.left + .5, g.top + .5, g.width - 1, g.height - 1);
+                    ctx.fillStyle = css.getPropertyValue('--text-main').trim() || '#111';
+                    ctx.fillText(g.text, g.left + g.width / 2, g.top + g.height / 2);
+                });
+                ctx.restore();
+            },
+            beforeDestroy: function(chart) {
+                listeners.abort();
+                // renderAll destroys charts before invoking the renderer. Keep
+                // only small UI state on the surviving canvas, never listeners
+                // or detached rows. The factory's direct handoff can reuse DOM.
+                chart.canvas._fwEventDetailsState = {
+                    open: !!(root && root.open), focusKey: focusKey()
+                };
+                describe(chart, false);
+                if (root && !handedOff) root.remove();
+                delete chart._fwEventMarkers;
+                delete chart._fwTakeEventDetails;
+                delete chart._fwDatedEvents;
+            }
+        };
+    }
+    window._fwLineEventLabelsPlugin = _lineEventLabelsPlugin;
     // Use the annotation plugin's measured label rectangles: date spacing alone
     // cannot predict collisions after resizing, date snapping or font changes.
     // Sparse charts keep their labels; crowded charts retain every marker and
@@ -224,6 +768,8 @@
     if (typeof Chart !== 'undefined') Chart.register({
         id: 'fwAnnotationLabels',
         afterUpdate: function(chart) {
+            // Grouped LineCharts own numbered labels and their disclosure.
+            if (chart._fwDatedEvents) return;
             var config = chart.config.options.plugins;
             var annotations = config && config.annotation && config.annotation.annotations;
             var plugin = window['chartjs-plugin-annotation'];
@@ -289,7 +835,10 @@
             if (!chart || !chart.options || !chart.options.plugins) return;
             if (!chart.options.plugins.annotation) return;
             var labels = chart.data && chart.data.labels;
-            chart.options.plugins.annotation.annotations = _buildAnnotations(events, labels);
+            if (chart._fwDatedEvents) {
+                chart._fwDatedEvents.length = 0;
+                chart.config.options.plugins.annotation.annotations = _buildAnnotations(events, labels, chart._fwDatedEvents);
+            } else chart.options.plugins.annotation.annotations = _buildAnnotations(events, labels);
             chart.update('none');
         });
     }

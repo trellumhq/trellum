@@ -15,6 +15,25 @@
 .fw-chart-legend .cl .dot {
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
 }
+.fw-chart-legend .cl .fw-forecast-key {
+    box-sizing: border-box;
+    width: 16px;
+    height: 9px;
+    flex-shrink: 0;
+    position: relative;
+    border-top: 2px dashed var(--fw-forecast-color);
+}
+.fw-chart-legend .cl .fw-forecast-key::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: -4px;
+    width: 5px;
+    height: 5px;
+    border: 1.5px solid var(--fw-forecast-color);
+    border-radius: 50%;
+    background: var(--bg-card);
+}
 .fw-chart-container {
     position: relative; width: 100%;
     height: 320px;
@@ -50,5 +69,107 @@
     transition: opacity 0.15s;
     display: inline-flex; align-items: center;
 }
-.fw-chart-container:hover .fw-chart-dl { opacity: 1; }
+.fw-chart-container:hover .fw-chart-dl,
+.fw-chart-dl:focus-visible { opacity: 1; }
 .fw-chart-dl:hover { color: var(--text-main); }
+
+/* ── LineChart plotting-area sizes ──
+   The same height at every viewport width, so these outrank the width-keyed
+   rules above on specificity rather than on order. Other charts keep those
+   rules. */
+.fw-chart-container.fw-line-balanced { height: 220px; }
+.fw-chart-container.fw-line-compact { height: 160px; }
+.fw-chart-container.fw-line-roomy { height: 320px; }
+
+/* Title on the left, optional summary on the right; the summary wraps under a
+   long title instead of squeezing it. */
+.fw-chart-head {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    justify-content: space-between; column-gap: 12px;
+    margin-bottom: 4px;
+}
+.fw-chart-head .fw-chart-title { min-width: 0; overflow-wrap: anywhere; }
+.fw-chart-summary {
+    margin-left: auto; max-width: 100%;
+    display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 6px;
+    font-size: var(--font-size-label); color: var(--text-secondary);
+}
+.fw-chart-summary-label { min-width: 0; overflow-wrap: anywhere; }
+.fw-chart-summary-value {
+    white-space: nowrap;
+    font-size: 15px; font-weight: 600; color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+}
+.fw-chart-header-context {
+    margin: 0 0 8px;
+    font-size: var(--font-size-label);
+    color: var(--text-context, var(--text-secondary));
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Grouped dated events belong below the unchanged plotting container. */
+.fw-event-details {
+    margin: 0 0 var(--spacing-md);
+    color: var(--text-secondary);
+    font-size: var(--font-size-label);
+    overflow-wrap: anywhere;
+}
+.fw-event-details[hidden] { display: none; }
+.fw-event-details summary { cursor: pointer; padding: 8px 0; color: var(--text-main); list-style: none; }
+.fw-event-details summary::-webkit-details-marker { display: none; }
+.fw-event-details summary::before { content: "▸"; display: inline-block; width: 1em; }
+.fw-event-details[open] summary::before { content: "▾"; }
+/* Explicit visibility also survives the existing screen-capture DOM clone. */
+.fw-event-details:not([open]) > :not(summary) { display: none; }
+.fw-event-note { margin: 4px 0 8px; }
+.fw-event-list { max-height: 280px; overflow-y: auto; overscroll-behavior: contain; }
+.fw-event-list h4 { margin: 8px 0 4px; color: var(--text-main); font-size: inherit; }
+.fw-event-list ul { margin: 0; padding-left: 22px; }
+.fw-event-list li { margin: 4px 0; white-space: normal; }
+.fw-event-details :focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
+
+/* The optional row adds exactly 24px; retain the existing gap after context. */
+.fw-chart-container.fw-has-month-context { margin-bottom: 0; }
+.fw-month-context {
+    position: relative;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 0;
+    margin: 0 0 var(--spacing-md);
+    overflow: hidden;
+    font-family: inherit;
+    font-size: var(--font-size-label);
+    color: var(--text-context, var(--text-secondary));
+    line-height: 24px;
+}
+.fw-month-span { position: absolute; top: 0; height: 24px; text-align: center; white-space: nowrap; overflow: hidden; }
+.fw-month-accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Supplied LineChart availability context lives outside the fixed plot. */
+.fw-line-availability {
+    color: var(--text-context, var(--text-secondary));
+    font-size: var(--font-size-label, 12px);
+    line-height: 1.5;
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+}
+
+/* Opted-in daily coverage remains in normal section/capture flow. */
+.fw-monthly-average {
+    margin: 8px 0 var(--spacing-md);
+    color: var(--text-main);
+    font-size: var(--font-size-label, 12px);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.fw-monthly-average table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.fw-monthly-average caption { text-align: left; margin-bottom: 8px; color: var(--text-context, var(--text-secondary)); }
+.fw-monthly-average th, .fw-monthly-average td {
+    text-align: left; vertical-align: top; padding: 6px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: normal;
+}
+.fw-monthly-average th { font-weight: 600; }
+.fw-monthly-average p { margin: 0; }

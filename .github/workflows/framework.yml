@@ -78,12 +78,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'yes'
     runs-on: ubuntu-latest
-    # Normal run is well under 10 minutes. Without a cap, a wedged step rides
-    # GitHub's 6-hour default -- a Chromium download stall has already burned
-    # two full 360-minute runner slots on exactly that.
-    timeout-minutes: 30
+    # The complete report/browser suite reached 86% in 29 minutes on the
+    # hosted runner. Keep every test and leave time for coverage and demo
+    # builds, while bounding a stalled run well below GitHub's 6-hour default.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0  # Compatibility tests load committed historical fixtures.
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -117,6 +119,9 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           python -m playwright install --with-deps chromium
+          # Native PDF export checks rasterize the real downloaded file.
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftoppm -v
 
       # The WHOLE suite, not a hand-listed subset -- an unlisted file is a file
       # nobody runs, which is how test_interactions.py sat dead for months.
@@ -311,7 +316,7 @@ jobs:
           fi
           echo "wheel matches trellum.__version__ = $REPO_VERSION"
 
-      - name: The wheel carries AGPL metadata and notices
+      - name: The wheel carries documentation, analysis evidence and AGPL notices
         run: |
           python - <<'PY'
           import glob
@@ -329,21 +334,25 @@ jobs:
           ]
           if not any(path.parent.name == "evidence" for path in analysis_files):
               raise SystemExit("demo analysis has no packaged evidence files")
+          docs = list(Path("trellum/docs").rglob("*.md"))
+          if not docs:
+              raise SystemExit("framework source has no documentation files")
           required = {
               "trellum/LICENSE",
               "trellum/THIRD-PARTY.md",
               "trellum/demo/assistant.md",
               *(path.as_posix() for path in analysis_files),
+              *(path.as_posix() for path in docs),
           }
           with zipfile.ZipFile(wheel) as archive:
               names = set(archive.namelist())
               missing = sorted(required - names)
               if missing:
                   raise SystemExit(f"wheel is missing required files: {missing}")
-              for path in analysis_files:
+              for path in [*analysis_files, *docs]:
                   packaged = path.as_posix()
                   if archive.read(packaged) != path.read_bytes():
-                      raise SystemExit(f"wheel changed demo analysis file: {packaged}")
+                      raise SystemExit(f"wheel changed documentation or analysis file: {packaged}")
               metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode()
               if "License-Expression: AGPL-3.0-only" not in metadata:

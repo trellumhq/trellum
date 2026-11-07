@@ -37,8 +37,8 @@ from trellum.data import query_df
 
 from . import queries
 
-#: Baked into the artifact. Forced to a paying tier in the fixtures so a
-#: standalone snapshot shows a log with purchases in it (make_fixtures.py).
+#: Example actor id, forced to a paying tier in the synthetic fixtures.
+#: The build-time snapshot uses actor_id=0 (all actors), not this example.
 SNAPSHOT_USER = 1042
 
 _WINDOW_DAYS = 60
@@ -47,14 +47,15 @@ _VOLUME_DAYS = 60
 _INTRO = """
 <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;
             max-width:72ch;">
-This report is a <b>live lookup</b> -- but the live inputs below are just an
-ordinary FilterBar. The build compiled one window's worth of events as the
-snapshot, so this page works anywhere a static file works. When a host
-serves it and offers a live-query endpoint, filtering re-queries the
-warehouse: change the severity, service, actor, or date range and all four
-components below update together, and the "Top actors" chart re-runs its
-own query from the same service + date-range filters. The SQL itself ships
-only to the host, never to this page.
+<p>This standalone demo shows a <b>build-time snapshot</b> of synthetic events.
+On a host with live queries enabled, severity, service, actor and date filters
+request fresh results for the KPIs, charts and raw-events table.</p>
+<p><b>Event scope:</b> these results contain up to the <b>300 most recent
+matching events</b>. The Events, Warnings and Errors KPIs and the two charts
+in Ops stream describe those returned rows, not the entire matching log.</p>
+<p><b>Top actors</b> ranks the 15 most active actors across all events matching
+the service and date range. Actor and severity selections do not narrow that
+ranking. The final daily-volume chart is a separate build-time aggregate.</p>
 </div>
 """
 

@@ -17,6 +17,17 @@
   <a href="https://github.com/trellumhq/trellum/blob/main/LICENSE">AGPL-3.0-only</a>
 </p>
 
+## Choose a report and explore the components
+
+The bundled `component-showcase` is a short, interactive tour grouped by purpose.
+Switch table and chart views to see their differences; use Player Overview,
+Monetization and Conversion to see components working together in complete reports.
+The bundled `report-upgrade` guide shows native v0.9.5 and current captures.
+
+- [Choose components and options for a report](docs/report-authoring.md)
+- [Visual upgrade: automatic changes and explicit opt-ins](docs/report-visual-upgrade.md)
+- [Business demo stories and data scope](docs/report-demo-stories.md)
+
 ## Install
 
 Trellum requires Python 3.11 or newer. Install the package from PyPI:
@@ -444,7 +455,7 @@ also works with a custom header component; there is no need to instantiate
 
 | Component | Constructor | Description |
 |---|---|---|
-| `LineChart` | `(df, x, y, title, dataset_id)` | Time series. `y` can be a string or list. Supports `ratios=[{numerator, denominator, label}]` for computed ratio lines. `stack_by="col"` pivots rows by a categorical column to produce one line per value (works with both `y` and `ratios`; long-format friendly). `y_format` controls axis formatting. |
+| `LineChart` | `(df, x, y, title, dataset_id)` | Time series. `y` can be a string or list. Supports `ratios=[{numerator, denominator, label}]` for computed ratio lines. `stack_by="col"` pivots rows by a categorical column to produce one line per value (works with both `y` and `ratios`; long-format friendly). `y_format` controls axis formatting. `height` (`"balanced"` 220px default, `"compact"` 160px, `"roomy"` 320px) sets the plotting area; `header_summary` adds a right-aligned statistic (see below). |
 | `AreaChart` | `(df, x, y, title, stacked, dataset_id)` | Filled area chart. `stacked=True` for composition over time. |
 | `BarChart` | `(df, x, y, title, dataset_id)` | Vertical or horizontal bars. `horizontal=True`, `stacked=True`, `cross_filter=True`. `ratios=[{numerator, denominator, label}]` plots sum(num)/sum(den) per x-value — combine with `horizontal=True, sort='desc'` for categorical ratio rankings (CPD by comfort_zone, ARPPU by country). |
 | `StackedBar` | `(df, x, y_cols, title, dataset_id)` | Stacked bar chart. `stack_tooltip_breakdown=True` shows segment details. `value_format` controls tooltips (`"currency"` or `"number"`). `stack_by` / `stack_by_options` for dynamic grouping. `cross_filter=True` for click-to-filter. |
@@ -455,7 +466,141 @@ also works with a custom header component; there is no need to instantiate
 | `TreemapChart` | `(df, group_cols, value, title, dataset_id)` | Hierarchical treemap. `group_cols` is a list for nested grouping. Optional `color_col`. |
 | `ScatterChart` | `(df, x, y, title, dataset_id)` | Scatter or bubble chart. `size` column enables bubble mode. `color_by` splits by category. |
 
+`LineChart`, `StackedBar` and `DoughnutChart` support optional keyword-only
+`category_colors` declarations for explicitly related string categories and
+current theme palette slots, with per-chart named overrides. Line/bar inputs
+must be dataset-bound category splits; static/live doughnuts use their label
+column. See [declared category colors](docs/report-category-colors.md) for the
+validated API, theme behavior and retained fallback/grouping limitations.
+
+#### Optional native linear trends
+
+Ordinary LineChart and numeric ScatterChart accept
+`trend_line={"method": "linear", "series": "each"}`. Fits follow the selected
+data after aggregation, retain source colors, and expose observations, slope,
+equation and descriptive R². Existing charts default to no fit. Daily ratio
+fits and bubble points are unweighted; fitted values never extrapolate or
+alter source measurements, summaries or CSV. See [native trend eligibility
+and limits](docs/report-chart-trends.md) before choosing this option.
+
+#### LineChart markers and interpolation
+
+Ordinary LineCharts adapt their 2px persistent dots to current plot spacing:
+connected points need at least 12 CSS pixels between neighbours; isolated finite
+observations always retain dots, including zero. All hover targets remain.
+`tension=0.35` optionally enables curves; keyword-only `tension` defaults to 0.0
+and must be a finite number in [0, 1], excluding booleans. Curves infer movement
+between observations and can overshoot; they are not averages, forecasts or
+monotone estimates. Values, null gaps, axes, CSV and 2.5px line width remain.
+See [ordinary line styles](docs/report-line-styles.md) for lifecycle and payload
+compatibility details.
+
+#### LineChart height and header summary
+
+`LineChart` plots in a 220px area at every viewport width. Pass
+`height="compact"` for 160px, or `height="roomy"` for the former 320px. Other
+chart types keep their existing sizes. The title stays visible at every size,
+including inside tile grids (`Grid(min_width=...)`). Grids retain titles and
+controls unless explicitly omitted. A LineChart keeps its height rather than stretching to fill a
+taller neighbour.
+
+`header_summary` shows one statistic right-aligned in the chart header:
+
+```python
+LineChart(df, x="day", y="revenue", title="Revenue", dataset_id="sales",
+          height="compact",
+          header_summary={"stat": "mean", "series": 0, "label": "Daily avg",
+                          "format": "number"})
+```
+
+| Key | Meaning |
+|---|---|
+| `stat` | Required: `mean`, `sum`, `last`, `min` or `max`. `last` is the last plotted point that has a value. |
+| `series` | Which plotted line: its position (0 is the first) or its label. Optional only when the chart plots exactly one series; required otherwise. |
+| `label` | Text shown before the value (up to 60 characters). Defaults to Average, Total, Latest, Min or Max; `""` shows the value alone. Always rendered as plain text. |
+| `format` | Optional: `number`, `currency`, `percent`, `chips`, `ratio` or `plain`, the same formatters KPI cards use. Omitted, the value reads like the chart's own tooltips and axis (`y_format`), so a `y_format="decimal1"` ratio chart summarises as `1.8`, not a rounded `2`. |
+
+No summary is shown unless `header_summary` is set. It is computed in the
+browser from the series the chart actually plots, so it follows every filter
+change and always agrees with the line: for `ratios=[...]` it works on the
+ratios after numerator and denominator are summed per x value, so `mean` is the
+mean of the plotted ratios, not the overall weighted ratio (use a `KpiRow`
+ratio for that), and `sum` is rejected. Points with no value, or that are not
+finite numbers, are skipped and never counted as zero; when no point remains the
+summary shows an em dash (`—`). Zooming and hiding a line in the legend do not
+change the summary.
+
+`header_summary` cannot be combined with `stack_by` or `stack_by_options`,
+because the lines come from the data and change with the breakdown; the chart
+raises `ValueError` rather than summarise an unrelated line. An unknown
+`stat`, `format`, key or `height`, a missing or out-of-range `series`, or a
+summary on a chart that plots several series without naming one are rejected the
+same way, and the validator reports `line-chart-height-invalid` and
+`line-chart-summary-invalid` for charts changed after construction.
+
+[Traffic Composition](docs/report-traffic-composition.md) demonstrates optional
+shared StackedBar breakdown/mode controls and `height=220`. Default local controls
+and responsive plot heights remain available.
+
+[ScatterChart header summaries](docs/report-scatter-summaries.md) optionally
+count current point entries or summarize x/y coordinates, preserving ordinary
+and bubble plots. Coordinate reducers require complete finite pairs.
+
+[HeatmapChart header summaries](docs/report-heatmap-summaries.md) optionally
+count retained aggregate cell entries or summarize their raw values before
+color normalization, with explicit original-input eligibility.
+
+[StackedBar header summaries](docs/report-stacked-summaries.md) describe one
+exact final bar-series caption in original units, including in Percentage mode.
+
+[TreemapChart header summaries](docs/report-treemap-summaries.md) reduce current
+final leaf entries after grouping, with independent counts and guarded numeric
+results that exclude parent entries.
+
+[Sankey header summaries](docs/report-sankey-summaries.md) describe grouped
+complete paths or one declared adjacent boundary, retaining exact detail exports.
+
+[ComboChart header summaries](docs/report-combo-summaries.md) describe one final
+series on an explicit axis, with selected-input eligibility and existing units.
+
+[Report keyboard controls](docs/report-keyboard.md) cover ordinary table sorting,
+visible chart CSV focus and inset Toggle focus outlines.
+
+[CalendarCoverage](docs/report-kpi-buckets.md) adds optional shared UTC calendar
+coverage notes and exact authored bucket dates to ordinary bar tooltips.
+It preserves chart values and distinguishes selected partial buckets, observed
+dates, missing inputs and declared horizon maturity.
+
+[PeriodComparison](docs/report-period-comparison.md) provides optional explicit
+UTC period summaries, grouped tables and original-date context on line charts
+from one bounded snapshot, preserving the ordinary nearest-point tooltip.
+
+[FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
+a named stage, maximum stage-entry count or entry count above the current plot.
+They preserve stage ordering and do not infer conversions or cross-stage totals.
+
+[DoughnutChart header summaries](docs/report-doughnut-summaries.md) are optional:
+declare `header_summary={"stat": "sum", "scope": "all_categories"}` for
+additive amounts, or choose `max` or `count`. They include hidden entries in
+the current filtered result; center totals remain a separate option.
+
+`SankeyChart(df, title="", *, mode, stages, weight, unit, ...)` displays
+supplied complete paths or adjacent transitions using the bundled Sankey plugin.
+Exact details and CSV preserve the declared population model.
+See [Sankey API and limits](docs/report-sankey-charts.md).
+
 ### KPIs
+
+[MetricView](docs/report-metric-views.md) shares bounded filtered sum/count/ratio
+results between optional `MiniKpi.binding` consumers and native DataTables.
+The Marketing example retains its summary table and offers geography panels.
+DataTable `column_formats` gives those numeric results explicit currency/rate
+display while preserving raw sorting and CSV values.
+
+The [synthetic Overview example](docs/report-overview-composition.md) combines
+ordinary KPI cards, doughnuts and six compact daily trends with summaries.
+The [Player Overview demo](docs/demo-player-overview.md) uses these compact
+trends with its existing daily data and collapsible detailed charts.
 
 | Component | Constructor | Description |
 |---|---|---|
@@ -470,6 +615,8 @@ also works with a custom header component; there is no need to instantiate
 | `DataTable` | `(df, title, dataset_id)` | Scrollable data table with CSV download. Auto-search when >20 rows. `max_rows`, `sortable`, `searchable`, `conditional_formats`, `bar_column`. |
 | `PivotTable` | `(df, rows, cols, values, agg, dataset_id)` | Interactive pivot grid. Users can change dimensions and aggregation via dropdowns. `agg`: `sum`/`count`/`avg`. `value_format`. |
 | `ComparisonTable` | `(df, title, value_col, compare_cols, dataset_id)` | Table with period comparison columns. |
+| `HierarchyTable` | `(df, title="", *, rows, value, record_id, column=None, dataset_id=None)` | Expandable additive leaf-fact summaries. Totals and CSV include collapsed descendants; incomplete results stay explicit. [API and scope](docs/report-hierarchy-tables.md). |
+| `CohortTable` | `(df, title="", *, cohort, cohort_month, horizon, observed, observed_state, population)` | Precomputed cohort observations and supplied forecasts with explicit states, provenance and optional sampled milestones. [API and scope](docs/report-cohort-tables.md). |
 
 ### Controls
 
@@ -486,9 +633,14 @@ also works with a custom header component; there is no need to instantiate
 |---|---|---|
 | `Section` | `(title, children, collapsible)` | Titled content block. `collapsible=True` for expand/collapse. |
 | `Panel` | `(children, title)` | Card container. |
-| `Grid` | `(children, columns, card)` | Multi-column CSS grid. `card=True` for card-panel styling. |
+| `Grid` | `(children, columns, card)` | Panel-width grid. `card=True` for card panels; optional `color_cycle="theme"` gives direct single-metric charts successive theme colors. |
 | `SplitPane` | `(left, right, ratio)` | Side-by-side panels. `ratio="1:1"`. |
 | `Visible` | `(children, toggle_target, toggle_value)` | Toggle-driven visibility. Shows `children` when the specified toggle matches `toggle_value`. |
+
+Grid color cycling is off by default. It distinguishes metric tiles; shared
+`category_colors` serves category identity across related charts. Explicit chart
+colors win, and nested grids choose their own settings. See
+[Grid theme colors](docs/report-grid-colors.md) for eligible families and scope.
 
 ### Advanced
 
@@ -578,6 +730,15 @@ FilterBar("cpd_pkg", df, filters=[
 - Both filters must live on the same FilterBar and refer to real DataFrame columns. The validator checks this (`filter-depends-on-missing`, `filter-depends-on-self`).
 - Currently selected values that remain valid under the parent's new selection are preserved; values that drop out are removed and the URL is rewritten.
 - The child's options are derived using `getFilteredExcluding(dsId, [self_col])` so the child's own selection doesn't restrict its own options.
+
+For entity drill-down, a child dropdown can additionally declare
+`"clear_on_parent_change": True`. A real parent selection change then clears
+that child even if its key remains available. Initial valid URL restoration,
+unchanged selections and reordered equivalent sets preserve the child.
+Omitting the option or passing `False` retains the existing cascade behavior.
+It accepts only a boolean on a dropdown with nonempty `depends_on`. Native
+controls, row actions and clearable context share the same owner path; see
+[optional table row drill-down](docs/report-data-tables.md#optional-row-drill-down).
 
 ### Cross-DataSource Filter Propagation
 
@@ -734,6 +895,18 @@ table, KPI row — redraws through its normal path; sorting, search and CSV
 download keep working on live results. A `429` shows "busy — retrying" and
 retries once after `Retry-After`.
 
+The runtime exposes per-dataset requested/displayed selection and snapshot/query
+identity through [live-result state](docs/live-result-state.md). Redraws preserve
+queried rows; requests and body parsing have a 30-second client deadline.
+Completion time describes receipt of a result, not freshness of its source.
+
+Ordinary [LineCharts](docs/report-line-results.md) now distinguish no usable
+result from measured zeros and label retained requested/displayed selections.
+[Live KPI rows and tables](docs/report-live-result-context.md) share a note
+identifying the displayed snapshot/query and returned-row scope. The keyword-only
+`result_presentation=False` and `live_context=False` options respectively retain
+the previous presentation. The `live-result-examples` demo shows these together.
+
 **What ships where.** The SQL is written to `_live_queries.json` beside
 `_meta.json` for the host to read. It never enters `data.json` or
 `index.html` — the page carries only the query id, the param schema
@@ -830,6 +1003,15 @@ Optional chart annotations from a centralized `events.yaml` at the project root.
 3. Framework charts (`LineChart`, `BarChart`, etc.) show annotations automatically.
 4. An **annotation toggle bar** appears below the header with clickable pills per event type.
 5. Toggle state persists in `localStorage`.
+
+Ordinary `LineChart`s show adaptive dated labels above the plot. Tap or click a
+label for exact names and dates; overlapping labels show an event count, with
+every event available in local details. Phone charts also show a readable name
+key. This changes the space around the plot, while its height and values stay
+the same. Use `event_labels="grouped"` for numbered markers or
+`event_labels="full"` for in-plot labels. Other chart families retain their
+existing presentation. See [dated event labels](docs/report-line-events.md)
+for date mapping, compatibility and image-export scope.
 
 ### Visibility Priority (highest wins)
 
@@ -1556,6 +1738,9 @@ Every report generation automatically runs a post-generation validator that chec
 | Theme compatibility | `theme-invalid`, `rawhtml-cached-theme-colors`, `rawhtml-hardcoded-colors` |
 | Annotation support | `annotations-enabled-no-events`, `annotations-studio-mismatch`, `annotations-non-date-x-axis` |
 | Column validation | `chart-column-missing`, `ratios-without-dataset-id`, `ratios-missing-keys`, `ratios-column-missing`, `stackedbar-option-column-missing` |
+| LineChart options | `line-chart-height-invalid`, `line-chart-summary-invalid`, `line-chart-tension-invalid` |
+| StackedBar options | `stacked-bar-height-invalid`, `stacked-bar-controls-invalid`, `stacked-bar-control-id-missing`, `stacked-bar-control-owner-invalid`, `stacked-bar-control-options-invalid` |
+| Snapshot metric views / table formats | `metric-view-invalid`, `mini-kpi-binding-invalid`, `datatable-column-formats-invalid` |
 | Toggle / Visible wiring | `visible-target-missing`, `visible-value-missing`, `toggle-unused`, `rawhtml-toggle-id-mismatch` |
 | Scope system | `scope-empty`, `scope-no-default` |
 | YAML schema | `yaml-missing-required`, `yaml-missing-data-sources`, `yaml-cron-invalid`, `report-description-weak` |

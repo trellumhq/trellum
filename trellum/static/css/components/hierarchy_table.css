@@ -1,0 +1,18 @@
+/* Scoped native table: the report document never becomes the scroll region. */
+.fw-hierarchy { min-width:0; max-width:100%; color:var(--text-main); }
+.fw-hierarchy .fw-hierarchy-actions { display:flex; justify-content:flex-end; margin-bottom:6px; }
+.fw-hierarchy .fw-hierarchy-scroll { max-width:100%; overflow-x:auto; }
+.fw-hierarchy table { width:100%; min-width:480px; border-collapse:collapse; font-size:12px; }
+.fw-hierarchy th,.fw-hierarchy td { padding:8px 10px; border-bottom:1px solid var(--border-color); vertical-align:top; }
+.fw-hierarchy thead th { color:var(--text-secondary); font-weight:600; text-align:right; }
+.fw-hierarchy th:first-child { text-align:left; min-width:180px; max-width:340px; width:45%; overflow-wrap:anywhere; }
+.fw-hierarchy tbody th { font-weight:500; }
+.fw-hierarchy tbody tr:nth-child(even) { background:var(--bg-card-hover); }
+.fw-hierarchy td { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.fw-hierarchy tfoot { font-weight:700; background:var(--bg-card-hover); border-top:2px solid var(--border-color); }
+.fw-hierarchy .fw-hierarchy-label { display:block; padding-left:calc(var(--hierarchy-depth) * 14px); }
+.fw-hierarchy button { font:inherit; color:inherit; }
+.fw-hierarchy button[data-path] { border:0; background:transparent; padding:0; text-align:left; cursor:pointer; display:flex; align-items:baseline; gap:6px; width:100%; overflow-wrap:anywhere; }
+.fw-hierarchy button:focus-visible,.fw-hierarchy .fw-hierarchy-scroll:focus-visible { outline:2px solid var(--accent-blue); outline-offset:2px; }
+.fw-hierarchy .fw-hierarchy-note,.fw-hierarchy .fw-hierarchy-empty { font-size:12px; line-height:1.5; overflow-wrap:anywhere; margin:8px 0; color:var(--text-secondary); }
+.fw-hierarchy .fw-hierarchy-csv { background:var(--bg-card); border:1px solid var(--border-color); border-radius:4px; padding:4px 8px; cursor:pointer; }

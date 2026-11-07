@@ -1,12 +1,12 @@
     // ── Public API namespace ─────────────────────────────
     function _fwDownloadCsv(columns, rows, filename) {
-        var csv = columns.join(',') + '\n';
+        function cell(value) {
+            var text = value == null ? '' : String(value);
+            return /[,"\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+        }
+        var csv = columns.map(cell).join(',') + '\n';
         for (var i = 0; i < rows.length; i++) {
-            csv += rows[i].map(function(v) {
-                var s = v == null ? '' : String(v);
-                return s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0
-                    ? '"' + s.replace(/"/g, '""') + '"' : s;
-            }).join(',') + '\n';
+            csv += rows[i].map(cell).join(',') + '\n';
         }
         var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
         var a = document.createElement('a');

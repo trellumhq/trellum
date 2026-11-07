@@ -1,4 +1,3 @@
-
 .fw-pivot-controls {
     display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
     margin-bottom: 10px; font-size: 12px;
@@ -11,15 +10,30 @@
     font-size: var(--font-size-label); text-transform: uppercase; letter-spacing: 0.3px;
     white-space: nowrap;
 }
-.fw-pivot-table th.fw-pivot-col-header {
-    text-align: right; font-weight: 600;
-}
-.fw-pivot-table td.fw-pivot-value {
-    text-align: right; font-variant-numeric: tabular-nums;
-}
-.fw-pivot-table td.fw-pivot-row-header {
-    font-weight: 600; white-space: nowrap;
-}
-.fw-pivot-table tr.fw-pivot-total td {
-    font-weight: 700; border-top: 2px solid var(--border-color);
+.fw-pivot-scroll { max-width: 100%; overflow: auto; overscroll-behavior: contain; }
+.fw-table.fw-pivot-table { border-collapse: separate; border-spacing: 0; min-width: 460px; }
+.fw-pivot-table th, .fw-pivot-table td { padding: 5px 9px; }
+.fw-pivot-table thead th { background: var(--bg-card); }
+.fw-pivot-table th.fw-pivot-col-header { text-align: right; font-weight: 600; }
+.fw-pivot-table .fw-pivot-group-header { text-align: center; border-bottom: 1px solid var(--border-color); }
+.fw-pivot-table td.fw-pivot-value { text-align: right; font-variant-numeric: tabular-nums; }
+.fw-pivot-table td.fw-pivot-row-header { font-weight: 600; white-space: nowrap; }
+.fw-pivot-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-card) 92%, var(--text-main)); }
+.fw-pivot-table tbody tr:nth-child(odd) td { background: var(--bg-card); }
+.fw-pivot-table .fw-pivot-grand-col { border-left: 1px solid var(--border-color); }
+.fw-pivot-table tfoot td { font-weight: 700; border-top: 2px solid var(--border-color); background: color-mix(in srgb, var(--bg-card) 86%, var(--bg-header)); }
+.fw-pivot-frozen { position: relative; }
+.fw-pivot-frozen .fw-pivot-table thead { position: sticky; top: 0; z-index: 4; }
+.fw-pivot-frozen .fw-pivot-table thead th { position: sticky; z-index: 4; }
+.fw-pivot-frozen .fw-pivot-group-row th { top: 0; }
+.fw-pivot-frozen .fw-pivot-category-row th { top: var(--fw-pivot-header-offset, 0px); }
+.fw-pivot-frozen .fw-pivot-table th.fw-pivot-first-dim,
+.fw-pivot-frozen .fw-pivot-table td.fw-pivot-first-dim { position: sticky; left: 0; z-index: 2; }
+.fw-pivot-frozen .fw-pivot-table thead th.fw-pivot-first-dim { z-index: 7; }
+.fw-pivot-frozen .fw-pivot-table tbody tr:nth-child(even) td.fw-pivot-first-dim { background: color-mix(in srgb, var(--bg-card) 92%, var(--text-main)); }
+.fw-pivot-frozen .fw-pivot-table tbody tr:nth-child(odd) td.fw-pivot-first-dim { background: var(--bg-card); }
+.fw-pivot-frozen .fw-pivot-table tfoot td.fw-pivot-first-dim { z-index: 3; background: color-mix(in srgb, var(--bg-card) 86%, var(--bg-header)); }
+@media (max-width: 520px) {
+    .fw-pivot-table { min-width: 460px; }
+    .fw-pivot-table th { white-space: normal; }
 }

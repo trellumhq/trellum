@@ -1,4 +1,34 @@
+if (!window._fwKpiFormat) {
+    window._fwKpiFormat = function(value, format, fullNumber, precision) {
+        if (!fullNumber && precision == null) return window.getFormatter(format || 'number')(value);
+        if (value == null || !Number.isFinite(Number(value))) return '-';
+        var n = Number(value);
+        if (format === 'percent') n *= 100;
+        var prefix = format === 'currency' ? '$' : '';
+        if (!fullNumber && (format === 'number' || format === 'currency')) {
+            var magnitude = Math.abs(n);
+            // Keep the existing compact thresholds, including rounded cents.
+            if (format === 'currency' && Math.round(magnitude * 100) >= 100000) {
+                magnitude = Math.max(magnitude, 1000);
+            }
+            var units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']];
+            for (var i = 0; i < units.length; i++) {
+                if (magnitude >= units[i][0]) {
+                    return prefix + (n < 0 ? '-' : '')
+                        + (magnitude / units[i][0]).toFixed(precision) + units[i][1];
+                }
+            }
+        }
+        var places = precision == null ? (format === 'number' ? 12 : 2) : precision;
+        return prefix + n.toLocaleString(undefined, {
+            minimumFractionDigits: precision == null && format === 'number' ? 0 : places,
+            maximumFractionDigits: places
+        }) + (format === 'percent' ? '%' : format === 'ratio' ? 'x' : '');
+    };
+}
+
 window._fwRenderers['kpi_row_live'] = function(id, cfg) {
+    if (window._fwLiveResultContext) window._fwLiveResultContext.attach(id, cfg);
     function _render(rows) {
         var A = window._fwAggregate;
         for (var i = 0; i < cfg.kpis.length; i++) {
@@ -7,18 +37,22 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
             // Static value: render Python-computed constants that sit next
             // to live-aggregated siblings in the same KpiRow. Skip the agg
             // path so we don't collapse to sum(rows, undefined) === 0.
-            if (kpi.value !== undefined && kpi.value !== null
+            if (Object.prototype.hasOwnProperty.call(kpi, 'value')
                 && !kpi.agg && !kpi.column && !kpi.columns
                 && !kpi.numerator) {
                 var sdisp;
-                if (kpi.format === 'percent') {
+                if (kpi.value === null) sdisp = '—';
+                else if (kpi.format === 'percent') {
                     sdisp = (typeof kpi.value === 'number')
-                        ? kpi.value.toFixed(1) + '%' : kpi.value;
+                        ? (kpi.full_number || kpi.precision != null
+                            ? window._fwKpiFormat(kpi.value / 100, 'percent', kpi.full_number,
+                                kpi.precision == null ? 1 : kpi.precision)
+                            : kpi.value.toFixed(1) + '%') : kpi.value;
                 } else {
-                    sdisp = window.getFormatter(kpi.format || 'number')(kpi.value);
+                    sdisp = window._fwKpiFormat(kpi.value, kpi.format || 'number', kpi.full_number, kpi.precision);
                 }
-                el.innerHTML = '<div class="fw-kpi-label">' + (kpi.label || '')
-                             + '</div><div class="fw-kpi-value">' + sdisp + '</div>';
+                _renderKpiValue(el, kpi, sdisp);
+                if (window._fwKpiState) window._fwKpiState.render(el, kpi, rows, true);
                 continue;
             }
             var val, agg = kpi.agg || 'sum';
@@ -75,9 +109,14 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 val = total > 0 ? (matched / total * 100) : 0;
             }
             var disp;
-            if (kpi.format === 'percent') { disp = val != null ? val.toFixed(1) + '%' : '-'; }
-            else { disp = window.getFormatter(kpi.format || 'number')(val); }
-            var deltaHtml = '';
+            if (kpi.format === 'percent') {
+                disp = val != null ? (kpi.full_number || kpi.precision != null
+                    ? window._fwKpiFormat(val / 100, 'percent', kpi.full_number,
+                        kpi.precision == null ? 1 : kpi.precision)
+                    : val.toFixed(1) + '%') : '-';
+            }
+            else { disp = window._fwKpiFormat(val, kpi.format || 'number', kpi.full_number, kpi.precision); }
+            var deltaText = '', deltaDirection = '';
             if (kpi.delta_col) {
                 var dVal;
                 var dAgg = kpi.delta_agg || kpi.agg || 'sum';
@@ -85,24 +124,55 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 if (dAgg === 'ratio') {
                     var dn = A.sum(rows, kpi.delta_numerator || kpi.delta_col);
                     var dd = Math.abs(A.sum(rows, kpi.delta_denominator || kpi.denominator));
-                    dVal = dd > 0 ? (dn / dd) : 0;          // display scaling below
-                    if (dFmt === 'percent') dVal *= 100;
+                    var baselineCol = kpi.delta_denominator || kpi.denominator;
+                    var baselineKnown = rows.some(function(r) {
+                        return typeof r[baselineCol] === 'number' && Number.isFinite(r[baselineCol]);
+                    });
+                    dVal = Number.isFinite(dd) && dd > 0 ? (dn / dd) : null;
+                    if (dVal !== null && dFmt === 'percent') dVal *= 100;
+                    if (!Number.isFinite(dd)) baselineKnown = false;
                 } else if (dAgg === 'abssum') {
                     dVal = A.absSum(rows, kpi.delta_col);
                 } else {
                     dVal = A.sum(rows, kpi.delta_col);
                 }
                 var dStr;
-                if (dFmt === 'percent') dStr = (dVal >= 0 ? '+' : '') + dVal.toFixed(1) + '%';
+                if (dVal === null) dStr = '— · ' + (baselineKnown ? 'zero baseline' : 'baseline unavailable');
+                else if (dFmt === 'percent') dStr = (dVal >= 0 ? '+' : '') + dVal.toFixed(1) + '%';
                 else if (dFmt === 'currency') dStr = (dVal >= 0 ? '+' : '') + fmtCompact$(dVal);
                 else dStr = (dVal >= 0 ? '+' : '') + fmtCompact(dVal);
                 var dDir = kpi.delta_direction || 'auto';
-                if (dDir === 'auto') dDir = dVal >= 0 ? 'up' : 'down';
-                deltaHtml = '<div class="fw-kpi-delta ' + dDir + '">' + dStr + '</div>';
+                if (dVal === null) dDir = '';
+                else if (dDir === 'auto') dDir = dVal === 0 ? '' : dVal > 0 ? 'up' : 'down';
+                deltaText = dStr;
+                deltaDirection = dDir;
             }
-            el.innerHTML = '<div class="fw-kpi-label">' + (kpi.label || '') + '</div>'
-                         + '<div class="fw-kpi-value">' + disp + '</div>' + deltaHtml;
+            _renderKpiValue(el, kpi, disp);
+            if (deltaText) {
+                var delta = document.createElement('div');
+                delta.className = 'fw-kpi-delta ' + deltaDirection
+                    + (dVal === null ? ' fw-kpi-declared-comparison' : '');
+                if (dVal === null) delta.title = deltaText;
+                var change = document.createElement('span');
+                change.className = 'fw-kpi-change';
+                change.textContent = deltaText;
+                delta.appendChild(change);
+                el.appendChild(delta);
+            }
+            if (window._fwKpiState) window._fwKpiState.render(el, kpi, rows, true);
         }
     }
     window._fwLiveWrap(id, cfg, _render);
 };
+
+function _renderKpiValue(el, kpi, display) {
+    var label = document.createElement('div');
+    label.className = 'fw-kpi-label';
+    label.textContent = kpi.label || '';
+    var value = document.createElement('div');
+    value.className = 'fw-kpi-value';
+    value.textContent = display;
+    value.title = display;
+    el.replaceChildren(label, value);
+    el.classList.toggle('fw-kpi-centered', kpi.alignment === 'center');
+}

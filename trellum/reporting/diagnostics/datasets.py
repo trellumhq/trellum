@@ -65,21 +65,40 @@ def _collect_datasource_entries(ctx: Any) -> list[tuple[Any, str | None]]:
     carry the scope name so multi-scope reports can be analysed correctly.
     """
     from trellum.components.filterable import DataSource
+    from trellum.components.metric_views import MetricView
+    from trellum.components.period_comparison import PeriodComparison
 
     entries: list[tuple[Any, str | None]] = []
     for comp, _sec in _walk_view(list(getattr(ctx, "sections", []) or [])):
-        if isinstance(comp, DataSource):
+        if isinstance(comp, (DataSource, MetricView, PeriodComparison)):
             entries.append((comp, None))
     for scope_name, scope_sections in (getattr(ctx, "scopes", {}) or {}).items():
         for comp, _sec in _walk_view(scope_sections):
-            if isinstance(comp, DataSource):
+            if isinstance(comp, (DataSource, MetricView, PeriodComparison)):
                 entries.append((comp, scope_name))
     return entries
 
 def compute_dataset_metrics(ctx: Any) -> list[DatasetMetric]:
     """Walk every DataSource and measure rows / columns / serialized size."""
     metrics: list[DatasetMetric] = []
+    from trellum.components.metric_views import MetricView
+    from trellum.components.period_comparison import PeriodComparison
+
     for ds, scope in _collect_datasource_entries(ctx):
+        if isinstance(ds, PeriodComparison):
+            for output in ds.outputs:
+                metrics.append({"id": output.id, "rows": 0, "columns": len(output.output_columns),
+                                "column_names": output.output_columns, "size_bytes_inline": 0,
+                                "size_bytes_chunks_total": 0, "chunk_by": None, "chunk_count": 0,
+                                "scope": scope, "kind": "derived_period_comparison", "parent_id": ds.parent})
+            continue
+        if isinstance(ds, MetricView):
+            metrics.append({"id": ds.id, "rows": 0, "columns": len(ds.output_columns),
+                            "column_names": ds.output_columns, "size_bytes_inline": 0,
+                            "size_bytes_chunks_total": 0, "chunk_by": None, "chunk_count": 0,
+                            "scope": scope, "kind": "derived_metric_view", "parent_id": ds.parent,
+                            "derived_group_rows": len(ds.groups)})
+            continue
         df = getattr(ds, "df", None)
         if not isinstance(df, pd.DataFrame):
             continue

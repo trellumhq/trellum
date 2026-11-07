@@ -13,13 +13,15 @@
     border: none; background: transparent;
     color: var(--text-main);
     cursor: pointer; white-space: nowrap;
-    transition: all 0.2s;
+    /* Responsive padding must settle immediately for content-sized embeds. */
+    transition: background-color 0.2s, color 0.2s;
 }
 .fw-toggle-btn.active {
     background: var(--primary-fill);
     color: var(--on-accent); font-weight: 600;
 }
 .fw-toggle-btn:hover:not(.active) { background: var(--bg-card-hover); }
+.fw-toggle-btn:focus-visible { outline-offset: -2px; }
 @media (max-width: 640px) {
     .fw-toggle-group {
         max-width: 100%;

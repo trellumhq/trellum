@@ -14,6 +14,41 @@ from trellum.validation.walk import (
 )
 
 
+def _check_stack_options(comp: Any, name: str, sec: str, result: ValidationResult) -> None:
+    """Validate stack ordering and limits for line and stacked-bar charts."""
+    valid_stack_sort = {"volume_desc", "volume_asc", "label_asc", "label_desc"}
+    stack_sort = getattr(comp, "stack_sort", None)
+    if stack_sort is not None and stack_sort not in valid_stack_sort:
+        result.fail(
+            "stack-sort-invalid-value",
+            f"{name} stack_sort='{stack_sort}' is not one of "
+            f"{sorted(valid_stack_sort)}.",
+            component=name, section=sec,
+        )
+    stack_by = getattr(comp, "stack_by", None)
+    if stack_sort is not None and not stack_by and not getattr(comp, "stack_by_options", None):
+        result.warn(
+            "stack-sort-without-stack-by",
+            f"{name} sets stack_sort='{stack_sort}' but has neither stack_by "
+            f"nor stack_by_options — the setting has no effect.",
+            component=name, section=sec,
+        )
+    max_stacks = getattr(comp, "max_stacks", None)
+    if max_stacks is not None and (not isinstance(max_stacks, int) or max_stacks < 1):
+        result.fail(
+            "max-stacks-invalid-value",
+            f"{name} max_stacks={max_stacks!r} must be a positive integer.",
+            component=name, section=sec,
+        )
+    if max_stacks is not None and not stack_by and not getattr(comp, "stack_by_options", None):
+        result.warn(
+            "max-stacks-without-stack-by",
+            f"{name} sets max_stacks={max_stacks} but has neither stack_by "
+            f"nor stack_by_options — the setting has no effect.",
+            component=name, section=sec,
+        )
+
+
 def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result: ValidationResult) -> None:
     """Category 6: Component column / parameter validation."""
     _VALID_AGGS = {"sum", "abssum", "ratio", "count", "purchase_pct", "avg_by_date"}
@@ -30,6 +65,21 @@ def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result:
             cols = set(df.columns)
         else:
             cols = set()
+
+        if name == "DataTable":
+            from trellum.components.tables import _validate_table_pinning
+
+            try:
+                _validate_table_pinning(
+                    getattr(comp, "pin_header", False),
+                    getattr(comp, "pin_footer", False),
+                    getattr(comp, "pin_height", 320),
+                )
+                if getattr(comp, "pin_footer", False) and not getattr(comp, "totals", None):
+                    raise ValueError("DataTable pin_footer requires nonempty totals declarations")
+            except ValueError as error:
+                result.fail("datatable-pinning-invalid", str(error),
+                            component="DataTable", section=sec)
 
         if not cols:
             continue
@@ -138,37 +188,7 @@ def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result:
         # Catches typos like stack_sort="alpha" which would silently fall back
         # to volume_desc in the runtime; better to fail at build time.
         if name in ("LineChart", "StackedBar"):
-            _VALID_STACK_SORT = {"volume_desc", "volume_asc", "label_asc", "label_desc"}
-            ss = getattr(comp, "stack_sort", None)
-            if ss is not None and ss not in _VALID_STACK_SORT:
-                result.fail(
-                    "stack-sort-invalid-value",
-                    f"{name} stack_sort='{ss}' is not one of "
-                    f"{sorted(_VALID_STACK_SORT)}.",
-                    component=name, section=sec,
-                )
-            sb = getattr(comp, "stack_by", None)
-            if ss is not None and not sb and not getattr(comp, "stack_by_options", None):
-                result.warn(
-                    "stack-sort-without-stack-by",
-                    f"{name} sets stack_sort='{ss}' but has neither stack_by "
-                    f"nor stack_by_options — the setting has no effect.",
-                    component=name, section=sec,
-                )
-            ms = getattr(comp, "max_stacks", None)
-            if ms is not None and (not isinstance(ms, int) or ms < 1):
-                result.fail(
-                    "max-stacks-invalid-value",
-                    f"{name} max_stacks={ms!r} must be a positive integer.",
-                    component=name, section=sec,
-                )
-            if ms is not None and not sb and not getattr(comp, "stack_by_options", None):
-                result.warn(
-                    "max-stacks-without-stack-by",
-                    f"{name} sets max_stacks={ms} but has neither stack_by "
-                    f"nor stack_by_options — the setting has no effect.",
-                    component=name, section=sec,
-                )
+            _check_stack_options(comp, name, sec, result)
 
         if name == "ComboChart":
             for bc in (getattr(comp, "bar_cols", None) or []):
@@ -253,6 +273,28 @@ def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result:
                     )
 
         if name == "DataTable":
+            totals = getattr(comp, "totals", None)
+            if totals is not None:
+                from trellum.components._table_totals import totals_config
+
+                try:
+                    declared = totals_config(totals, df, getattr(comp, "columns", None) or list(df.columns))
+                except ValueError as error:
+                    result.fail("datatable-totals-invalid", str(error),
+                                component="DataTable", section=sec)
+                else:
+                    # Ratio components may be hidden from the displayed projection.
+                    # Check the actual bound source, including scoped ancestors.
+                    needed = {column for column, spec in declared.items() if spec["agg"] == "sum"}
+                    needed.update(spec[key] for spec in declared.values() if spec["agg"] == "ratio"
+                                  for key in ("numerator", "denominator"))
+                    missing = sorted(needed - cols)
+                    if missing:
+                        result.fail(
+                            "datatable-totals-column-missing",
+                            f"DataTable total inputs absent from its source: {', '.join(missing)}.",
+                            component="DataTable", section=sec,
+                        )
             cond_fmt = getattr(comp, "conditional_formats", None)
             if cond_fmt and cols:
                 for cf_col in cond_fmt:

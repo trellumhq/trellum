@@ -11,9 +11,8 @@ constructed with ``dataset_id`` set (see ``charts.py``, ``kpis.py``,
 
 from __future__ import annotations
 
-import calendar
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from html import escape
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -21,8 +20,10 @@ import orjson
 import pandas as pd
 
 from trellum.assets import load_css, load_js
+from trellum.components._datasource_periods import _find_date_col, _period_key, _period_range
 from trellum.components.base import Component, RenderContext
 from trellum.components.filters import get_all_filters, get_filter
+from trellum.components.filters.dropdown import validate_parent_clear
 from trellum.components.live_filterable import BINDABLE_FILTER_TYPES as _BINDABLE_FILTER_TYPES
 from trellum.components.live_filterable import LiveDataSource  # noqa: F401 -- re-exported
 from trellum.components.live_filterable import bake_disabled as _bake_disabled
@@ -174,31 +175,6 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
     return result
 
 
-def _find_date_col(df: pd.DataFrame) -> str | None:
-    """Return the first datetime64 column, or fall back to a date-like name."""
-    for col in df.columns:
-        if pd.api.types.is_datetime64_any_dtype(df[col].dtype):
-            return col
-    for col in df.columns:
-        if col.lower() in ("event_date", "date", "period", "dt"):
-            return col
-    # Any other *_date column (cohort_date, order_date, assigned_date, ...).
-    # Without this, chunk_by silently does nothing for perfectly ordinary
-    # column names.
-    for col in df.columns:
-        if col.lower().endswith("_date"):
-            return col
-    return None
-
-
-def _period_key(date_str: str, chunk_by: str) -> str:
-    """Return the period bucket key for a date string."""
-    if chunk_by == "month":
-        return date_str[:7]  # "YYYY-MM"
-    if chunk_by == "week":
-        d = datetime.strptime(date_str[:10], "%Y-%m-%d")
-        return d.strftime("%G-W%V")  # ISO year + week, e.g. "2026-W17"
-    return date_str[:7]
 
 
 def _period_row_positions(df: pd.DataFrame, date_col: str, chunk_by: str) -> dict[str, np.ndarray]:
@@ -235,19 +211,6 @@ def _period_row_positions(df: pd.DataFrame, date_col: str, chunk_by: str) -> dic
         for code, period in enumerate(periods)
     }
 
-
-def _period_range(key: str, chunk_by: str) -> tuple[str, str]:
-    """Return (min_date, max_date) strings for a period key."""
-    if chunk_by == "month":
-        year, month = int(key[:4]), int(key[5:7])
-        last_day = calendar.monthrange(year, month)[1]
-        return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
-    if chunk_by == "week":
-        # Parse ISO week: "%G-W%V" → Monday of that week
-        monday = datetime.strptime(key + "-1", "%G-W%V-%u")
-        sunday = monday + timedelta(days=6)
-        return monday.strftime("%Y-%m-%d"), sunday.strftime("%Y-%m-%d")
-    return key, key
 
 
 @dataclass
@@ -486,6 +449,10 @@ class FilterBar(Component):
     _component_type: str = field(default="filter_bar", init=False, repr=False)
     _no_section_wrap: bool = field(default=True, init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        for f in self.filters:
+            validate_parent_clear(f)
+
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
         live_target = ctx.live_datasets.get(self.dataset_id)
@@ -501,6 +468,7 @@ class FilterBar(Component):
         bindings: list[dict] = []
 
         for i, f in enumerate(self.filters):
+            validate_parent_clear(f)
             col = f["column"]
             label = f.get("label", col)
             ftype = f.get("type", "dropdown")
@@ -557,7 +525,7 @@ class FilterBar(Component):
         if not live_target:
             return (
                 f'<div class="fw-filter-bar" id="{cid}" '
-                f'data-fw-filter-bar="1" data-fw-ds-id="{self.dataset_id}">'
+                f'data-fw-filter-bar="1" data-fw-ds-id="{escape(self.dataset_id, quote=True)}">'
                 f'{"".join(html_parts)}{share_btn}</div>'
             )
 
@@ -567,7 +535,7 @@ class FilterBar(Component):
         # never wires this bar and never issues a request.
         return (
             f'<div class="fw-filter-bar fw-live-bar" id="{cid}" '
-            f'data-fw-filter-bar="1" data-fw-ds-id="{self.dataset_id}" '
+            f'data-fw-filter-bar="1" data-fw-ds-id="{escape(self.dataset_id, quote=True)}" '
             f'data-live-state="standalone">'
             f'{"".join(html_parts)}{_live_meta_html()}{share_btn}</div>'
         )

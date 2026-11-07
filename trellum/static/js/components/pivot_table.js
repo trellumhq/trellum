@@ -15,6 +15,10 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
     var _colDim = cfg.default_col || null;
     var _valCol = cfg.default_value;
     var _aggFn = cfg.default_agg;
+    var freeze = el.getAttribute('data-freeze') === 'true';
+    var freezeHeight = parseInt(el.getAttribute('data-freeze-height'), 10) || 320;
+    if (el._fwPivotHeaderObserver) el._fwPivotHeaderObserver.disconnect();
+    el._fwPivotHeaderObserver = null;
 
     function _agg(arr) {
         if (!arr.length) return 0;
@@ -80,35 +84,57 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
         var p = _pivot(rows);
         var nDims = _rowDims.length;
 
-        var hdr = _rowDims.map(function(d) { return '<th>' + _escapeHtml(d) + '</th>'; }).join('');
-        if (p.hasCols) {
-            hdr += p.colLabels.map(function(c) { return '<th class="fw-pivot-col-header">' + _escapeHtml(c) + '</th>'; }).join('');
+        var hdr;
+        var secondHdr = '';
+        if (p.hasCols && p.colLabels.length) {
+            hdr = _rowDims.map(function(d, i) { return '<th scope="col" rowspan="2"' + (i === 0 ? ' class="fw-pivot-first-dim"' : '') + '>' + _escapeHtml(d) + '</th>'; }).join('');
+            hdr += '<th scope="colgroup" colspan="' + p.colLabels.length + '" class="fw-pivot-group-header">' + _escapeHtml(_colDim) + '</th>';
+            hdr += '<th scope="col" rowspan="2" class="fw-pivot-col-header fw-pivot-grand-col">Total</th>';
+            secondHdr = '<tr class="fw-pivot-category-row">' + p.colLabels.map(function(c) { return '<th scope="col" class="fw-pivot-col-header">' + _escapeHtml(c) + '</th>'; }).join('') + '</tr>';
+        } else {
+            hdr = _rowDims.map(function(d, i) { return '<th scope="col"' + (i === 0 ? ' class="fw-pivot-first-dim"' : '') + '>' + _escapeHtml(d) + '</th>'; }).join('');
+            hdr += '<th scope="col" class="fw-pivot-col-header fw-pivot-grand-col">' + _escapeHtml(p.hasCols ? 'Total' : _valCol) + '</th>';
         }
-        hdr += '<th class="fw-pivot-col-header">' + (p.hasCols ? 'Total' : _escapeHtml(_valCol)) + '</th>';
 
         var body = p.rows.map(function(row) {
-            var cells = row._dims.map(function(d) { return '<td class="fw-pivot-row-header">' + _escapeHtml(d) + '</td>'; }).join('');
+            var cells = row._dims.map(function(d, i) { return '<td class="fw-pivot-row-header' + (i === 0 ? ' fw-pivot-first-dim' : '') + '">' + _escapeHtml(d) + '</td>'; }).join('');
             if (p.hasCols) {
                 cells += p.colLabels.map(function(c) {
                     return '<td class="fw-pivot-value">' + valFmt(row._cells[c]) + '</td>';
                 }).join('');
             }
-            cells += '<td class="fw-pivot-value">' + valFmt(row._total) + '</td>';
+            cells += '<td class="fw-pivot-value fw-pivot-grand-col">' + valFmt(row._total) + '</td>';
             return '<tr>' + cells + '</tr>';
         }).join('');
 
         var footer = '<tr class="fw-pivot-total">';
-        for (var di = 0; di < nDims; di++) footer += '<td>' + (di === 0 ? 'Total' : '') + '</td>';
+        for (var di = 0; di < nDims; di++) footer += '<td' + (di === 0 ? ' class="fw-pivot-first-dim"' : '') + '>' + (di === 0 ? 'Total' : '') + '</td>';
         if (p.hasCols) {
             footer += p.colLabels.map(function(c) {
                 return '<td class="fw-pivot-value">' + valFmt(_agg(p.colTotals[c])) + '</td>';
             }).join('');
         }
-        footer += '<td class="fw-pivot-value">' + valFmt(_agg(p.grandTotal)) + '</td>';
+        footer += '<td class="fw-pivot-value fw-pivot-grand-col">' + valFmt(_agg(p.grandTotal)) + '</td>';
         footer += '</tr>';
 
-        el.innerHTML = '<table class="fw-table fw-pivot-table"><thead><tr>' + hdr + '</tr></thead>'
+        el.style.maxHeight = freeze ? freezeHeight + 'px' : '';
+        el.classList.toggle('fw-pivot-frozen', freeze);
+        el.innerHTML = '<table class="fw-table fw-pivot-table"><thead><tr class="fw-pivot-group-row">' + hdr + '</tr>' + secondHdr + '</thead>'
             + '<tbody>' + body + '</tbody><tfoot>' + footer + '</tfoot></table>';
+        if (el._fwPivotHeaderObserver) el._fwPivotHeaderObserver.disconnect();
+        el._fwPivotHeaderObserver = null;
+        el.style.removeProperty("--fw-pivot-header-offset");
+        if (freeze && secondHdr) {
+            var firstHeader = el.querySelector('.fw-pivot-group-row');
+            var updateOffset = function() {
+                el.style.setProperty('--fw-pivot-header-offset', firstHeader.getBoundingClientRect().height + 'px');
+            };
+            updateOffset();
+            if (window.ResizeObserver) {
+                el._fwPivotHeaderObserver = new ResizeObserver(updateOffset);
+                el._fwPivotHeaderObserver.observe(firstHeader);
+            }
+        }
     }
 
     function _buildControls() {

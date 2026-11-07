@@ -1,0 +1,35 @@
+name: Report Component Showcase
+slug: component-showcase
+description: 'Choose native report components by purpose: metrics, time series, category
+  charts, tables, patterns and responsive layouts. Synthetic daily campaign and cohort
+  observations demonstrate scoped filters, totals and optional context, with links
+  to complete business demos.'
+version: 0.1.0
+studio: framework
+category: Components
+tags:
+- components
+- examples
+- charts
+- tables
+- metrics
+- layouts
+theme: trellum dark
+data_sources: []
+display:
+  icon: panels-top-left
+  color: '#4e79a7'
+  priority: 0
+annotations:
+  events:
+  - date: '2026-09-01'
+    label: Autumn campaign launch
+    type: campaign
+  - date: '2026-09-08'
+    label: Store update
+    type: release
+  weekday_highlight:
+    days:
+    - 0
+    label: Sundays
+    default_visible: false

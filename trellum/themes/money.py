@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 MoneyTheme = Theme(
+    text_positive="#41d17e",
+    text_negative="#f3a29a",
+    text_warning="#f1c40f",
+    text_context="#bbb9ae",
+
     bg_main="#0d1f17",
     bg_card="#1a2f23",
     bg_card_hover="#243d2e",

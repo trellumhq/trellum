@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from html import escape
 from typing import Any, Dict
 
 import pandas as pd
@@ -120,36 +121,37 @@ class DateRangeFilter(BaseFilter):
             hours_attr = p.get("hours", "")
             disabled = " disabled" if not min_d or not max_d else ""
             preset_btns.append(
-                f'<button class="fw-date-preset{active}"{disabled} '
+                f'<button type="button" class="fw-date-preset{active}"{disabled} '
                 f'data-days="{days_attr}" data-hours="{hours_attr}">'
                 f'{p["label"]}</button>'
             )
 
-        # Hour selectors (only when hourly)
-        hour_html = ""
-        if hourly:
-            def _hour_options(selected: str) -> str:
-                opts = []
-                for h in range(24):
-                    for m in (0, 30):
-                        val = f"{h:02d}:{m:02d}"
-                        sel = " selected" if val == selected else ""
-                        opts.append(f'<option value="{val}"{sel}>{val}</option>')
-                return "".join(opts)
+        unavailable = not min_d or not max_d
+        disabled = " disabled" if unavailable else ""
+        safe_fid = escape(fid, quote=True)
+        popover_id = f"{safe_fid}-popover"
+        reference_id = f"{safe_fid}-reference"
+        unavailable_id = f"{safe_fid}-unavailable"
 
-            min_time = default_min_d[11:16] if len(default_min_d) > 10 else "00:00"
-            max_time = max_d[11:16] if len(max_d) > 10 else "23:30"
-
-            hour_html = (
-                f'<div class="fw-date-hour-row">'
-                f'<span id="{fid}_hour_label" hidden>time</span>'
-                f'<select class="fw-date-hour" id="{fid}_min_hour" name="{fid}_min_hour" aria-labelledby="{fid}_label {fid}_min_label {fid}_hour_label" data-edge="min-hour">'
-                f'{_hour_options(min_time)}</select>'
-                f'<span class="fw-date-sep">\u2013</span>'
-                f'<select class="fw-date-hour" id="{fid}_max_hour" name="{fid}_max_hour" aria-labelledby="{fid}_label {fid}_max_label {fid}_hour_label" data-edge="max-hour">'
-                f'{_hour_options(max_time)}</select>'
-                f'</div>'
+        def hour_field(edge: str, selected: str, name: str) -> str:
+            if not hourly:
+                return ""
+            opts = []
+            for h in range(24):
+                for m in (0, 30):
+                    val = f"{h:02d}:{m:02d}"
+                    sel = " selected" if val == selected else ""
+                    opts.append(f'<option value="{val}"{sel}>{val}</option>')
+            return (
+                f'<div class="fw-date-hour-row fw-date-field">'
+                f'<label id="{safe_fid}-{edge}-hour-label" class="fw-date-field-label" for="{safe_fid}-{edge}-hour">{name} time</label>'
+                f'<select id="{safe_fid}-{edge}-hour" name="{safe_fid}-{edge}-hour" class="fw-date-hour" '
+                f'aria-labelledby="{safe_fid}-label {safe_fid}-{edge}-hour-label" '
+                f'data-edge="{edge}-hour"{disabled}>{"".join(opts)}</select></div>'
             )
+
+        min_time = default_min_d[11:16] if len(default_min_d) > 10 else "00:00"
+        max_time = max_d[11:16] if len(max_d) > 10 else "23:30"
 
         min_date_only = default_min_d[:10]
         max_date_only = max_d[:10]
@@ -158,38 +160,54 @@ class DateRangeFilter(BaseFilter):
 
         return (
             f'<div class="fw-filter-item fw-filter-date-item">'
-            f'<label class="fw-filter-label" id="{fid}_label" for="{fid}_trigger">{label}</label>'
-            f'<div class="fw-date-range" role="group" aria-labelledby="{fid}_label" data-filter-id="{fid}" '
+            f'<label class="fw-filter-label" id="{safe_fid}-label" for="{safe_fid}-trigger">{escape(label)}</label>'
+            f'<div class="fw-date-range" role="group" aria-labelledby="{safe_fid}-label" data-filter-id="{safe_fid}" '
             f'data-hourly="{str(hourly).lower()}">'
             # Trigger button
-            f'<button class="fw-date-trigger" id="{fid}_trigger" type="button" aria-labelledby="{fid}_label {fid}_value">'
-            f'<span class="fw-date-trigger-text" id="{fid}_value">{trigger_text}</span>'
+            f'<button id="{safe_fid}-trigger" class="fw-date-trigger" type="button"{disabled} '
+            f'aria-labelledby="{safe_fid}-label {safe_fid}-value" '
+            f'aria-expanded="false" aria-controls="{popover_id}" aria-haspopup="dialog" '
+            f'aria-describedby="{unavailable_id if unavailable else reference_id}">'
+            f'<span class="fw-date-trigger-text" id="{safe_fid}-value">{trigger_text}</span>'
             f'<svg class="fw-date-trigger-icon" viewBox="0 0 20 20" fill="currentColor">'
             f'<path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 '
             f'002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 '
             f'5h8a1 1 0 010 2H6a1 1 0 010-2z"/></svg>'
             f'</button>'
             # Popover
-            f'<div class="fw-date-popover">'
+            f'<div id="{popover_id}" class="fw-date-popover" role="dialog" '
+            f'aria-label="{escape(label, quote=True)}">'
             f'<div class="fw-date-popover-row">'
+            f'<div class="fw-date-endpoint">'
             f'<div class="fw-date-field">'
-            f'<label class="fw-date-field-label" id="{fid}_min_label" for="{fid}_min">From</label>'
-            f'<input type="date" class="fw-date-input" id="{fid}_min" name="{fid}_min" aria-labelledby="{fid}_label {fid}_min_label" data-edge="min" '
+            f'<label class="fw-date-field-label" id="{safe_fid}-min-label" for="{safe_fid}-min">Start date</label>'
+            f'<input id="{safe_fid}-min" name="{safe_fid}-min" aria-labelledby="{safe_fid}-label {safe_fid}-min-label" '
+            f'type="date" class="fw-date-input" data-edge="min"{disabled} '
             f'value="{min_date_only}" min="{data_min}" max="{data_max}" '
             f'autocomplete="off" data-bwignore="true" '
             f'data-1p-ignore="true" data-lpignore="true">'
             f'</div>'
+            f'{hour_field("min", min_time, "Start")}</div>'
+            f'<div class="fw-date-endpoint">'
             f'<div class="fw-date-field">'
-            f'<label class="fw-date-field-label" id="{fid}_max_label" for="{fid}_max">To</label>'
-            f'<input type="date" class="fw-date-input" id="{fid}_max" name="{fid}_max" aria-labelledby="{fid}_label {fid}_max_label" data-edge="max" '
+            f'<label class="fw-date-field-label" id="{safe_fid}-max-label" for="{safe_fid}-max">End date</label>'
+            f'<input id="{safe_fid}-max" name="{safe_fid}-max" aria-labelledby="{safe_fid}-label {safe_fid}-max-label" '
+            f'type="date" class="fw-date-input" data-edge="max"{disabled} '
             f'value="{max_date_only}" min="{data_min}" max="{data_max}" '
             f'autocomplete="off" data-bwignore="true" '
             f'data-1p-ignore="true" data-lpignore="true">'
             f'</div>'
+            f'{hour_field("max", max_time, "End")}</div>'
             f'</div>'
-            f'{hour_html}'
+            f'<p id="{reference_id}" class="fw-date-reference">Presets use the latest recorded '
+            f'{"date/time" if hourly else "date"}: '
+            f'<span class="fw-date-reference-value">{max_d}</span>. '
+            f'Records may have gaps.</p>'
             f'<div class="fw-date-presets">{"".join(preset_btns)}</div>'
             f'</div>'
+            f'<p id="{unavailable_id}" class="fw-date-unavailable"'
+            f'{"" if unavailable else " hidden"}>Date selection is unavailable because '
+            f'no valid recorded date bounds are available.</p>'
             f'</div></div>'
         )
 

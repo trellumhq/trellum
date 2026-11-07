@@ -106,6 +106,39 @@ def test_chart_render_html(name, factory):
     assert "type" in registered, f"{name}: registered data missing 'type' key"
 
 
+def test_area_chart_fill_defaults_match_static_and_dataset_bound_paths():
+    df = _sample_df()
+    for stacked, opacity, border, fills in (
+        (False, "1f", 2, ["origin", "origin"]),
+        (True, "a6", 1.5, ["origin", "-1"]),
+    ):
+        static_ctx = _make_ctx()
+        AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
+                  stacked=stacked).render_html(static_ctx)
+        static = next(iter(static_ctx.component_data.values()))
+        assert [ds["backgroundColor"][-2:] for ds in static["datasets"]] == [opacity] * 2
+        assert [ds["borderWidth"] for ds in static["datasets"]] == [border] * 2
+        assert [ds["fill"] for ds in static["datasets"]] == fills
+        assert [ds["data"] for ds in static["datasets"]] == [
+            _sample_df()[column].tolist() for column in ("revenue", "net_revenue")
+        ]
+
+        live_ctx = _make_ctx()
+        AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
+                  stacked=stacked, dataset_id="area-data").render_html(live_ctx)
+        live = next(iter(live_ctx.component_data.values()))
+        assert live["area_fill"] is True and live["stacked"] is stacked
+        assert live["value_cols"] == ["revenue", "net_revenue"]
+
+        static_bound_ctx = _make_ctx()
+        AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
+                  stacked=stacked, dataset_id="area-data", static=True).render_html(static_bound_ctx)
+        static_bound = next(iter(static_bound_ctx.component_data.values()))
+        # Existing explicit dataset bindings retain precedence over static.
+        assert "datasets" not in static_bound and static_bound["dataset_id"] == "area-data"
+        assert static_bound["area_fill"] is True
+
+
 @pytest.mark.parametrize("name,factory", _CHART_SPECS, ids=[s[0] for s in _CHART_SPECS])
 def test_chart_with_dataset_id(name, factory):
     ctx = _make_ctx()
@@ -374,6 +407,68 @@ def test_mini_kpi_render():
     assert "fw-mini-kpi" in html
     registered = list(ctx.component_data.values())[0]
     assert registered["label"] == "DAU"
+
+
+def test_kpi_presentation_options_are_keyword_only_and_validated():
+    import inspect
+    assert inspect.signature(KpiCard).parameters["alignment"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert inspect.signature(MiniKpi).parameters["full_number"].kind is inspect.Parameter.KEYWORD_ONLY
+    # Existing positional constructor arguments remain in their original slots.
+    card = KpiCard("Revenue", 5, "currency", "+2%", "up", 8, "daily", True, "rev", None)
+    assert card.card_id == "rev" and card.clickable
+    ctx = _make_ctx()
+    card = KpiCard(label="Total", value=1250345, full_number=True, precision=0,
+                   alignment="center")
+    card.render_html(ctx)
+    config = next(iter(ctx.component_data.values()))
+    assert config["full_number"] is True and config["precision"] == 0
+    assert config["alignment"] == "center"
+    for kwargs in ({"precision": 13}, {"precision": 1.5},
+                   {"format": "chips", "full_number": True}):
+        with pytest.raises(ValueError):
+            KpiCard(label="Bad", value=3, **kwargs).render_html(_make_ctx())
+
+
+def test_live_kpi_row_mobile_collapse_and_static_siblings():
+    ctx = _make_ctx()
+    row = KpiRow([
+        {"label": "Static", "value": 12, "format": "number"},
+        {"label": "Aggregate", "agg": "sum", "column": "amount"},
+        {"label": "Third", "agg": "count"},
+    ], dataset_id="events", mobile_collapse=1)
+    html = row.render_html(ctx)
+    assert "fw-kpi-extra" in html
+    assert 'aria-controls="' in html and 'aria-expanded="false"' in html
+    cfg = next(iter(ctx.component_data.values()))
+    assert cfg["kpis"][0]["value"] == 12
+
+
+def test_mini_kpi_stacked_and_safe_dom_renderer():
+    ctx = _make_ctx()
+    MiniKpi(label="<img src=x>", value=2, stacked=True).render_html(ctx)
+    cfg = next(iter(ctx.component_data.values()))
+    assert cfg["label"] == "<img src=x>" and cfg["stacked"]
+    js = MiniKpi.client_js()
+    assert "textContent = cfg.label" in js and "replaceChildren" in js
+
+
+def test_kpi_showcase_module_adds_sections_to_report_context(tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    from trellum.report import ReportContext
+
+    module_path = (Path(__file__).parents[1] / "demo/reports/component-showcase"
+                   / "examples_kpis.py")
+    spec = importlib.util.spec_from_file_location("examples_kpis", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    ctx = ReportContext(config={"name": "KPI showcase"}, slug="kpi-showcase",
+                        output_dir=str(tmp_path))
+    module.add_sections(ctx)
+    assert len(ctx.sections) == 2
+    assert any(isinstance(component, KpiRow)
+               for section in ctx.sections for component in section["components"])
 
 
 # ── Table tests ──────────────────────────────────────────────
@@ -861,12 +956,10 @@ def test_grid_min_width_lays_out_auto_fill_tiles():
     ctx = _make_ctx()
     html = Grid(children=[RawHTML(html="<p>a</p>")], columns=2,
                 min_width=340).render_html(ctx)
-    # auto-fill, not the fixed column count -- and the class grid.css keys
-    # the tile treatment (short chart, no title, no breakdown toggle) off.
-    assert "repeat(auto-fill, minmax(340px, 1fr))" in html
-    assert "fw-grid-auto" in html
+    assert "repeat(auto-fill, minmax(min(100%, max(340px," in html
+    assert " / 2)" in html and "fw-grid-auto" in html
     plain = Grid(children=[RawHTML(html="<p>a</p>")], columns=2).render_html(ctx)
-    assert "repeat(2, 1fr)" in plain and "fw-grid-auto" not in plain
+    assert "max(320px," in plain and "fw-grid-auto" not in plain
 
 
 def test_grid_card_mode():

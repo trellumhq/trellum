@@ -1,15 +1,847 @@
+/* Ordinary LineChart only. Immediate source neighbours define connectivity;
+   null/nonfinite values are gaps, including at measured zero. Scriptable
+   options resolve on every update using the current plot scale (resize/zoom).
+   Each point does at most two neighbour checks; no observations are removed. */
+function _fwLinePointRadius(ctx) {
+    var data = ctx.dataset.data, i = ctx.dataIndex;
+    if (!Number.isFinite(data[i])) return 0;
+    var before = i > 0 && Number.isFinite(data[i - 1]);
+    var after = i + 1 < data.length && Number.isFinite(data[i + 1]);
+    if (!before && !after) return 2;
+    var x = ctx.chart.scales.x;
+    if (!x) return 2;
+    var at = x.getPixelForValue(i);
+    if (before && Math.abs(at - x.getPixelForValue(i - 1)) < 12) return 0;
+    if (after && Math.abs(at - x.getPixelForValue(i + 1)) < 12) return 0;
+    return 2;
+}
+
+function _fwLinePointColor(ctx) {
+    return ctx.dataset.borderColor;
+}
+
+function _fwLinePointFill(ctx) {
+    if (ctx.dataset._fwForecast) {
+        return getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#fff';
+    }
+    return ctx.dataset.borderColor;
+}
+
+/* Header summary: one statistic over one plotted series. It reads the
+   datasets the chart was just given, so it can only ever describe the line on
+   screen -- after filters, aggregation and ratio division alike. Missing and
+   non-finite points are skipped, never counted as zero. */
+function _fwSummaryValue(values, stat) {
+    var nums = [];
+    for (var i = 0; i < values.length; i++) {
+        var v = values[i];
+        if (typeof v === 'number' && isFinite(v)) nums.push(v);
+    }
+    if (!nums.length) return null;
+    if (stat === 'last') return nums[nums.length - 1];
+    var total = 0, lo = nums[0], hi = nums[0];
+    for (var j = 0; j < nums.length; j++) {
+        total += nums[j];
+        if (nums[j] < lo) lo = nums[j];
+        if (nums[j] > hi) hi = nums[j];
+    }
+    if (stat === 'sum') return total;
+    if (stat === 'min') return lo;
+    if (stat === 'max') return hi;
+    return total / nums.length;
+}
+
+function _fwSummarySeries(datasets, series) {
+    if (typeof series === 'number') return datasets[series] || null;
+    for (var i = 0; i < datasets.length; i++) {
+        if (datasets[i].label === series) return datasets[i];
+    }
+    return null;
+}
+
+function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
+    var box = document.querySelector('[data-chart-summary="' + id + '"]');
+    if (!box || box.dataset.stackedSummary) return;
+    var canvas = document.getElementById(id), descriptionId = id + '-summary-scope';
+    if (!summary) {
+        if (box.dataset.plottedScope) {
+            box.style.display = 'none';
+            box.querySelector('.fw-chart-summary-label').textContent = '';
+            box.querySelector('.fw-chart-summary-value').textContent = '';
+            box.removeAttribute('title');
+            box.removeAttribute('aria-label');
+            box.removeAttribute('role');
+            if (canvas) {
+                var remaining = (canvas.getAttribute('aria-describedby') || '').split(/\s+/)
+                    .filter(function(token) { return token && token !== descriptionId; });
+                if (remaining.length) canvas.setAttribute('aria-describedby', remaining.join(' '));
+                else canvas.removeAttribute('aria-describedby');
+            }
+        }
+        return;
+    }
+    if (box.dataset.plottedScope) box.style.removeProperty('display');
+    var ds = _fwSummarySeries(datasets || [], summary.series);
+    var value = ds ? _fwSummaryValue(ds.data || [], summary.stat) : null;
+    if (summary.scope === 'plotted_series') {
+        // The new explicit contract never formats overflow as a real statistic.
+        if (!Number.isFinite(value)) value = null;
+        if (typeof summary.series === 'string' && (datasets || []).filter(function(item) {
+            return item.label === summary.series;
+        }).length !== 1) { ds = null; value = null; }
+        box.dataset.plottedScope = 'true';
+        box.id = descriptionId;
+        box.setAttribute('role', 'note');
+        box.title = 'One final plotted series (' + (ds ? ds.label : summary.series) +
+            ') after filters, aggregation, sorting, Top-N and Other. Null and nonfinite values are excluded; zeros count. ' +
+            'Last means the final displayed finite entry. Zoom and legend hiding do not change this scope. ' +
+            'Stacked areas use the raw band values. Means of displayed ratios are unweighted; existing plotted zero-fill is retained.';
+        if (canvas) {
+            var described = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+            if (described.indexOf(descriptionId) < 0) described.push(descriptionId);
+            canvas.setAttribute('aria-describedby', described.join(' '));
+        }
+    }
+    /* An explicit format wins; otherwise the value reads as the chart's own
+       tooltips and axis do. */
+    var fmt = summary.format ? window.getFormatter(summary.format) : (chartFmt || window.fmtCompact);
+    var label = box.querySelector('.fw-chart-summary-label');
+    var out = box.querySelector('.fw-chart-summary-value');
+    /* textContent only: the label comes from report configuration. */
+    label.textContent = summary.label || '';
+    out.textContent = value === null ? '\u2014' : fmt(value);
+    if (summary.scope === 'plotted_series') box.setAttribute('aria-label',
+        label.textContent + ': ' + out.textContent + '. ' + box.title);
+}
+
+/* StackedBar owns a separate original-unit contract. No coercion, skipped
+   entries, hidden-series exclusion or normalization is used by this reducer. */
+function _fwStackSummarySafe(v) {
+    return typeof v === 'number' && Number.isFinite(v) &&
+        (!Number.isInteger(v) || Number.isSafeInteger(v));
+}
+function _fwStackSummaryResult(summary, datasets, inputReason) {
+    var matches = (datasets || []).filter(function(ds) {
+        return ds.type !== 'line' && ds.yAxisID !== 'y1' && ds.label === summary.series;
+    });
+    function unavailable(reason) { return {value: null, reason: reason}; }
+    if (matches.length !== 1) return unavailable(matches.length ? 'Ambiguous bar-series caption' : 'Selected bar series unavailable');
+    if (inputReason) return unavailable(inputReason);
+    var values = matches[0]._absData || matches[0].data || [];
+    if (!values.length) return unavailable('No displayed entries');
+    if (!values.every(_fwStackSummarySafe)) return unavailable('Nonfinite, unsafe or unavailable displayed values');
+    var result;
+    if (summary.stat === 'last') result = values[values.length - 1];
+    else if (summary.stat === 'min' || summary.stat === 'max') {
+        result = values[0];
+        values.forEach(function(v) { result = summary.stat === 'min' ? Math.min(result, v) : Math.max(result, v); });
+    } else {
+        // Preserve small contributions after cancellation in original units.
+        // Only scale when an intermediate total cannot be represented.
+        function compensated(scale) {
+            var total = 0, correction = 0;
+            values.forEach(function(value) {
+                var v = value / scale, next = total + v;
+                correction += Math.abs(total) >= Math.abs(v) ? (total-next)+v : (v-next)+total;
+                total = next;
+            });
+            return [total, correction];
+        }
+        var divisor = summary.stat === 'mean' ? values.length : 1;
+        var parts = compensated(1);
+        if (parts.every(Number.isFinite)) {
+            result = parts[0] / divisor + parts[1] / divisor;
+        } else {
+            var scale = values.reduce(function(m, v) { return Math.max(m, Math.abs(v)); }, 0);
+            parts = compensated(scale || 1);
+            result = (parts[0] / divisor + parts[1] / divisor) * scale;
+        }
+    }
+    return _fwStackSummarySafe(result) ? {value: result, reason: ''} : unavailable('Nonfinite or unsafe summary result');
+}
+function _fwStackSummaryInputReason(cfg, rows) {
+    if (!rows) return cfg.stacked_summary_input_reason || '';
+    return rows.some(function(row) {
+        return (cfg.value_cols || []).some(function(col) { return !_fwStackSummarySafe(row[col]); });
+    }) ? 'Incomplete, nonnumeric, nonfinite or unsafe original bar values' : '';
+}
+function _fwClearStackSummary(canvas) {
+    var owned = canvas._fwStackSummary;
+    if (!owned) return;
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+        return token && token !== owned.description.id;
+    });
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+    if (owned.observer) owned.observer.disconnect();
+    if (owned.box._fwStackSummaryCanvas === canvas) {
+        var head = owned.box.parentElement;
+        owned.box.remove();
+        if (head && head.classList.contains('fw-chart-head') && !head.children.length) head.remove();
+    }
+    delete canvas._fwStackSummary;
+}
+function _fwUpdateStackSummary(canvas, summary, datasets, inputReason) {
+    if (!summary) { _fwClearStackSummary(canvas); return; }
+    var box = document.querySelector('[data-chart-summary="' + canvas.id + '"]');
+    if (!box) {
+        box = document.createElement('div');
+        box.dataset.chartSummary = canvas.id;
+        var head = document.createElement('div'); head.className = 'fw-chart-head';
+        head.appendChild(box); canvas.parentElement.before(head);
+    }
+    box._fwStackSummaryCanvas = canvas;
+    box.className = 'fw-chart-summary fw-stacked-summary';
+    box.dataset.stackedSummary = 'true';
+    box.style.removeProperty('display');
+    box.removeAttribute('id'); box.removeAttribute('data-plotted-scope');
+    var result = _fwStackSummaryResult(summary, datasets, inputReason);
+    function span(cls, text) {
+        var el = document.createElement('span'); el.className = cls; el.textContent = text; return el;
+    }
+    var value = result.value === null ? '—' : window.getFormatter(summary.format)(result.value);
+    var description = span('fw-stacked-summary-description',
+        'One final bar series (' + summary.series + ') in original absolute units, even in Percentage mode. ' +
+        'Selected static inputs, or all currently filtered bound bar inputs, must be finite native numbers with safe integers. ' +
+        'After existing aggregation, pivot, sorting, max_stacks and Other; before percentage normalization. ' +
+        'Every displayed entry counts, including plotted zero-fill; none are skipped. Last is the final displayed entry. ' +
+        'Legend hiding and zoom do not change scope. Delivered population only; no warehouse completeness claim. ' + result.reason);
+    description.id = canvas.id + '-stacked-summary-scope';
+    var children = [span('fw-chart-summary-label', summary.label), span('fw-chart-summary-value', value),
+        span('fw-stacked-summary-scope', 'Original units · ' + summary.series)];
+    if (result.reason) children.push(span('fw-stacked-summary-reason', result.reason));
+    children.push(description); box.replaceChildren.apply(box, children);
+    box.setAttribute('role', 'note'); box.title = description.textContent;
+    box.setAttribute('aria-label', summary.label + ': ' + value + '. ' + description.textContent);
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+        return token && token !== canvas.id + '-summary-scope';
+    });
+    if (tokens.indexOf(description.id) < 0) tokens.push(description.id);
+    canvas.setAttribute('aria-describedby', tokens.join(' '));
+    var owned = canvas._fwStackSummary || {};
+    owned.box = box; owned.description = description;
+    canvas._fwStackSummary = owned;
+    if (!owned.observer) {
+        owned.observer = new MutationObserver(function() {
+            if (document.getElementById(canvas.id) !== canvas) _fwClearStackSummary(canvas);
+        });
+        owned.observer.observe(document.body, {childList: true, subtree: true});
+    }
+}
+
+/* Combo summaries own axis+caption identity and never share generic summary DOM.
+   Read final vectors after the existing aggregation; eligibility reads selected
+   original values before its legacy coercion. Neither path edits chart data. */
+function _fwComboSummarySafe(v) {
+    return typeof v === 'number' && Number.isFinite(v) && (!Number.isInteger(v) || Number.isSafeInteger(v));
+}
+function _fwComboSummaryResult(summary, datasets, inputReason) {
+    var axis = summary.axis === 'left' ? 'y' : 'y1';
+    var matches = (datasets || []).filter(function(ds) { return ds.yAxisID === axis && ds.label === summary.series; });
+    function unavailable(reason) { return {value: null, reason: reason}; }
+    if (matches.length !== 1) return unavailable(matches.length ? 'Ambiguous caption on selected axis' : 'Selected axis series unavailable');
+    if (inputReason) return unavailable(inputReason);
+    var values = matches[0].data || [];
+    if (!values.length) return unavailable('No displayed entries');
+    if (!values.every(_fwComboSummarySafe)) return unavailable('Nonfinite, unsafe or unavailable displayed values');
+    var result;
+    if (summary.stat === 'last') result = values[values.length - 1];
+    else if (summary.stat === 'min' || summary.stat === 'max') {
+        result = values[0];
+        values.forEach(function(v) { result = summary.stat === 'min' ? Math.min(result, v) : Math.max(result, v); });
+    } else {
+        // Neumaier compensation preserves small residuals after cancellation.
+        // A scaled retry avoids needless intermediate overflow for finite means.
+        function compensated(scale) {
+            var total = 0, correction = 0;
+            values.forEach(function(value) {
+                var v = value / scale, next = total + v;
+                correction += Math.abs(total) >= Math.abs(v) ? (total-next)+v : (v-next)+total;
+                total = next;
+            });
+            return [total, correction];
+        }
+        var divisor = summary.stat === 'mean' ? values.length : 1;
+        var parts = compensated(1);
+        if (parts.every(Number.isFinite)) result = parts[0] / divisor + parts[1] / divisor;
+        else {
+            var scale = values.reduce(function(m, v) { return Math.max(m, Math.abs(v)); }, 0);
+            parts = compensated(scale || 1);
+            result = (parts[0] / divisor + parts[1] / divisor) * scale;
+        }
+    }
+    return _fwComboSummarySafe(result) ? {value: result, reason: ''} : unavailable('Nonfinite or unsafe summary result');
+}
+function _fwComboSummaryInputReason(cfg, rows) {
+    if (!cfg.combo_summary) return '';
+    if (!rows) return cfg.combo_summary_input_reason || '';
+    var summary = cfg.combo_summary, left = summary.axis === 'left';
+    var cols = (left ? cfg.value_cols : cfg.line_cols) || [];
+    var labels = (left ? cfg.y_labels : cfg.line_labels) || cols;
+    var matches = cols.filter(function(col, i) { return (labels[i] || col) === summary.series; });
+    // Final identity selection diagnoses absence/ambiguity before raw eligibility.
+    if (matches.length !== 1) return '';
+    return rows.some(function(row) { return !_fwComboSummarySafe(row[matches[0]]); })
+        ? 'Incomplete, nonnumeric, nonfinite or unsafe original selected values' : '';
+}
+function _fwClearComboSummary(canvas) {
+    var owned = canvas._fwComboSummary;
+    if (!owned) return;
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+        return token && token !== owned.description.id;
+    });
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+    owned.observer.disconnect();
+    if (owned.box._fwComboSummaryCanvas === canvas) {
+        var head = owned.box.parentElement;
+        owned.box.remove();
+        if (head && head.classList.contains('fw-combo-summary-head')) {
+            var title = head.querySelector('.fw-chart-title');
+            if (title) { title.style.marginBottom = '4px'; head.before(title); }
+            head.remove();
+        }
+    }
+    delete canvas._fwComboSummary;
+}
+function _fwUpdateComboSummary(canvas, summary, datasets, inputReason) {
+    if (!summary) { _fwClearComboSummary(canvas); return; }
+    var box = Array.from(document.querySelectorAll('[data-combo-summary]')).find(function(el) { return el.dataset.comboSummary === canvas.id; });
+    if (box && box._fwComboSummaryCanvas && box._fwComboSummaryCanvas !== canvas) {
+        _fwClearComboSummary(box._fwComboSummaryCanvas); box = null;
+    }
+    if (!box) {
+        var anchor = canvas.parentElement, previous = anchor.previousElementSibling;
+        while (previous && (previous.classList.contains('fw-chart-header-context') || previous.classList.contains('fw-chart-legend'))) {
+            anchor = previous; previous = anchor.previousElementSibling;
+        }
+        var head = document.createElement('div'); head.className = 'fw-combo-summary-head';
+        anchor.before(head);
+        if (previous && previous.classList.contains('fw-chart-title')) {
+            previous.style.marginBottom = ''; head.appendChild(previous);
+        }
+        box = document.createElement('div'); box.className = 'fw-combo-summary';
+        box.dataset.comboSummary = canvas.id; head.appendChild(box);
+    }
+    box._fwComboSummaryCanvas = canvas;
+    var result = _fwComboSummaryResult(summary, datasets, inputReason);
+    function span(cls, text) { var el = document.createElement('span'); el.className = cls; el.textContent = text; return el; }
+    var value = result.value === null ? '—' : window.getFormatter(summary.format)(result.value);
+    var scope = (summary.axis === 'left' ? 'Left · bars' : 'Right · lines') + ' · ' + summary.series;
+    var description = span('fw-combo-summary-description',
+        'One final series on the ' + summary.axis + ' axis (' + summary.series + '), after existing aggregation and display order. ' +
+        'Every supplied or currently filtered original selected value and every displayed entry must be finite native numbers with safe integers; none are skipped. ' +
+        'Stacked bars use individual values. Last is the final displayed entry. Legend hiding and zoom do not change scope. ' +
+        'Delivered population only; no inferred weights, ratios, unique people or warehouse completeness claim. ' + result.reason);
+    description.id = canvas.id + '-combo-summary-scope';
+    var children = [span('fw-combo-summary-label', summary.label), span('fw-combo-summary-value', value), span('fw-combo-summary-scope', scope)];
+    if (result.reason) children.push(span('fw-combo-summary-reason', result.reason));
+    children.push(description); box.replaceChildren.apply(box, children);
+    box.setAttribute('role', 'note'); box.title = description.textContent;
+    box.setAttribute('aria-label', summary.label + ': ' + value + '. ' + description.textContent);
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    if (tokens.indexOf(description.id) < 0) tokens.push(description.id);
+    canvas.setAttribute('aria-describedby', tokens.join(' '));
+    var owned = canvas._fwComboSummary;
+    if (!owned) {
+        owned = {observer: new MutationObserver(function() {
+            if (document.getElementById(canvas.id) !== canvas) _fwClearComboSummary(canvas);
+        })};
+        canvas._fwComboSummary = owned;
+        owned.observer.observe(document.body, {childList: true, subtree: true});
+    }
+    owned.box = box; owned.description = description;
+}
+
+/* Combo-only context. Use axis + caption identity, preserving intentional
+   same-axis pairs. Reconcile nodes so chart.update() retains keyboard focus. */
+window._fwComboLegendUpdate = function(chart) {
+    var axes = chart.config.options.plugins.fwLegend.comboAxes;
+    var root = chart._fwLegendEl;
+    if (!root) {
+        root = document.createElement('div');
+        root.id = chart.canvas.id + '-combo-context';
+        root.className = 'fw-chart-legend fw-combo-context';
+        chart.canvas.parentElement.before(root);
+        chart._fwLegendEl = root;
+        var described = chart.canvas.getAttribute('aria-describedby') || '';
+        chart.canvas.setAttribute('aria-describedby', (described + ' ' + root.id).trim());
+    }
+    var keyFor = function(ds, i) {
+        return JSON.stringify([ds.yAxisID || 'y', ds.label || 'Series ' + (i + 1)]);
+    };
+    ['y', 'y1'].forEach(function(axis) {
+        var entries = new Map();
+        chart.data.datasets.forEach(function(ds, i) {
+            if ((ds.yAxisID || 'y') !== axis) return;
+            var key = keyFor(ds, i);
+            if (!entries.has(key)) entries.set(key, {ds: ds, index: i});
+        });
+        var group = root.querySelector('[data-axis="' + axis + '"]');
+        if (!entries.size) { if (group) group.remove(); return; }
+        if (!group) {
+            group = document.createElement('div');
+            group.className = 'fw-combo-axis';
+            group.dataset.axis = axis;
+            group.setAttribute('role', 'group');
+            var heading = document.createElement('div');
+            heading.className = 'fw-combo-heading';
+            heading.textContent = axis === 'y' ? 'Left · bars' : 'Right · lines';
+            group.setAttribute('aria-label', axis === 'y' ? 'Left axis · bars' : 'Right axis · lines');
+            var description = document.createElement('div');
+            description.className = 'fw-combo-description';
+            var items = document.createElement('div');
+            items.className = 'fw-combo-items';
+            group.append(heading, description, items);
+            root.appendChild(group);
+        }
+        group.querySelector('.fw-combo-description').textContent =
+            (axis === 'y' ? axes.left_label : axes.right_label) ||
+            Array.from(entries.values()).map(function(e) {
+                return e.ds.label || 'Series ' + (e.index + 1);
+            }).join(', ');
+        var items = group.querySelector('.fw-combo-items');
+        var buttons = new Map(Array.from(items.children).map(function(btn) {
+            return [btn.dataset.comboKey, btn];
+        }));
+        entries.forEach(function(entry, key) {
+            var btn = buttons.get(key), ds = entry.ds, i = entry.index;
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'cl';
+                btn.dataset.comboKey = key;
+                btn.title = 'Click to toggle  •  Double-click (or Shift-click) to show only this';
+                var symbol = document.createElement('span');
+                symbol.className = 'fw-combo-symbol ' + (axis === 'y1' ? 'line' : 'bar');
+                symbol.setAttribute('aria-hidden', 'true');
+                var label = document.createElement('span');
+                label.className = 'fw-combo-label';
+                label.textContent = ds.label || 'Series ' + (i + 1);
+                btn.append(symbol, label);
+                var isolate = function() {
+                    var isolated = chart.data.datasets.every(function(d, j) {
+                        return (keyFor(d, j) === key) === chart.isDatasetVisible(j);
+                    });
+                    chart.data.datasets.forEach(function(d, j) {
+                        chart.setDatasetVisibility(j, isolated || keyFor(d, j) === key);
+                    });
+                    chart.update();
+                };
+                btn.addEventListener('click', function(e) {
+                    if (e.shiftKey || e.metaKey) { isolate(); return; }
+                    var first = chart.data.datasets.findIndex(function(d, j) { return keyFor(d, j) === key; });
+                    var visible = chart.isDatasetVisible(first);
+                    chart.data.datasets.forEach(function(d, j) {
+                        if (keyFor(d, j) === key) chart.setDatasetVisibility(j, !visible);
+                    });
+                    chart.update();
+                });
+                btn.addEventListener('dblclick', function(e) {
+                    e.preventDefault(); e.stopPropagation(); isolate();
+                });
+                items.appendChild(btn);
+            }
+            var visible = chart.isDatasetVisible(i);
+            var color = ds.borderColor || ds.backgroundColor;
+            if (typeof color === 'object') color = Array.isArray(color) ? color[0] : '#888';
+            btn.style.setProperty('--series-color', color);
+            btn.classList.toggle('active', visible);
+            btn.setAttribute('aria-pressed', String(visible));
+            btn.style.borderColor = visible ? color : 'var(--border-color)';
+            btn.style.background = visible ? color + '20' : 'transparent';
+        });
+        buttons.forEach(function(btn, key) { if (!entries.has(key)) btn.remove(); });
+    });
+    root.hidden = !root.children.length;
+};
+
+/* New labels are opt-in by component tag, never by the shared bar factory.
+   Eligibility inspects raw inputs before the legacy aggregators coerce nulls.
+   These checks withhold labels; they do not repair or mutate plotted data. */
+function _fwStackLabelEligibility(cfg, rows, stackBy, spec) {
+    var cols = cfg.value_cols || [], expected = new Map(), reason = '';
+    if (new Set(cols).size !== cols.length) return 'duplicate source columns';
+    var stacks = new Set();
+    function identity(v) { return String(v == null ? '' : v); }
+    rows.forEach(function(row) {
+        var x = identity(row[cfg.x]), s = stackBy ? identity(row[stackBy]) : '';
+        if ((stackBy && (x.includes('||') || s.includes('||'))) ||
+                [x, s].some(function(k) { return k in Object.prototype; })) reason = 'ambiguous grouping identity';
+        if (stackBy) stacks.add(s);
+        var total = expected.get(x) || 0;
+        cols.forEach(function(col) {
+            var v = row[col];
+            if (typeof v !== 'number' || !Number.isFinite(v)) reason = 'incomplete or nonfinite quantities';
+            else if (v < 0) reason = 'signed quantities';
+            else total += v;
+        });
+        expected.set(x, total);
+    });
+    var limit = cfg.max_stacks == null ? 20 : cfg.max_stacks;
+    if (stackBy && stacks.size > limit && stacks.has('Other (' + (stacks.size - limit) + ')'))
+        reason = 'generated Other identity collides with a source category';
+    if (reason) return reason;
+    if (expected.size !== spec.labels.length) return 'plotted and supplied populations differ';
+    for (var i = 0; i < spec.labels.length; i++) {
+        var total = 0;
+        for (var j = 0; j < spec.datasets.length; j++) {
+            var ds = spec.datasets[j];
+            if (ds.type === 'line' || ds.yAxisID === 'y1') continue;
+            var v = (ds._absData || ds.data)[i];
+            if (!Number.isFinite(v) || v < 0) return 'incomplete, signed or nonfinite plotted quantities';
+            total += v;
+        }
+        var raw = expected.get(String(spec.labels[i]));
+        if (!Number.isFinite(total) || !Number.isFinite(raw) || Math.abs(total - raw) > 1e-9 * Math.max(1, Math.abs(raw)))
+            return 'plotted and supplied populations differ';
+    }
+    return '';
+}
+
+function _fwStaticStackLabelEligibility(cfg) {
+    if (cfg.stack_labels.duplicate_columns) return 'duplicate source columns';
+    for (var i = 0; i < cfg.datasets.length; i++) {
+        var ds = cfg.datasets[i];
+        if (ds.data.length !== cfg.labels.length) return 'plotted and supplied populations differ';
+        for (var j = 0; j < ds.data.length; j++) {
+            var v = ds.data[j];
+            if (!Number.isFinite(v)) return 'incomplete or nonfinite quantities';
+            if (v < 0) return 'signed quantities';
+        }
+    }
+    return '';
+}
+
+/* Per-chart plugin. Drawing records are also useful to diagnostics: every record
+   corresponds to one actual fillText, with measured bounds in canvas CSS pixels. */
+function _fwBarLabelPlugin(spec) {
+    var stack = spec.stackLabels, bar = spec.barValues;
+    var enabledStack = stack && (stack.totals || stack.percentages);
+    var context, labelCanvas;
+    function font(chart) {
+        return '600 ' + window._fwFontPx('--font-size-label', 12) + 'px ' + Chart.defaults.font.family;
+    }
+    function number(v) { return Number.isFinite(v) ? (spec.yFmt || window.fmtCompact)(v) : '\u2014'; }
+    function horizontal() {
+        return bar && bar.show !== false && spec.horizontal && !spec.stacked && !spec.barConfiguredStacked &&
+            (bar.show === true || !spec.labels.length || !/^\d{4}-\d{2}-\d{2}/.test(String(spec.labels[0])));
+    }
+    function bars(chart) {
+        return chart.data.datasets.map(function(ds, i) { return {ds: ds, meta: chart.getDatasetMeta(i), index: i}; })
+            .filter(function(d) { return d.ds.type !== 'line' && d.ds.yAxisID !== 'y1' && chart.isDatasetVisible(d.index); });
+    }
+    function updateContext(chart) {
+        if (!enabledStack) return;
+        if (!context) {
+            context = document.createElement('div');
+            context.id = chart.canvas.id + '-stack-label-context';
+            context.dataset.stackLabelContext = chart.canvas.id;
+            context.style.cssText = 'font-size:var(--font-size-label);color:var(--text-secondary);margin-bottom:var(--spacing-md);overflow-wrap:anywhere';
+            chart.canvas.parentElement.after(context);
+            var described = chart.canvas.getAttribute('aria-describedby') || '';
+            chart.canvas.setAttribute('aria-describedby', (described + ' ' + context.id).trim());
+        }
+        var text = stack.totals ? 'Totals include visible bar segments only, in absolute ' + (stack.format || 'currency') + ' units; line overlays are excluded.' : '';
+        if (spec.stackNormalized) text += ' Percentages use all matching series, including hidden series. Zero-total buckets have no share.';
+        else if (stack.percentages) text += ' Percentage labels are available only for normalized breakdowns.';
+        if (spec.stackLabelReason) text += ' Labels withheld: ' + spec.stackLabelReason + '.';
+        else if (!chart.data.labels.length) text += ' No observations; no total or share labels.';
+        context.textContent = text.trim();
+    }
+    function contrast(chart, fill) {
+        // Browser color parsing + alpha composition against the actual card.
+        var ctx = chart.ctx;
+        ctx.fillStyle = getComputedStyle(chart.canvas).getPropertyValue('--bg-card').trim() || '#fff';
+        var bg = ctx.fillStyle;
+        function rgba(color) {
+            var probe = document.createElement('canvas'); probe.width = probe.height = 1;
+            var p = probe.getContext('2d'); p.fillStyle = color; p.fillRect(0, 0, 1, 1);
+            return p.getImageData(0, 0, 1, 1).data;
+        }
+        var b = rgba(bg), f = rgba(fill), a = f[3] / 255;
+        var c = [0, 1, 2].map(function(i) {
+            var n = (f[i] * a + b[i] * (1 - a)) / 255;
+            return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+        });
+        var lum = c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+        return (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) ? '#000000' : '#ffffff';
+    }
+    return {
+        id: 'fwBarLabels',
+        beforeLayout: function(chart) {
+            labelCanvas = chart.canvas;
+            var ctx = chart.ctx, size = window._fwFontPx('--font-size-label', 12);
+            ctx.save(); ctx.font = font(chart);
+            var right = 0;
+            if (horizontal()) {
+                var max = 0;
+                bars(chart).forEach(function(d) { d.ds.data.forEach(function(v) { max = Math.max(max, ctx.measureText(number(v)).width); }); });
+                var reserve = Math.max(62, Math.ceil(max + 16));
+                var category = 0;
+                spec.labels.forEach(function(s) { category = Math.max(category, ctx.measureText(String(s)).width); });
+                category = Math.min(chart.width / 2, category);
+                if (chart.width > 260 && chart.width - category - reserve >= 80 && reserve <= chart.width / 3) right = reserve;
+            }
+            chart.options.layout.padding = {right: right, top: enabledStack && stack.totals && !spec.stackLabelReason && spec.labels.length ? size + 10 : 0};
+            chart._fwBarLabelSpace = right;
+            ctx.restore();
+        },
+        beforeBuildTicks: function(chart, args) {
+            var scale = args.scale, padding = chart.options.layout.padding;
+            if (spec.horizontal && padding.right && scale.axis === 'y') {
+                // Keep the original category-label budget; the value column
+                // consumes plot width rather than clipping more category text.
+                scale.maxWidth = Math.max(scale.maxWidth, chart.width / 2);
+            }
+            if (scale.axis !== (spec.horizontal ? 'x' : 'y') || !scale.computeTickLimit) return;
+            var extra = spec.horizontal ? padding.right : padding.top;
+            if (!extra) return;
+            // Keep the pre-label automatic tick budget. Reducing plot space
+            // must not expand the numeric domain through coarser nice ticks.
+            var compute = scale.computeTickLimit;
+            scale._fwBarComputeTickLimit = compute;
+            scale.computeTickLimit = function() {
+                var budget = Object.create(this);
+                if (spec.horizontal) budget.width = this.width + extra;
+                else budget.height = this.height + extra;
+                return compute.call(budget);
+            };
+        },
+        afterBuildTicks: function(chart, args) {
+            var scale = args.scale;
+            if (scale._fwBarComputeTickLimit) {
+                scale.computeTickLimit = scale._fwBarComputeTickLimit;
+                delete scale._fwBarComputeTickLimit;
+            }
+        },
+        afterUpdate: updateContext,
+        afterDatasetsDraw: function(chart) {
+            var ctx = chart.ctx, area = chart.chartArea, visible = bars(chart);
+            var size = window._fwFontPx('--font-size-label', 12), used = [];
+            chart._fwBarLabelPaint = [];
+            ctx.save(); ctx.font = font(chart); ctx.textBaseline = 'middle';
+            function draw(text, x, y, color, kind, index, series) {
+                var w = ctx.measureText(text).width, rect = {left: x - w, right: x, top: y - size / 2, bottom: y + size / 2};
+                if (rect.left < 0 || rect.right > chart.width || rect.top < 0 || rect.bottom > chart.height ||
+                    used.some(function(r) { return rect.left < r.right + 3 && rect.right > r.left - 3 && rect.top < r.bottom + 2 && rect.bottom > r.top - 2; })) return;
+                ctx.fillStyle = color; ctx.textAlign = 'right'; ctx.fillText(text, x, y);
+                used.push(rect); chart._fwBarLabelPaint.push({text: text, x: x, y: y, bounds: rect, kind: kind, index: index, series: series, color: color});
+            }
+            if (chart._fwBarLabelSpace) {
+                visible.forEach(function(d) { d.meta.data.forEach(function(el, i) {
+                    // Null bar elements retain their genuine grouped center Y.
+                    if (!Number.isFinite(el.y) || el.y < area.top || el.y > area.bottom) return;
+                    draw(number(d.ds.data[i]), chart.width - 4, el.y, window.getThemeColors().tick_color, 'value', i, d.index);
+                }); });
+            }
+            if (enabledStack && !spec.stackLabelReason) {
+                var totalFmt = window.getFormatter(stack.format || 'currency');
+                chart.data.labels.forEach(function(_, i) {
+                    var total = 0, all = 0, top = Infinity, x, width = 0;
+                    chart.data.datasets.forEach(function(ds) {
+                        if (ds.type !== 'line' && ds.yAxisID !== 'y1') all += (ds._absData || ds.data)[i];
+                    });
+                    visible.forEach(function(d) {
+                        var el = d.meta.data[i], v = (d.ds._absData || d.ds.data)[i];
+                        if (!el || !Number.isFinite(v)) return;
+                        total += v; top = Math.min(top, el.y, el.base); x = el.x; width = el.width;
+                        if (stack.percentages && spec.stackNormalized && all > 0 && v > 0) {
+                            var text = Math.round(d.ds.data[i]) + '%', w = ctx.measureText(text).width;
+                            var height = Math.abs(el.base - el.y), y = (el.y + el.base) / 2;
+                            if (w + 8 <= el.width && size + 6 <= height && el.x - w / 2 >= area.left &&
+                                el.x + w / 2 <= area.right && y - size / 2 >= area.top && y + size / 2 <= area.bottom)
+                                draw(text, el.x + w / 2, y, contrast(chart, el.options.backgroundColor), 'percentage', i, d.index);
+                        }
+                    });
+                    if (stack.totals && Number.isFinite(top) && Number.isFinite(total) && x >= area.left && x <= area.right) {
+                        var text = totalFmt(total), w = ctx.measureText(text).width;
+                        // Center above the real visible stack; omit dense labels.
+                        if (w + 4 <= Math.max(width, chart.scales.x.width / Math.max(1, chart.data.labels.length)))
+                            draw(text, x + w / 2, top - size / 2 - 4, window.getThemeColors().tick_color, 'total', i, null);
+                    }
+                });
+            }
+            ctx.restore();
+        },
+        afterDestroy: function(chart) {
+            if (context) { context.remove(); context = null; }
+            if (!labelCanvas) return;
+            var described = (labelCanvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(id) { return id !== labelCanvas.id + '-stack-label-context'; });
+            if (described.length) labelCanvas.setAttribute('aria-describedby', described.join(' '));
+            else labelCanvas.removeAttribute('aria-describedby');
+        }
+    };
+}
+
+/* Availability is opt-in and is evaluated from delivered raw contributors,
+   never from legacy skip-null subtotals or formatted values. Static rules carry
+   invalid source positions so duplicate labels remain independent points. */
+function _fwApplyLineAvailability(cfg, rows, spec) {
+    var rules = cfg.series_availability;
+    if (!rules || !rules.length) return spec;
+    var buckets = new Map();
+    if (cfg.dataset_id) rows.forEach(function(row) {
+        var key = String(row[cfg.x] != null ? row[cfg.x] : '');
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(row);
+    });
+    spec = Object.assign({}, spec, {datasets: spec.datasets.map(function(ds) {
+        return Object.assign({}, ds, {data: ds.data.slice()});
+    })});
+    spec.availability = [];
+    rules.forEach(function(rule) {
+        var ds = spec.datasets[rule.series];
+        if (!ds) return;
+        ds.spanGaps = false;
+        var invalid = new Set(rule.unavailable || []), unavailable = [];
+        spec.labels.forEach(function(label, index) {
+            var kind = '';
+            if (!cfg.dataset_id) {
+                if (invalid.has(index)) kind = 'inputs';
+            } else {
+                var contributors = buckets.get(String(label)) || [];
+                if (!contributors.length || contributors.some(function(row) {
+                    return rule.required_columns.some(function(col) { return !Number.isFinite(row[col]); }) ||
+                        (rule.state_column !== undefined && row[rule.state_column] !== 'available');
+                })) kind = 'inputs';
+                else if (cfg.ratios) {
+                    var ratio = cfg.ratios[rule.series];
+                    var num = 0, den = 0;
+                    contributors.forEach(function(row) { num += row[ratio.numerator]; den += row[ratio.denominator]; });
+                    if (!Number.isFinite(den) || den <= 0) kind = 'denominator';
+                    else if (!Number.isFinite(num) || !Number.isFinite(num / den)) kind = 'aggregate';
+                } else {
+                    var total = 0, column = cfg.value_cols[rule.series];
+                    contributors.forEach(function(row) { total += row[column]; });
+                    if (!Number.isFinite(total)) kind = 'aggregate';
+                }
+            }
+            if (kind) {
+                ds.data[index] = null;
+                unavailable.push({label: label, kind: kind});
+            }
+        });
+        if (unavailable.length) spec.availability.push({series: rule.series, reason: rule.reason, points: unavailable});
+    });
+    return spec;
+}
+
+function _fwDescribeLineAvailability(canvas, add) {
+    var id = canvas.id + '-availability';
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/)
+        .filter(function(token) { return token && token !== id; });
+    if (add) tokens.push(id);
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+}
+
+function _fwLineAvailabilityPlugin(availability) {
+    var note = null, owner = null, observer = null;
+    function clear() {
+        if (note) note.remove();
+        if (owner) _fwDescribeLineAvailability(owner, false);
+        note = null;
+    }
+    return {
+        id: 'fwLineAvailability',
+        afterInit: function(chart) {
+            owner = chart.canvas;
+            observer = new MutationObserver(function() {
+                if (document.getElementById(owner.id) === owner) return;
+                chart.destroy();
+                if (window._chartInstances[owner.id] === chart) delete window._chartInstances[owner.id];
+            });
+            observer.observe(document.body, {childList: true, subtree: true});
+        },
+        afterUpdate: function(chart) {
+            owner = chart.canvas;
+            var visible = availability.filter(function(item) { return chart.isDatasetVisible(item.series); });
+            if (!visible.length) { clear(); return; }
+            if (!note) {
+                note = document.createElement('div');
+                note.id = owner.id + '-availability';
+                note.className = 'fw-line-availability';
+            }
+            var lines = visible.map(function(item) {
+                var ds = chart.data.datasets[item.series];
+                var metric = ds.label || ('Series ' + (item.series + 1));
+                var reasons = item.reason ? [item.reason] : Array.from(new Set(item.points.map(function(p) {
+                    return p.kind === 'denominator' ? 'No valid positive denominator.'
+                        : p.kind === 'aggregate' ? 'The calculated value is not finite.'
+                        : 'Required observations are incomplete or unavailable.';
+                })));
+                var labels = item.points.slice(0, 3).map(function(p) { return String(p.label); }).join(', ');
+                var more = item.points.length > 3 ? '; ' + (item.points.length - 3) + ' more' : '';
+                return metric + ': ' + item.points.length + ' unavailable ' +
+                    (item.points.length === 1 ? 'observation' : 'observations') + ' (' + labels + more + '). ' + reasons.join(' ');
+            });
+            var text = 'Selected data: ' + lines.join(' ');
+            if (note.textContent !== text) note.textContent = text;
+            // Follow the native plot/month/event siblings; never move event DOM
+            // (it may own keyboard focus) to put our own final sibling in place.
+            var anchor = document.getElementById(owner.id + '-event-details') ||
+                document.getElementById(owner.id + '-month-context') || owner.parentElement;
+            if (anchor && anchor.nextElementSibling !== note) anchor.after(note);
+            _fwDescribeLineAvailability(owner, true);
+        },
+        afterDestroy: function() {
+            if (observer) observer.disconnect();
+            clear();
+        }
+    };
+}
+
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
+function _fwLineResultView(chart) {
+    return {signature: JSON.stringify([chart.data.labels, chart.data.datasets.map(function(ds) { return [ds.label, ds.data]; })]),
+        hidden: chart.data.datasets.map(function(_, i) { return !chart.isDatasetVisible(i); }),
+        min: chart.options.scales.x.min, max: chart.options.scales.x.max};
+}
+
 function _createChart(id, canvas, spec) {
+    spec.datasets.forEach(function(ds) {
+        window._fwApplyPaletteSlot(ds, spec.type || 'bar', window.getThemeColors());
+    });
+    var trendCfg = spec.trendConfig;
+    if (trendCfg && trendCfg.trend_line && !trendCfg.dataset_id) spec = window._fwTrends.line(trendCfg, null, spec, null);
+    var previous = window._chartInstances[id];
+    if (spec.stackedControlView) {
+        if (previous && previous._fwStackControlView) _fwRememberStackControlView(previous);
+        var stackHidden = canvas._fwStackControlHidden || {};
+        spec.datasets.forEach(function(ds) {
+            ds.hidden = stackHidden[JSON.stringify([spec.stackedControlView, ds.label])] === true;
+        });
+    }
+    // A status/theme/reentry draw of the same ordinary result keeps the user's
+    // view. A genuinely different result retains the existing reset behavior.
+    var lineView = spec.lineResultPresentation ? (previous ? _fwLineResultView(previous) : canvas._fwLineResultView) : null;
+    if (lineView && lineView.signature !== JSON.stringify([spec.labels, spec.datasets.map(function(ds) { return [ds.label, ds.data]; })])) lineView = null;
+    var ownedEvents = spec.eventLabels === 'grouped' || spec.eventLabels === 'adaptive';
+    var eventDetails = ownedEvents && previous && previous._fwTakeEventDetails
+        ? previous._fwTakeEventDetails() : (ownedEvents && canvas._fwEventDetailsState);
+    var comboFocus = spec.comboAxes && document.activeElement &&
+        document.activeElement.closest('.fw-combo-context') &&
+        document.activeElement.closest('.fw-combo-context').id === id + '-combo-context'
+        ? document.activeElement.dataset.comboKey : (spec.comboAxes && canvas._fwComboFocusKey);
     if (window._chartInstances[id]) {
         window._chartInstances[id].destroy();
         delete window._chartInstances[id];
     }
+    if (!spec.trends) delete canvas._fwTrendView;
+    delete canvas._fwEventDetailsState;
+    delete canvas._fwLineResultView;
+    // A cloned replacement canvas may still carry the previous description.
+    if (!spec.availability) _fwDescribeLineAvailability(canvas, false);
+    if (!spec.monthlyAverage && window._fwClearMonthlyAverage) window._fwClearMonthlyAverage(canvas);
+    if (!spec.monthContext && window._fwClearMonthContext) window._fwClearMonthContext(canvas);
     var tc = window.getThemeColors();
     var axisFont = window._fwFontPx('--font-size-axis', 12);
     var labelFont = window._fwFontPx('--font-size-label', 12);
     var events = window._reportData && window._reportData._events;
-    var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels) : {};
+    var datedEvents = ownedEvents ? [] : null;
+    var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels, datedEvents) : {};
     var plugins = {
         legend: { display: false },
         fwLegend: { display: !!spec.showLegend },
@@ -30,6 +862,10 @@ function _createChart(id, canvas, spec) {
             }
         } : { display: false }
     };
+    if (spec.comboAxes) plugins.fwLegend.comboAxes = spec.comboAxes;
+    // Ordinary BarChart bucket context: wrap the completed painted title path.
+    if (spec.calendarCoverage) canvas._fwCalendarCoverage = spec.calendarCoverage;
+    else delete canvas._fwCalendarCoverage;
     if (spec.tooltip) {
         plugins.tooltip = spec.tooltip;
     } else if (spec.horizontal) {
@@ -41,6 +877,8 @@ function _createChart(id, canvas, spec) {
             return (lbl ? lbl + ': ' : '') + _httFmt(ctx.parsed.x);
         }}};
     }
+    // Line point-context: own only the painted title callback.
+    if (spec.linePointContext) plugins.tooltip = window._fwLinePointContextTooltip(spec.linePointContext, plugins.tooltip);
     var _numFmt = spec.yFmt || function(v) { return fmtCompact(v); };
     var scales = spec.horizontal ? {
         /* horizontal bars: X carries values, Y carries categories */
@@ -83,7 +921,25 @@ function _createChart(id, canvas, spec) {
             if (ds.borderRadius === undefined) ds.borderRadius = 3;
         });
     }
-    if ((spec.type === 'line') && spec.labels && spec.labels.length > 400) {
+    (spec.forecastSeries || []).forEach(function(index) {
+        if (spec.datasets[index]) spec.datasets[index]._fwForecast = true;
+    });
+    if (spec.lineStyle === 'adaptive') {
+        spec.datasets.forEach(function(ds) {
+            ds.pointRadius = _fwLinePointRadius;
+            ds.pointBorderColor = _fwLinePointColor;
+            ds.pointBackgroundColor = _fwLinePointFill;
+            ds.tension = spec.tension;
+        });
+    }
+    spec.datasets.forEach(function(ds) {
+        if (ds._fwForecast) {
+            ds.borderDash = [7, 4];
+            ds.pointBackgroundColor = _fwLinePointFill;
+            ds.pointBorderColor = _fwLinePointColor;
+        }
+    });
+    if (spec.lineStyle !== 'adaptive' && (spec.type === 'line') && spec.labels && spec.labels.length > 400) {
         spec.datasets.forEach(function(ds) {
             if (ds.pointRadius === undefined || ds.pointRadius > 0) ds.pointRadius = 0;
         });
@@ -95,6 +951,11 @@ function _createChart(id, canvas, spec) {
         plugins: plugins,
         scales: scales
     };
+    if (lineView) {
+        spec.datasets.forEach(function(ds, i) { ds.hidden = lineView.hidden[i]; });
+        if (lineView.min !== undefined) scales.x.min = lineView.min;
+        if (lineView.max !== undefined) scales.x.max = lineView.max;
+    }
 
     /* ── Cross-filter click handler ── */
     if (spec.crossFilter && spec.dsId) {
@@ -124,24 +985,264 @@ function _createChart(id, canvas, spec) {
     window._chartInstances[id] = new Chart(canvas, {
         type: spec.type || 'bar',
         data: { labels: spec.labels, datasets: spec.datasets },
-        options: chartOpts
+        options: chartOpts,
+        plugins: (spec.stackedControlView ? [{id: 'fwStackControlView', beforeDestroy: _fwRememberStackControlView}] : []).concat(spec.lineResultPresentation ? [{id: 'fwLineResultView', beforeDestroy: function(chart) {
+            if (canvas.isConnected) canvas._fwLineResultView = _fwLineResultView(chart);
+        }}] : []).concat(spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
+            ownedEvents && window._fwLineEventLabelsPlugin
+                ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents, spec.eventLabels)] : []).concat(
+            spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
+            spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : []).concat(
+            // Ordinary BarChart calendar tooltip cleanup is option-owned.
+            spec.calendarCoverage ? [window._fwCalendarCoverage.plugin()] : []).concat(
+            spec.trends ? [window._fwTrends.plugin(spec.trends)] : [])
     });
+    if (spec.stackedControlView) window._chartInstances[id]._fwStackControlView = spec.stackedControlView;
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
+    if (comboFocus) {
+        var context = window._chartInstances[id]._fwLegendEl;
+        var focused = context && Array.from(context.querySelectorAll('button')).find(function(btn) {
+            return btn.dataset.comboKey === comboFocus;
+        });
+        if (focused) focused.focus({ preventScroll: true });
+    }
+    if (spec.comboAxes) delete canvas._fwComboFocusKey;
+    if (spec.comboAxes) _fwUpdateComboSummary(canvas, spec.comboSummary, spec.datasets, spec.comboSummaryInputReason);
+    else if (spec.stackedSummary) _fwUpdateStackSummary(canvas, spec.stackedSummary, spec.datasets, spec.stackedSummaryInputReason);
+    else _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
+}
+
+// Resolve only the engine's registered parent edges. Never infer a live source
+// from controls or recursively call isReady on an unchecked scope chain.
+function _fwLineResultSource(engine, id) {
+    var seen = new Set(), current = id;
+    for (var depth = 0; current && depth < 64; depth++) {
+        if (seen.has(current)) return null;
+        seen.add(current);
+        var scope = engine && engine._scopes[current];
+        if (!scope) return {id: current, subset: current !== id};
+        current = scope.parent;
+    }
+    return null;
+}
+
+function _fwLineResultParams(params) {
+    if (params === null || params === undefined) return 'unknown';
+    var keys = Object.keys(params).sort();
+    return keys.length ? keys.map(function(key) {
+        return key + '=' + JSON.stringify(params[key]);
+    }).join(', ') : '(no parameters)';
+}
+
+// Classification uses the full unhidden plotted vectors, before legend/zoom.
+// It never edits chart data, aggregates rows, or changes capture admission.
+function _fwLineResultText(cfg, spec, rows, source, state, engine) {
+    var usable = (spec.datasets || []).some(function(ds) {
+        return (ds.data || []).some(function(v) { return Number.isFinite(v); });
+    });
+    var live = !!state || !!(source && (source.live || (engine && engine.isLiveDataset(source.id))));
+    var transition = state && (state.phase === 'pending' || state.phase === 'error');
+    var requested = state ? _fwLineResultParams(state.requested_params) : 'unknown';
+    var displayed = state ? _fwLineResultParams(state.displayed_params) : 'unknown';
+    var same = state && state.displayed_params !== null && requested === displayed;
+    var action = state && state.phase === 'error' ? 'Could not load requested data' : 'Loading requested data';
+    var context = '';
+    if (usable && state && state.has_result && transition && !same) {
+        context = action + '. Requested: ' + requested + '\nDisplayed ' +
+            (state.origin === 'snapshot' ? 'snapshot' : 'query') + ': ' + displayed +
+            (source.subset ? '\nLocal subset of the displayed live parent (' + source.id + ').' : '');
+    }
+    if (usable && (!live || (state && state.has_result))) return {overlay: '', context: context};
+    if (transition) return {overlay: action + '\nRequested: ' + requested, context: ''};
+    if (live && (!state || !state.has_result)) return {overlay: 'Result unavailable', context: ''};
+    if (cfg.dataset_id && (!source || !engine || !engine._columnar[source.id])) {
+        return {overlay: 'Data not ready', context: ''};
+    }
+    var count = cfg.dataset_id ? (rows || []).length : (spec.labels || []).length;
+    if (count) {
+        var reasons = (spec.availability || []).map(function(item) { return item.reason; }).filter(Boolean);
+        var unavailable = (spec.availability || []).length > 0;
+        return {overlay: (unavailable ? 'Observations unavailable' : 'No usable observations') +
+            (unavailable ? '\n' + (reasons.length ? Array.from(new Set(reasons)).join(' ') :
+                'Required observations are incomplete or unavailable.') : ''), context: ''};
+    }
+    var supplied = !cfg.dataset_id || (!live && !source.subset && engine.getDatasetRowCount(source.id) === 0);
+    return {overlay: supplied ? 'No data supplied' : 'No matching data', context: ''};
+}
+
+function _fwUpdateLineResult(canvas, cfg, spec, rows) {
+    var enabled = cfg.line_result_presentation === true && cfg.chartType === 'line' &&
+        !cfg.area_fill && !cfg.combo_axes && !window._fwMetricsWorkspace;
+    var owned = canvas._fwLineResult;
+    if (owned && (!enabled || owned.cfg !== cfg)) { owned.dispose(); owned = null; }
+    if (!enabled) return spec;
+    spec.lineResultPresentation = true;
+    if (!owned) {
+        var box = canvas.parentElement;
+        var context = document.createElement('div'), overlay = document.createElement('div');
+        context.className = 'fw-line-result-context';
+        overlay.className = 'fw-line-result-overlay';
+        context.id = canvas.id + '-result-context'; overlay.id = canvas.id + '-result';
+        [context, overlay].forEach(function(el) {
+            el.hidden = true; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+            el.setAttribute('aria-atomic', 'true');
+        });
+        box.before(context); box.appendChild(overlay);
+        function retire() {
+            owned.dispose();
+            var bindings = window._fwCategoryChartBindings;
+            // A replacement canvas can already own this id when the old
+            // observer runs. Retire only the binding this presenter used.
+            if (bindings && owned.binding && bindings.get(canvas.id) === owned.binding) owned.binding();
+            delete canvas._fwBarLive;
+        }
+        var off = null, observer = new MutationObserver(function() {
+            if (document.getElementById(canvas.id) !== canvas ||
+                    (owned.scope && owned.scope !== window._currentScope)) retire();
+        });
+        function describe() {
+            var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+                return token && token !== context.id && token !== overlay.id;
+            });
+            if (!context.hidden) tokens.push(context.id);
+            if (!overlay.hidden) tokens.push(overlay.id);
+            if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+            else canvas.removeAttribute('aria-describedby');
+        }
+        owned = {
+            cfg: cfg,
+            paint: function(state) {
+                if (document.getElementById(canvas.id) !== canvas) { owned.dispose(); return; }
+                // Native report scope switches retire the live owner while
+                // keeping the old scope's canvas connected but hidden.
+                if (!state && owned.source && owned.source.live) {
+                    retire();
+                    return;
+                }
+                var text = _fwLineResultText(cfg, owned.spec, owned.rows, owned.source, state, window._fwFilterEngine);
+                [[context, text.context], [overlay, text.overlay]].forEach(function(pair) {
+                    if (pair[0].textContent !== pair[1]) pair[0].textContent = pair[1];
+                    pair[0].hidden = !pair[1];
+                });
+                describe();
+            },
+            update: function(next, selectedRows) {
+                owned.spec = next; owned.rows = selectedRows;
+                owned.binding = window._fwCategoryChartBindings && window._fwCategoryChartBindings.get(canvas.id);
+                owned.scope = window._currentScope;
+                owned.source = _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
+                if (owned.source) owned.source.live = !!window._fwFilterEngine.isLiveDataset(owned.source.id);
+                // Renew on native draws/reentry, including retired/replaced sources.
+                // Status callbacks only paint text and never rebind or redraw.
+                if (off) { off(); off = null; }
+                if (owned.source && owned.source.live && window._fwLiveQuery) {
+                    off = window._fwLiveQuery.subscribeDataset(owned.source.id, owned.paint);
+                } else owned.paint(null);
+            },
+            dispose: function() {
+                if (off) { off(); off = null; }
+                observer.disconnect(); context.hidden = overlay.hidden = true; describe();
+                context.remove(); overlay.remove();
+                delete canvas._fwLineResultView;
+                if (canvas._fwLineResult === owned) delete canvas._fwLineResult;
+            }
+        };
+        canvas._fwLineResult = owned;
+        observer.observe(document.body, {childList: true, subtree: true});
+        var scopePanel = canvas.closest('[data-toggle-target="__scope__"]');
+        if (scopePanel) observer.observe(scopePanel, {attributes: true, attributeFilter: ['style']});
+    }
+    owned.update(spec, rows);
+    return spec;
+}
+
+// Shared-control views retain each chart's own label visibility, never the
+// sibling chart's. The denominator still uses all matching series.
+function _fwRememberStackControlView(chart) {
+    var key = chart._fwStackControlView;
+    if (!key) return;
+    var hidden = chart.canvas._fwStackControlHidden || (chart.canvas._fwStackControlHidden = {});
+    chart.data.datasets.forEach(function(ds, i) {
+        hidden[JSON.stringify([key, ds.label])] = !chart.isDatasetVisible(i);
+    });
 }
 
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
+    // Ordinary BarChart bucket context owns only its optional lifecycle binding.
+    if (!cfg.bucket_context && canvas._fwCalendarDispose) canvas._fwCalendarDispose();
+    if (canvas._fwLineResult && (cfg.line_result_presentation !== true || window._fwMetricsWorkspace)) canvas._fwLineResult.dispose();
+    if (!cfg.combo_axes || !cfg.combo_summary) _fwClearComboSummary(canvas);
+    if (!cfg.stacked_summary) _fwClearStackSummary(canvas);
+    if (!cfg.header_summary) _fwUpdateHeaderSummary(id, null);
+    var previousBindings = window._fwCategoryChartBindings;
+    var ownsAvailability = !!(cfg.series_availability && cfg.series_availability.length);
+    if (ownsAvailability && !canvas._fwAvailabilityOwned) {
+        canvas._fwAvailabilityOwned = true;
+        // First adoption also installs the scoped detached-canvas cleanup.
+        delete canvas._fwBarLive;
+    }
+    // Modern ordinary lines/bars may gain/remove declarations during renderAll.
+    // Keep one scoped binding before opt-in so adoption cannot retain an old
+    // anonymous theme handler or a second subscription.
+    var scopedLive = cfg.combo_axes || cfg.stack_labels || cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned || cfg.grid_color_slot !== undefined;
+    // Tagged StackedBars own local/shared controls from the first draw, so
+    // adding/removing summaries cannot strand anonymous legacy handlers.
+    // Legacy untagged payloads and workspace leasing keep their existing path.
+    var stackOwner = !!(cfg.stack_labels || cfg.stacked_bar_controls === true) && !window._fwMetricsWorkspace;
+    var comboOwner = !!cfg.combo_axes && !window._fwMetricsWorkspace;
+    var chartOwner = stackOwner || comboOwner;
+    var stackScope = window._currentScope;
+    var stackSource = chartOwner && window._fwFilterEngine._columnar[cfg.dataset_id];
+    var stackGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id], [data-stack-toggle], [data-normalize-toggle]')).find(function(el) {
+        return cfg.stack_toggle_id ? el.dataset.toggleId === cfg.stack_toggle_id : el.dataset.stackToggle === id;
+    });
+    var normalizeGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id], [data-stack-toggle], [data-normalize-toggle]')).find(function(el) {
+        return cfg.normalize_toggle_id ? el.dataset.toggleId === cfg.normalize_toggle_id : el.dataset.normalizeToggle === id;
+    });
+    var oldStack = canvas._fwBarLive;
+    if (chartOwner && previousBindings && previousBindings.has(id) && (!oldStack || oldStack.cfg !== cfg ||
+            oldStack.scope !== stackScope || oldStack.source !== stackSource ||
+            oldStack.stackGroup !== stackGroup || oldStack.normalizeGroup !== normalizeGroup)) {
+        previousBindings.get(id)();
+    }
+    if ((!scopedLive || !cfg.dataset_id || window._fwMetricsWorkspace) && previousBindings && previousBindings.has(id)) {
+        previousBindings.get(id)(); previousBindings.delete(id);
+        // The cached draw belonged to the binding just disposed. A reused
+        // StackedBar config still has stack_labels, so it must bind again.
+        delete canvas._fwBarLive;
+    }
+
+    // Trend adoption/removal also changes ownership of source lifecycle updates.
+    if (previousBindings && previousBindings.has(id) && canvas._fwBarLive &&
+            !!canvas._fwBarLive.trendOwned !== !!cfg.trend_line) {
+        previousBindings.get(id)();
+        delete canvas._fwBarLive;
+    }
 
     /* ── Live mode ─────────────────────────────────────────── */
     if (cfg.dataset_id) {
+        var taggedBars = cfg.bar_values || cfg.stack_labels || scopedLive;
+        // Ordinary renderAll reuses the existing live subscription and controls.
+        // Workspaces retain _fwLiveWrap's leased disposal/recreation behavior.
+        if (taggedBars && !window._fwMetricsWorkspace && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) {
+            // Re-entry reclaims only the Bar calendar source lifecycle.
+            if (cfg.bucket_context) window._fwCalendarCoverage.bind(canvas, cfg, canvas._fwBarLive.draw);
+            canvas._fwBarLive.draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+            return;
+        }
+        if (taggedBars && canvas._fwBarControls) canvas._fwBarControls.abort();
+        var barSignals = taggedBars ? new AbortController() : null;
+        if (barSignals) canvas._fwBarControls = barSignals;
+        var barListener = barSignals ? {signal: barSignals.signal} : undefined;
         var activeStackBy = cfg.stack_by || null;
         if (cfg.stack_by_options) {
             var stackSel = cfg.stack_toggle_id
                 ? '[data-toggle-id="' + cfg.stack_toggle_id + '"]'
                 : '[data-stack-toggle="' + id + '"]';
-            var tog = document.querySelector(stackSel);
+            var tog = stackOwner ? stackGroup : document.querySelector(stackSel);
             if (tog) {
                 var initBtn = tog.querySelector('.fw-toggle-btn.active');
                 if (initBtn) activeStackBy = cfg.stack_by_options[initBtn.textContent.trim()] || cfg.stack_by;
@@ -154,7 +1255,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     }
                     activeStackBy = cfg.stack_by_options[btn.textContent.trim()] || cfg.stack_by;
                     _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
-                });
+                }, barListener);
             }
         }
         var normalized = false;
@@ -162,7 +1263,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             var normSel = cfg.normalize_toggle_id
                 ? '[data-toggle-id="' + cfg.normalize_toggle_id + '"]'
                 : '[data-normalize-toggle="' + id + '"]';
-            var normTog = document.querySelector(normSel);
+            var normTog = stackOwner ? normalizeGroup : document.querySelector(normSel);
             if (normTog) {
                 var initNormBtn = normTog.querySelector('.fw-toggle-btn.active');
                 if (initNormBtn) normalized = initNormBtn.textContent.trim() === 'Percentage';
@@ -175,14 +1276,42 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     }
                     normalized = btn.textContent.trim() === 'Percentage';
                     _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
-                });
+                }, barListener);
             }
         }
         canvas.addEventListener('dblclick', function() {
             var c = window._chartInstances[id]; if (c && c.resetZoom) c.resetZoom();
-        });
+        }, barListener);
 
         function _mkSpec(spec) {
+            if (Number.isInteger(cfg.grid_color_slot)) {
+                spec.datasets.forEach(function(ds, i) {
+                    if (cfg.colors && cfg.colors[i]) return;
+                    ds._themeManaged = true;
+                    ds._fwPaletteSlot = cfg.grid_color_slot;
+                    window._fwApplyPaletteSlot(ds, spec.type || 'bar', window.getThemeColors());
+                });
+            }
+            // Preserve the existing shared-only legend retention contract.
+            if (stackOwner && cfg.stacked_bar_controls === true) spec.stackedControlView = [cfg.dataset_id, activeStackBy];
+            if (cfg.month_context === true) spec.monthContext = true;
+            if (cfg.event_labels) spec.eventLabels = cfg.event_labels;
+            if (cfg.bar_values) {
+                spec.barValues = cfg.bar_values;
+                spec.barConfiguredStacked = cfg.stacked;
+            }
+            if (cfg.stack_labels) {
+                spec.stackLabels = cfg.stack_labels;
+                if (cfg.stack_labels.totals || cfg.stack_labels.percentages) {
+                    spec.stackNormalized = !!(activeStackBy && cfg.normalize_toggle && normalized);
+                    spec.stackLabelReason = _fwStackLabelEligibility(cfg, labelRows, activeStackBy, spec);
+                }
+            }
+            if (cfg.line_style === 'adaptive') {
+                spec.lineStyle = cfg.line_style;
+                spec.tension = cfg.tension;
+            }
+            if (cfg.forecast_series) spec.forecastSeries = cfg.forecast_series;
             if (cfg.crossFilter && cfg.dataset_id) {
                 spec.crossFilter = (cfg.crossFilterMode === 'dataset' && activeStackBy)
                     ? activeStackBy : cfg.crossFilter;
@@ -193,11 +1322,37 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.y_max !== undefined) spec.yMax = cfg.y_max;
             if (cfg.y1_max !== undefined) spec.y1Max = cfg.y1_max;
             if (cfg.show_labels) spec.showLabels = true;
-            return spec;
+            if (cfg.stacked_summary) {
+                spec.stackedSummary = cfg.stacked_summary;
+                spec.stackedSummaryInputReason = _fwStackSummaryInputReason(cfg, labelRows);
+            }
+            if (cfg.combo_axes && cfg.combo_summary) {
+                spec.comboSummary = cfg.combo_summary;
+                spec.comboSummaryInputReason = _fwComboSummaryInputReason(cfg, labelRows);
+            }
+            if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
+            // Line point-context is applied to the completed ordinary spec only.
+            if (cfg.point_context) spec = window._fwLinePointContextSpec(cfg, labelRows, spec);
+            // Bar-only calendar declaration; no shared aggregation changes.
+            if (cfg.bucket_context) spec = window._fwCalendarCoverage.spec(cfg, labelRows, spec);
+            spec = _fwUpdateLineResult(canvas, cfg,
+                window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec)), labelRows);
+            return cfg.trend_line ? window._fwTrends.line(cfg, labelRows, spec, activeStackBy) : spec;
         }
 
+        var labelRows;
         function _drawLive(rows) {
+            // A single native scope reads fresh parent rows after replacement.
+            if (cfg.bucket_context) rows = window._fwCalendarCoverage.rows(cfg.bucket_context);
+            labelRows = rows;
             var colors = window.getThemeColors().chart_colors;
+            var declaration = cfg.category_colors && cfg.category_colors.column === activeStackBy
+                ? cfg.category_colors : null;
+            var membership = declaration ? window._fwCategoryMembership(rows, activeStackBy) : null;
+            function categoryColor(category) {
+                var fallback = window._fwGetLabelColor(cfg.dataset_id, category, colors);
+                return declaration ? window._fwCategoryColor(declaration, category, colors, membership) || fallback : fallback;
+            }
             var isLine = cfg.chartType === 'line';
 
             if (activeStackBy && isLine) {
@@ -227,10 +1382,11 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                                 var lden = (lcolData[lspec.denominator] || [])[lxi] || 0;
                                 return lden > 0 ? lnum / lden : null;
                             });
-                            var lcolor = window._fwGetLabelColor(cfg.dataset_id, lname, colors);
+                            var lcolor = categoryColor(lname);
                             var llabel = multipleRatios ? (lname + ' · ' + lspec.label) : lname;
                             lineDatasets.push({
                                 label: llabel, data: lRatData,
+                                ...(cfg.trend_line ? {_fwTrendSource: {ratio: lspec.label, group: lname}} : {}),
                                 backgroundColor: lcolor + '22', borderColor: lcolor,
                                 borderWidth: 2.5, pointRadius: 2, tension: 0
                             });
@@ -262,9 +1418,10 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                             }
                             return sum;
                         });
-                        var lcolor2 = window._fwGetLabelColor(cfg.dataset_id, lname2, colors);
+                        var lcolor2 = categoryColor(lname2);
                         lineDatasets.push({
                             label: lname2, data: lineData,
+                            ...(cfg.trend_line ? {_fwTrendSource: {group: lname2}} : {}),
                             backgroundColor: lcolor2 + '22', borderColor: lcolor2,
                             borderWidth: 2.5, pointRadius: 2, tension: 0
                         });
@@ -294,7 +1451,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     for (var i = 0; i < pv.stackNames.length; i++) {
                         var colData = pv.datasets[pv.stackNames[i]];
                         if (i < limit) {
-                            var c = window._fwGetLabelColor(cfg.dataset_id, pv.stackNames[i], colors);
+                            var c = categoryColor(pv.stackNames[i]);
                             for (var ci = 0; ci < cfg.value_cols.length; ci++) {
                                 var vdata = [];
                                 for (var xi = 0; xi < pv.labels.length; xi++)
@@ -331,7 +1488,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                             netData.push(net);
                         }
                         if (i < limit) {
-                            var c = window._fwGetLabelColor(cfg.dataset_id, pv.stackNames[i], colors);
+                            var c = categoryColor(pv.stackNames[i]);
                             datasets.push({ label: pv.stackNames[i], data: netData,
                                 backgroundColor: c + 'cc', borderColor: c, borderWidth: 1 });
                         } else {
@@ -490,7 +1647,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                         var den = gr3.map[l][spec.denominator] || 0;
                         return den > 0 ? num / den : null;
                     });
-                    var rc = colors[ri % colors.length];
+                    var rc = isLine && cfg.colors && cfg.colors[ri]
+                        ? cfg.colors[ri] : colors[ri % colors.length];
                     if (isLine) {
                         datasets3.push({ label: spec.label, data: ratData,
                             backgroundColor: rc + '22', borderColor: rc,
@@ -554,6 +1712,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     return ctx.dataset.label + ': ' + fmt(ctx.parsed.y);
                 }}};
                 _createChart(id, canvas, _mkSpec({ labels: gr4.labels, datasets: datasets4,
+                    comboAxes: cfg.combo_axes,
                     stacked: cfg.stacked, showLegend: true, tooltip: tt4,
                     showLabels: cfg.show_labels,
                     yFmt: function(v) { return yFmt4(v); },
@@ -599,20 +1758,25 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 for (var i2 = 0; i2 < cfg.value_cols.length; i2++) {
                     var col2 = cfg.value_cols[i2];
                     var d2 = gr2.labels.map(function(l) { return gr2.map[l][col2] || 0; });
-                    var c2 = colors[i2 % colors.length];
+                    var c2 = isLine && cfg.colors && cfg.colors[i2]
+                        ? cfg.colors[i2] : colors[i2 % colors.length];
                     var ds2 = { label: ylabels[i2] || col2, data: d2,
                         backgroundColor: isLine ? c2 + '22' : c2 + 'cc', borderColor: c2,
                         borderWidth: isLine ? 2.5 : 1, pointRadius: isLine ? 2 : undefined, tension: 0 };
                     if (cfg.area_fill) {
-                        ds2.fill = true;
-                        ds2.backgroundColor = cfg.stacked ? c2 : c2 + '33';
-                        ds2._fillOpacity = cfg.stacked ? '' : '33';
+                        ds2.fill = cfg.stacked && i2 > 0 ? '-1' : 'origin';
+                        ds2.backgroundColor = c2 + (cfg.stacked ? 'a6' : '1f');
+                        ds2._fillOpacity = cfg.stacked ? 'a6' : '1f';
+                        ds2._areaFill = true;
                         ds2.pointRadius = 0;
                         ds2.tension = 0;
-                        ds2.borderWidth = cfg.stacked ? 1 : 2;
+                        ds2.borderWidth = cfg.stacked ? 1.5 : 2;
                     }
                     datasets2.push(ds2);
                 }
+                (cfg.forecast_series || []).forEach(function(index) {
+                    if (datasets2[index]) datasets2[index]._fwForecast = true;
+                });
                 var tt2;
                 if (yFmt2 || cfg.horizontal) {
                     var _ttFmt = yFmt2 || function(v) { return fmtCompact(v); };
@@ -625,7 +1789,68 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     stacked: cfg.stacked, horizontal: cfg.horizontal, showLegend: datasets2.length > 1, yFmt: yFmt2, tooltip: tt2 }));
             }
         }
-        window._fwLiveWrap(id, cfg, _drawLive);
+        // Ordinary BarChart context owns structural source replacement updates.
+        if (cfg.bucket_context) window._fwCalendarCoverage.bind(canvas, cfg, _drawLive);
+        if (taggedBars) canvas._fwBarLive = chartOwner ? {cfg: cfg, trendOwned: !!cfg.trend_line, draw: _drawLive, scope: stackScope,
+            source: stackSource, stackGroup: stackGroup, normalizeGroup: normalizeGroup} : {cfg: cfg, trendOwned: !!cfg.trend_line, draw: _drawLive};
+        if (scopedLive && !window._fwMetricsWorkspace) {
+            // Opted-in charts own one binding across renderAll, changed configs
+            // and canvas replacement. Untagged live charts retain their path.
+            var bindings = window._fwCategoryChartBindings || (window._fwCategoryChartBindings = new Map());
+            if (bindings.has(id)) bindings.get(id)();
+            function stackRetired() {
+                return chartOwner && (window._currentScope !== stackScope ||
+                    (stackGroup && !stackGroup.isConnected) || (normalizeGroup && !normalizeGroup.isConnected));
+            }
+            function current() {
+                if (document.getElementById(id) !== canvas || stackRetired()) { dispose(); return; }
+                _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+            }
+            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
+            var lifeOff = (chartOwner || cfg.trend_line) ? window._fwFilterEngine.subscribeLifecycle(function(event) {
+                var source = (comboOwner || cfg.trend_line) && _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
+                if (event.dataset_id !== cfg.dataset_id && (!source || event.dataset_id !== source.id)) return;
+                // Structural parent replacement does not run the engine's row
+                // notify cascade. Retire this Combo's cached scoped result.
+                if ((comboOwner || cfg.trend_line) && source && source.subset) window._fwFilterEngine._cache[cfg.dataset_id] = null;
+                if (event.type === 'init' || event.type === 'scope') {
+                    unsubscribe();
+                    unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
+                }
+                current();
+            }) : null;
+            function onTheme() {
+                if (document.getElementById(id) !== canvas || stackRetired()) {
+                    bindings.get(id)(); bindings.delete(id); return;
+                }
+                _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+            }
+            var observer = (chartOwner || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average || cfg.grid_color_slot !== undefined) ? new MutationObserver(function() {
+                if (document.getElementById(id) !== canvas || stackRetired()) dispose();
+            }) : null;
+            function dispose() {
+                unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
+                if (lifeOff) lifeOff();
+                if (stackOwner) _fwClearStackSummary(canvas);
+                if (comboOwner) _fwClearComboSummary(canvas);
+                if (barSignals) barSignals.abort();
+                if (chartOwner && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) delete canvas._fwBarLive;
+                if (observer) observer.disconnect();
+                if (bindings.get(id) === dispose) bindings.delete(id);
+                var chart = window._chartInstances[id];
+                if (document.getElementById(id) !== canvas && chart && chart.canvas === canvas) {
+                    chart.destroy(); delete window._chartInstances[id];
+                }
+            }
+            bindings.set(id, dispose);
+            if (observer) observer.observe(document.body, {childList: true, subtree: true});
+            if (chartOwner && observer) {
+                var stackPanel = canvas.closest('[data-toggle-target="__scope__"]');
+                if (stackPanel) observer.observe(stackPanel, {attributes: true, attributeFilter: ['style']});
+            }
+            window.addEventListener('fw-theme-change', onTheme);
+            _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+        } else window._fwLiveWrap(id, cfg, _drawLive);
         return;
     }
 
@@ -649,11 +1874,27 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }};
     }
     var yFmt = cfg.yTickFormat === 'currency' ? function(v) { return fmtCompact$(v); } : undefined;
-    _createChart(id, canvas, {
+    _createChart(id, canvas, _fwUpdateLineResult(canvas, cfg, window._fwMonthlyAverageSpec(cfg, null, _fwApplyLineAvailability(cfg, null, (cfg.point_context ? window._fwLinePointContextSpec : function(c, r, s) { return s; })(cfg, null, {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
-        showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip
-    });
+        showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
+        lineStyle: cfg.line_style, tension: cfg.tension,
+        trendConfig: cfg.trend_line ? cfg : null,
+        forecastSeries: cfg.forecast_series,
+        monthContext: cfg.month_context === true,
+        eventLabels: cfg.event_labels,
+        headerSummary: cfg.header_summary,
+        stackedSummary: cfg.stacked_summary,
+        stackedSummaryInputReason: _fwStackSummaryInputReason(cfg, null),
+        comboAxes: cfg.combo_axes,
+        comboSummary: cfg.combo_axes && cfg.combo_summary,
+        comboSummaryInputReason: _fwComboSummaryInputReason(cfg, null),
+        barValues: cfg.bar_values,
+        stackLabels: cfg.stack_labels,
+        stackNormalized: false,
+        stackLabelReason: cfg.stack_labels && (cfg.stack_labels.totals || cfg.stack_labels.percentages)
+            ? _fwStaticStackLabelEligibility(cfg) : ''
+    }))), null));
 };
 
 document.addEventListener('click', function(e) {

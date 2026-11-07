@@ -4,13 +4,16 @@ MANDATORY: Check this list BEFORE writing any RawHTML with Chart.js code.
 If a component below can do it, you MUST use it.
 
 Charts:   LineChart, AreaChart, BarChart, StackedBar, ComboChart,
-          DoughnutChart, HeatmapChart, FunnelChart, TreemapChart, ScatterChart
+          DoughnutChart, HeatmapChart, FunnelChart, TreemapChart, ScatterChart, SankeyChart
 KPIs:     KpiRow, KpiCard, MiniKpi
-Tables:   DataTable, ComparisonTable, PivotTable
+Tables:   DataTable, ComparisonTable, PivotTable, HierarchyTable, CohortTable
 Controls: Toggle, Dropdown, TabGroup, DateSelector
 Layout:   Section, Panel, Grid, SplitPane
+Context:  CalendarCoverage for authored UTC buckets and exact bar hover dates
 Filter:   DataSource + FilterBar (every component needs dataset_id=)
           ScopedDataSource for section-local filters (inherits parent filters)
+          MetricView for bounded grouped snapshot metrics and ratios of sums
+          PeriodComparison for explicit UTC periods over snapshot facts
           LiveDataSource + FilterBar (param bindings) for a declared live
           query -- see ctx.declare_live_query and LiveDataSource's docstring
 Advanced: RawHTML (ONLY when no component above can express the visualization)
@@ -19,6 +22,7 @@ Advanced: RawHTML (ONLY when no component above can express the visualization)
 from trellum.components.ab_compare import ABCompare
 from trellum.components.ab_methodology import ABMethodologyNote
 from trellum.components.base import Component, RenderContext
+from trellum.components.calendar_coverage import CalendarCoverage
 from trellum.components.charts import (
     AreaChart,
     BarChart,
@@ -27,10 +31,12 @@ from trellum.components.charts import (
     FunnelChart,
     HeatmapChart,
     LineChart,
+    SankeyChart,
     ScatterChart,
     StackedBar,
     TreemapChart,
 )
+from trellum.components.cohort_table import CohortTable
 from trellum.components.controls import DateSelector, Dropdown, TabGroup, Toggle
 from trellum.components.filterable import (
     DataSource,
@@ -39,20 +45,23 @@ from trellum.components.filterable import (
     ScopedDataSource,
 )
 from trellum.components.header import ReportHeader
+from trellum.components.hierarchy_table import HierarchyTable
 from trellum.components.kpis import KpiCard, KpiRow, MiniKpi
 from trellum.components.layout import Grid, Panel, RawHTML, Section, SplitPane, Visible
+from trellum.components.metric_views import MetricView
+from trellum.components.period_comparison import PeriodComparison
 from trellum.components.report_metadata import ReportMetadata
 from trellum.components.tables import ComparisonTable, DataTable, PivotTable
 
 __all__ = [
     "Component", "RenderContext",
-    "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart", "DoughnutChart", "HeatmapChart", "FunnelChart", "TreemapChart", "ScatterChart",
-    "DataTable", "ComparisonTable", "PivotTable",
+    "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart", "DoughnutChart", "HeatmapChart", "FunnelChart", "TreemapChart", "ScatterChart", "SankeyChart",
+    "DataTable", "ComparisonTable", "PivotTable", "HierarchyTable", "CohortTable",
     "KpiCard", "KpiRow", "MiniKpi",
     "Toggle", "Dropdown", "TabGroup", "DateSelector",
     "Section", "Panel", "Grid", "SplitPane",
     "RawHTML", "Visible",
     "ABCompare", "ABMethodologyNote",
-    "ReportHeader", "ReportMetadata",
-    "DataSource", "FilterBar", "ScopedDataSource", "LiveDataSource",
+    "ReportHeader", "ReportMetadata", "CalendarCoverage",
+    "DataSource", "FilterBar", "ScopedDataSource", "LiveDataSource", "MetricView", "PeriodComparison",
 ]

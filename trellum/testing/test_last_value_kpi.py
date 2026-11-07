@@ -72,7 +72,25 @@ window._fwRenderers = {};
 window.addEventListener = function() {};
 window.getFormatter = function() { return v => String(v); };
 const elements = {};
-global.document = {getElementById: id => elements[id] ||= {innerHTML: ''}};
+// Minimal DOM operations used by the safe-text KPI renderer. These tests
+// exercise aggregation/filter semantics; actual browser layout is covered
+// by the KPI presentation checks.
+function element() {
+    return {
+        children: [], textContent: '', className: '',
+        classList: {toggle() {}},
+        replaceChildren(...children) { this.children = children; },
+        appendChild(child) { this.children.push(child); },
+        get innerHTML() {
+            return this.children.map(child => '<div class="' + child.className + '">'
+                + child.textContent + child.innerHTML + '</div>').join('');
+        }
+    };
+}
+global.document = {
+    getElementById: id => elements[id] ||= element(),
+    createElement: () => element()
+};
 """ + runtime + "\nconst cid = " + json.dumps(cid) + ";\nconst cfg = "
         + json.dumps(cfg) + ";\nconst rows = " + json.dumps(ROWS) + ";\n" + script],
         capture_output=True, text=True)

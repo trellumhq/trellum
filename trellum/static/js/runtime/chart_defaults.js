@@ -252,6 +252,10 @@
             afterInit: function(chart) {
                 var opts = chart.options.plugins && chart.options.plugins.fwLegend;
                 if (opts && opts.display === false) return;
+                if (opts && opts.comboAxes && window._fwComboLegendUpdate) {
+                    window._fwComboLegendUpdate(chart);
+                    return;
+                }
                 if (chart.data.datasets.length < 2) return;
                 // Doughnut/pie legends use position:bottom style
                 var isDoughnut = chart.config.type === 'doughnut' || chart.config.type === 'pie';
@@ -269,10 +273,15 @@
                 this._buildButtons(chart);
             },
             _buildButtons: function(chart) {
+                var comboOpts = chart.config.options.plugins && chart.config.options.plugins.fwLegend;
+                if (comboOpts && comboOpts.comboAxes && window._fwComboLegendUpdate) {
+                    window._fwComboLegendUpdate(chart);
+                    return;
+                }
                 var legEl = chart._fwLegendEl;
                 if (!legEl) return;
                 legEl.innerHTML = '';
-                var seenLabels = {};
+                var seenLabels = Object.create(null);
                 chart.data.datasets.forEach(function(ds, i) {
                     var lbl = ds.label || 'Series ' + (i+1);
                     if (seenLabels[lbl]) return;
@@ -284,8 +293,19 @@
                     btn.className = 'cl' + (vis ? ' active' : '');
                     btn.style.borderColor = vis ? color : 'var(--border-color)';
                     btn.style.background = vis ? color + '20' : 'transparent';
-                    btn.innerHTML = '<span class="dot" style="background:' + color + '"></span>' + lbl;
+                    var symbol = document.createElement('span');
+                    symbol.className = ds._fwForecast ? 'fw-forecast-key' : 'dot';
+                    symbol.setAttribute('aria-hidden', 'true');
+                    if (ds._fwForecast) symbol.style.setProperty('--fw-forecast-color', color);
+                    else symbol.style.background = color;
+                    var caption = document.createElement('span');
+                    caption.textContent = lbl;
+                    btn.append(symbol, caption);
                     btn.title = 'Click to toggle  •  Double-click (or Shift-click) to show only this';
+                    if (ds._fwForecast) {
+                        btn.setAttribute('aria-label', lbl + ', forecast series. ' + btn.title);
+                        btn.title = lbl + ' · forecast series. ' + btn.title;
+                    }
                     // "Isolate" = hide every series whose label is not `lbl`. If
                     // already isolated to `lbl`, restore visibility on all.
                     var _isolate = function() {
@@ -320,6 +340,15 @@
                 });
             },
             beforeDestroy: function(chart) {
+                if (chart._fwLegendEl && chart._fwLegendEl.classList.contains('fw-combo-context')) {
+                    if (chart._fwLegendEl.contains(document.activeElement)) {
+                        chart.canvas._fwComboFocusKey = document.activeElement.dataset.comboKey;
+                    }
+                    var described = (chart.canvas.getAttribute('aria-describedby') || '').split(/\s+/)
+                        .filter(function(id) { return id && id !== chart._fwLegendEl.id; });
+                    if (described.length) chart.canvas.setAttribute('aria-describedby', described.join(' '));
+                    else chart.canvas.removeAttribute('aria-describedby');
+                }
                 if (chart._fwLegendEl) {
                     chart._fwLegendEl.remove();
                     chart._fwLegendEl = null;

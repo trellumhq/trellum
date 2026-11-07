@@ -16,7 +16,15 @@ window._fwFilterTypes['date_range'] = {
     },
 
     _fmtDate: function(dateStr) {
-        return dateStr || '';
+        var self = window._fwFilterTypes['date_range'];
+        if (!dateStr || !self._validDate(dateStr)) return dateStr || '';
+        // Format only the supplied calendar components in UTC. The browser's
+        // timezone must never move a date, or reinterpret its time/offset suffix.
+        var calendar = new Date(dateStr.substring(0, 10) + 'T00:00:00Z');
+        var readable = new Intl.DateTimeFormat(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC'
+        }).format(calendar);
+        return readable + (dateStr.length > 10 ? ' ' + dateStr.substring(11) : '');
     },
 
     _readRange: function(dr, hourly) {
@@ -37,8 +45,11 @@ window._fwFilterTypes['date_range'] = {
         var trigger = dr.querySelector('.fw-date-trigger-text');
         if (trigger) {
             trigger.textContent = rangeVal.min || rangeVal.max
-                ? (rangeVal.min || '') + ' \u2013 ' + (rangeVal.max || '')
+                ? window._fwFilterTypes['date_range']._fmtDate(rangeVal.min) + ' \u2013 ' +
+                  window._fwFilterTypes['date_range']._fmtDate(rangeVal.max)
                 : 'No date bounds available';
+            var button = dr.querySelector('.fw-date-trigger');
+            if (button) button.title = (rangeVal.min || '') + ' \u2013 ' + (rangeVal.max || '');
         }
     },
 
@@ -137,6 +148,8 @@ window._fwFilterTypes['date_range'] = {
                     if (!self._validRange(rv)) return;
                     h.setFilter(fc.id, fc.column, 'range', rv);
                     h.propagate(fc.column, 'range', rv);
+                    var dr = el.querySelector('[data-filter-id="' + fc.id + '"].fw-date-range');
+                    if (dr) self._updateTrigger(dr, rv);
                 }
             }
         } else {
@@ -144,6 +157,8 @@ window._fwFilterTypes['date_range'] = {
             if (!self._validRange(rangeVal)) return;
             h.setFilter(fc.id, fc.column, 'range', rangeVal);
             h.propagate(fc.column, 'range', rangeVal);
+            var dr = el.querySelector('[data-filter-id="' + fc.id + '"].fw-date-range');
+            if (dr) self._updateTrigger(dr, rangeVal);
         }
     },
 
@@ -160,13 +175,85 @@ window._fwFilterTypes['date_range'] = {
         }
     },
 
+    _close: function(popover, returnFocus) {
+        popover.classList.remove('open');
+        var trigger = popover.closest('.fw-date-range').querySelector('.fw-date-trigger');
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', 'false');
+            if (returnFocus) trigger.focus({preventScroll: true});
+        }
+    },
+
+    _position: function(popover) {
+        var dr = popover.closest('.fw-date-range');
+        var trigger = dr.querySelector('.fw-date-trigger');
+        var anchor = trigger.getBoundingClientRect();
+        var root = dr.getBoundingClientRect();
+        var gutter = 8;
+        popover.style.maxHeight = '';
+        var width = popover.getBoundingClientRect().width;
+        popover.style.left = (Math.max(gutter, Math.min(anchor.left,
+            document.documentElement.clientWidth - width - gutter)) - root.left) + 'px';
+        var height = popover.getBoundingClientRect().height;
+        var below = Math.min(window.innerHeight - 2 * gutter, window.innerHeight - anchor.bottom - gutter - 4);
+        var above = Math.min(window.innerHeight - 2 * gutter, anchor.top - gutter - 4);
+        var openAbove = height > below && above > below;
+        var available = Math.max(0, openAbove ? above : below);
+        popover.style.maxHeight = available + 'px';
+        var visibleHeight = Math.min(height, available);
+        var top = openAbove ? anchor.top - visibleHeight - 4 : anchor.bottom + 4;
+        popover.style.top = (Math.max(gutter, Math.min(top,
+            window.innerHeight - visibleHeight - gutter)) - root.top) + 'px';
+    },
+
+    _installDismiss: function() {
+        var self = window._fwFilterTypes['date_range'];
+        if (self._dismissInstalled) return;
+        self._dismissInstalled = true;
+        document.addEventListener('click', function(e) {
+            document.querySelectorAll('.fw-date-popover.open').forEach(function(p) {
+                if (!p.closest('.fw-date-range').contains(e.target)) self._close(p, false);
+            });
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Escape') return;
+            var dr = e.target.closest('.fw-date-range');
+            var popover = (dr && dr.querySelector('.fw-date-popover.open')) ||
+                document.querySelector('.fw-date-popover.open');
+            if (popover) {
+                e.preventDefault();
+                e.stopPropagation();
+                self._close(popover, true);
+            }
+        });
+        function reposition() {
+            document.querySelectorAll('.fw-date-popover.open').forEach(function(p) {
+                self._position(p);
+            });
+        }
+        window.addEventListener('resize', reposition, {passive: true});
+        document.addEventListener('scroll', function(e) {
+            // Scrolling the bounded picker itself does not move its anchor.
+            if (!(e.target.closest && e.target.closest('.fw-date-popover'))) reposition();
+        }, {capture: true, passive: true});
+    },
+
     wireControls: function(el, cfg, dsId, h) {
         var self = window._fwFilterTypes['date_range'];
 
+        self._installDismiss();
         el.querySelectorAll('.fw-date-range').forEach(function(dr) {
             var fc = h.findFc(dr.dataset.filterId);
             if (!fc) return;
             var hourly = dr.dataset.hourly === 'true';
+            var unavailable = !self._validDate(fc.min_date) || !self._validDate(fc.max_date);
+            dr.querySelectorAll('.fw-date-trigger, .fw-date-input, .fw-date-hour').forEach(function(control) {
+                control.disabled = unavailable;
+            });
+            var note = dr.querySelector('.fw-date-unavailable');
+            if (note) note.hidden = !unavailable;
+            var reference = dr.querySelector('.fw-date-reference-value');
+            if (reference) reference.textContent = self._fmtDate(fc.max_date);
             dr.querySelectorAll('.fw-date-preset').forEach(function(btn) {
                 btn.disabled = self._computePresetMin(fc, btn.dataset.days || null, btn.dataset.hours || null) === null;
             });
@@ -175,14 +262,20 @@ window._fwFilterTypes['date_range'] = {
             var trigger = dr.querySelector('.fw-date-trigger');
             var popover = dr.querySelector('.fw-date-popover');
             if (trigger && popover) {
+                trigger.setAttribute('aria-describedby', fc.id + (unavailable ? '-unavailable' : '-reference'));
+                self._close(popover, false);
                 trigger.addEventListener('click', function(e) {
                     e.stopPropagation();
                     var wasOpen = popover.classList.contains('open');
                     // Close all other open popovers first
                     document.querySelectorAll('.fw-date-popover.open').forEach(function(p) {
-                        p.classList.remove('open');
+                        self._close(p, false);
                     });
-                    if (!wasOpen) popover.classList.add('open');
+                    if (!wasOpen) {
+                        popover.classList.add('open');
+                        trigger.setAttribute('aria-expanded', 'true');
+                        self._position(popover);
+                    }
                 });
             }
 
@@ -223,15 +316,6 @@ window._fwFilterTypes['date_range'] = {
                 self._highlightPreset(dr, preset.textContent.trim());
                 h.urlWrite();
             });
-        });
-
-        // Close popover on outside click
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.fw-date-range')) {
-                document.querySelectorAll('.fw-date-popover.open').forEach(function(p) {
-                    p.classList.remove('open');
-                });
-            }
         });
     }
 };

@@ -142,6 +142,8 @@ packages = [
   "README.md",
   "LICENSE",
   "THIRD-PARTY.md",
+  "docs/*.md",
+  "docs/images/report-upgrade/*.png",
   "static/**/*",
 ]
 

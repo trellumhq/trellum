@@ -12,6 +12,7 @@ from trellum.validation.walk import (
     _df_columns,
     _get_filterable_types,
     _kpi_row_is_fully_static,
+    _resolve_ds_columns,
     _walk_components,
 )
 
@@ -30,6 +31,146 @@ def _register_ds(ds_map: dict, comp: Any, sec: str, kind: str, result: Validatio
     ds_map[comp.id] = comp
 
 
+def _check_filterbar_columns(
+    fb_list: list[tuple[Any, str]],
+    ds_map: dict[str, Any],
+    scoped_data_source_type: type,
+    result: ValidationResult,
+) -> None:
+    """Validate each FilterBar's filters and propagated column mappings."""
+    for fb, sec in fb_list:
+        if fb.dataset_id not in ds_map:
+            result.fail(
+                "filterbar-orphan",
+                f"FilterBar dataset_id '{fb.dataset_id}' does not match any DataSource. "
+                f"Available: {list(ds_map.keys())}",
+                component="FilterBar", section=sec,
+            )
+
+        fb_cols = _df_columns(fb.df)
+        for f in fb.filters:
+            col = f.get("column", "")
+            if col and fb_cols and col not in fb_cols and "options" not in f:
+                result.fail(
+                    "filter-column-missing",
+                    f"FilterBar filter column '{col}' not in DataFrame columns.",
+                    component="FilterBar", section=sec,
+                )
+            depends_on = f.get("depends_on")
+            if depends_on:
+                parents = [depends_on] if isinstance(depends_on, str) else list(depends_on)
+                fb_filter_cols = {ff.get("column") for ff in fb.filters}
+                for parent in parents:
+                    if parent == col:
+                        result.fail(
+                            "filter-depends-on-self",
+                            f"FilterBar filter '{col}' has depends_on='{parent}' "
+                            f"which is itself. Cascading needs a different parent.",
+                            component="FilterBar", section=sec,
+                        )
+                    elif parent not in fb_filter_cols:
+                        result.fail(
+                            "filter-depends-on-missing",
+                            f"FilterBar filter '{col}' has depends_on='{parent}' "
+                            f"but no filter on column '{parent}' exists in this "
+                            f"FilterBar. Cascading only works between filters on "
+                            f"the same FilterBar.",
+                            component="FilterBar", section=sec,
+                        )
+                    elif fb_cols and parent not in fb_cols:
+                        result.fail(
+                            "filter-depends-on-missing",
+                            f"FilterBar filter '{col}' has depends_on='{parent}' "
+                            f"but column '{parent}' is not in the DataFrame.",
+                            component="FilterBar", section=sec,
+                        )
+
+        if fb.propagate_to:
+            for target_ds_id, col_map in fb.propagate_to.items():
+                if target_ds_id not in ds_map:
+                    result.fail(
+                        "propagate-target-missing",
+                        f"FilterBar propagate_to target '{target_ds_id}' "
+                        f"does not match any DataSource. Available: {list(ds_map.keys())}",
+                        component="FilterBar", section=sec,
+                    )
+                elif (isinstance(ds_map[target_ds_id], scoped_data_source_type)
+                      and ds_map[target_ds_id].parent == fb.dataset_id
+                      and all(src == target for src, target in col_map.items())):
+                    # Scoped children inherit their parent's filters, so this
+                    # identity mapping is redundant and may double-filter.
+                    result.warn(
+                        "propagate-to-scoped-ds",
+                        f"FilterBar propagate_to target '{target_ds_id}' is a "
+                        f"ScopedDataSource. Scoped children automatically "
+                        f"inherit their parent's filters, so this propagate_to "
+                        f"entry is redundant and may cause double-filtering.",
+                        component="FilterBar", section=sec,
+                    )
+                if target_ds_id in ds_map:
+                    target_cols = _resolve_ds_columns(target_ds_id, ds_map)
+                    for src_col, tgt_col in col_map.items():
+                        if target_cols and tgt_col not in target_cols:
+                            result.warn(
+                                "propagate-column-missing",
+                                f"FilterBar propagate_to column '{tgt_col}' not in "
+                                f"DataSource '{target_ds_id}' DataFrame.",
+                                component="FilterBar", section=sec,
+                            )
+
+
+def _check_chunking(
+    ds_map: dict[str, Any],
+    fb_list: list[tuple[Any, str]],
+    derived_types: tuple[type, ...],
+    result: ValidationResult,
+) -> None:
+    """Check chunked sources have a date filter and large sources are bounded."""
+    fb_filters_map: dict[str, list[dict]] = {
+        fb.dataset_id: fb.filters for fb, _ in fb_list
+    }
+
+    propagated_date_range: set[str] = set()
+    for fb, _ in fb_list:
+        if not any(f.get("type") == "date_range" for f in (fb.filters or [])):
+            continue
+        for target_ds_id, col_map in (getattr(fb, "propagate_to", {}) or {}).items():
+            if "event_date" in col_map:
+                propagated_date_range.add(target_ds_id)
+
+    large_ds_bytes = 50 * 1024 * 1024
+    for ds_id, ds in ds_map.items():
+        if isinstance(ds, derived_types):
+            continue
+        if getattr(ds, "chunk_by", None):
+            filters = fb_filters_map.get(ds_id, [])
+            has_date_range = (
+                any(f.get("type") == "date_range" for f in filters)
+                or ds_id in propagated_date_range
+            )
+            if not has_date_range:
+                result.fail(
+                    "chunk-no-date-filter",
+                    f"DataSource '{ds_id}' has chunk_by='{ds.chunk_by}' but neither "
+                    f"its FilterBar nor any propagate_to source has a date_range filter. "
+                    f"Chunking requires a date column to partition on.",
+                    component="DataSource", section="",
+                )
+        else:
+            try:
+                mem = ds.df.memory_usage(deep=True).sum()
+            except Exception:
+                mem = 0
+            if mem > large_ds_bytes * 2:
+                result.warn(
+                    "large-ds-no-chunking",
+                    f"DataSource '{ds_id}' uses ~{mem // (1024*1024)} MB of memory. "
+                    f"Consider adding chunk_by='month' to split the data into lazy-loaded "
+                    f"monthly files and reduce initial page load.",
+                    component="DataSource", section="",
+                )
+
+
 def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: ValidationResult) -> None:
     """Category 1: DataSource / FilterBar wiring."""
     from trellum.components.filterable import (
@@ -38,6 +179,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         LiveDataSource,
         ScopedDataSource,
     )
+    from trellum.components.metric_views import MetricView
+    from trellum.components.period_comparison import PeriodComparison, PeriodResult
 
     ds_map: dict[str, Any] = {}
     fb_list: list[tuple[Any, str]] = []
@@ -55,8 +198,19 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         elif isinstance(comp, ScopedDataSource):
             _register_ds(ds_map, comp, sec, "ScopedDataSource", result)
             scoped_list.append((comp, sec))
+        elif isinstance(comp, PeriodComparison):
+            for output in comp.outputs:
+                _register_ds(ds_map, output, sec, "PeriodComparison", result)
+        elif isinstance(comp, MetricView):
+            _register_ds(ds_map, comp, sec, "MetricView", result)
         elif isinstance(comp, FilterBar):
             fb_list.append((comp, sec))
+
+    from trellum.validation.checks.hierarchy_table import check_hierarchy_tables
+    from trellum.validation.checks.table_drill_down import check_table_drill_down
+
+    check_table_drill_down(comps, ds_map, result)
+    check_hierarchy_tables(comps, ds_map, result)
 
     # Each ScopedDataSource's parent must exist and must NOT itself be scoped.
     for sds, sec in scoped_list:
@@ -143,8 +297,14 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
     # lives in the same section as the DataSource. Only flag DSes
     # covered by zero FilterBars.
     covered = fb_ds_ids | propagate_targets
+    # Derived rows inherit source filter reach, without pretending to be scoped facts.
+    for _ in range(2):
+        covered |= {ds.id for ds in ds_map.values()
+                    if isinstance(ds, (ScopedDataSource, MetricView, PeriodResult)) and ds.parent in covered}
     consuming_ds_ids: set[str] = set()
     for comp, _ in comps:
+        if isinstance(comp, (MetricView, PeriodComparison)):
+            consuming_ds_ids.add(comp.parent)
         if isinstance(comp, (DataSource, FilterBar)):
             continue
         ds_id = getattr(comp, "dataset_id", None)
@@ -168,7 +328,7 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
             continue
         # ScopedDataSources are transparent: they inherit the parent's filters
         # automatically, so they don't need their own FilterBar coverage check.
-        if isinstance(ds, ScopedDataSource):
+        if isinstance(ds, (ScopedDataSource, MetricView, PeriodResult)):
             continue
         # `ds-no-filterbar` is only a real concern when the DataSource
         # actually feeds something that should be reactive. Skip when no
@@ -189,136 +349,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
             dataset_id=ds_id,
         )
 
-    for fb, sec in fb_list:
-        if fb.dataset_id not in ds_map:
-            result.fail(
-                "filterbar-orphan",
-                f"FilterBar dataset_id '{fb.dataset_id}' does not match any DataSource. "
-                f"Available: {list(ds_map.keys())}",
-                component="FilterBar", section=sec,
-            )
-
-        fb_cols = _df_columns(fb.df)
-        for f in fb.filters:
-            col = f.get("column", "")
-            if col and fb_cols and col not in fb_cols and "options" not in f:
-                result.fail(
-                    "filter-column-missing",
-                    f"FilterBar filter column '{col}' not in DataFrame columns.",
-                    component="FilterBar", section=sec,
-                )
-            depends_on = f.get("depends_on")
-            if depends_on:
-                parents = [depends_on] if isinstance(depends_on, str) else list(depends_on)
-                fb_filter_cols = {ff.get("column") for ff in fb.filters}
-                for parent in parents:
-                    if parent == col:
-                        result.fail(
-                            "filter-depends-on-self",
-                            f"FilterBar filter '{col}' has depends_on='{parent}' "
-                            f"which is itself. Cascading needs a different parent.",
-                            component="FilterBar", section=sec,
-                        )
-                    elif parent not in fb_filter_cols:
-                        result.fail(
-                            "filter-depends-on-missing",
-                            f"FilterBar filter '{col}' has depends_on='{parent}' "
-                            f"but no filter on column '{parent}' exists in this "
-                            f"FilterBar. Cascading only works between filters on "
-                            f"the same FilterBar.",
-                            component="FilterBar", section=sec,
-                        )
-                    elif fb_cols and parent not in fb_cols:
-                        result.fail(
-                            "filter-depends-on-missing",
-                            f"FilterBar filter '{col}' has depends_on='{parent}' "
-                            f"but column '{parent}' is not in the DataFrame.",
-                            component="FilterBar", section=sec,
-                        )
-
-        if fb.propagate_to:
-            for target_ds_id, col_map in fb.propagate_to.items():
-                if target_ds_id not in ds_map:
-                    result.fail(
-                        "propagate-target-missing",
-                        f"FilterBar propagate_to target '{target_ds_id}' "
-                        f"does not match any DataSource. Available: {list(ds_map.keys())}",
-                        component="FilterBar", section=sec,
-                    )
-                elif isinstance(ds_map[target_ds_id], ScopedDataSource):
-                    # propagate_to a ScopedDataSource is unnecessary — scoped
-                    # children inherit their parent's filters automatically.
-                    result.warn(
-                        "propagate-to-scoped-ds",
-                        f"FilterBar propagate_to target '{target_ds_id}' is a "
-                        f"ScopedDataSource. Scoped children automatically "
-                        f"inherit their parent's filters, so this propagate_to "
-                        f"entry is redundant and may cause double-filtering.",
-                        component="FilterBar", section=sec,
-                    )
-                else:
-                    target_cols = _df_columns(ds_map[target_ds_id].df)
-                    for src_col, tgt_col in col_map.items():
-                        if target_cols and tgt_col not in target_cols:
-                            result.warn(
-                                "propagate-column-missing",
-                                f"FilterBar propagate_to column '{tgt_col}' not in "
-                                f"DataSource '{target_ds_id}' DataFrame.",
-                                component="FilterBar", section=sec,
-                            )
-
-    # ── Chunking checks ──────────────────────────────────────────────────────
-
-    # Build a map from DataSource id → FilterBar filters for that DataSource
-    fb_filters_map: dict[str, list[dict]] = {
-        fb.dataset_id: fb.filters for fb, _ in fb_list
-    }
-
-    # DataSources that receive a propagated date_range filter count as having one
-    # for chunking purposes — the chunk loader subscribes to that propagated filter.
-    propagated_date_range: set[str] = set()
-    for fb, _ in fb_list:
-        if not any(f.get("type") == "date_range" for f in (fb.filters or [])):
-            continue
-        for target_ds_id, col_map in (getattr(fb, "propagate_to", {}) or {}).items():
-            if "event_date" in col_map:
-                propagated_date_range.add(target_ds_id)
-
-    _LARGE_DS_BYTES = 50 * 1024 * 1024  # 50 MB
-
-    for ds_id, ds in ds_map.items():
-        if isinstance(ds, ScopedDataSource):
-            # No DataFrame and no chunking — derived from parent at runtime.
-            continue
-        if getattr(ds, "chunk_by", None):
-            # chunk_by is set — check that a date_range filter exists (direct or propagated)
-            filters = fb_filters_map.get(ds_id, [])
-            has_date_range = (
-                any(f.get("type") == "date_range" for f in filters)
-                or ds_id in propagated_date_range
-            )
-            if not has_date_range:
-                result.fail(
-                    "chunk-no-date-filter",
-                    f"DataSource '{ds_id}' has chunk_by='{ds.chunk_by}' but neither "
-                    f"its FilterBar nor any propagate_to source has a date_range filter. "
-                    f"Chunking requires a date column to partition on.",
-                    component="DataSource", section="",
-                )
-        else:
-            # No chunking — warn if DataFrame is large
-            try:
-                mem = ds.df.memory_usage(deep=True).sum()
-            except Exception:
-                mem = 0
-            if mem > _LARGE_DS_BYTES * 2:
-                result.warn(
-                    "large-ds-no-chunking",
-                    f"DataSource '{ds_id}' uses ~{mem // (1024*1024)} MB of memory. "
-                    f"Consider adding chunk_by='month' to split the data into lazy-loaded "
-                    f"monthly files and reduce initial page load.",
-                    component="DataSource", section="",
-                )
+    _check_filterbar_columns(fb_list, ds_map, ScopedDataSource, result)
+    _check_chunking(ds_map, fb_list, (ScopedDataSource, MetricView, PeriodResult), result)
 
     return ds_map
 

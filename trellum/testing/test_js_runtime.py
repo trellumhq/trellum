@@ -27,7 +27,7 @@ from trellum.rendering.js_runtime import generate_js_runtime
 from trellum.themes import THEME_REGISTRY
 
 
-def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchanged(capture_page):
+def test_workspace_table_pagination_keeps_ordinary_table_display_limit(capture_page):
     page = capture_page
     result = page.evaluate("""js => {
         document.body.innerHTML = '<div id="paged"></div><div id="ordinary"></div>';
@@ -52,7 +52,7 @@ def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchan
         delete window._fwMetricsWorkspace;
         return {before,first,next,ordinary,lastFocus,firstFocus};
     }""", load_js('components/data_table.js'))
-    assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 80,
+    assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 25,
                       'lastFocus': True, 'firstFocus': True}
 
 def test_workspace_definition_deep_link_opens_the_table_page_holding_the_row(capture_page):
@@ -74,7 +74,8 @@ def test_workspace_definition_deep_link_opens_the_table_page_holding_the_row(cap
         history.replaceState(null, '', location.pathname);
         return out;
     }""", load_js('components/data_table.js'))
-    assert result == {'first': 'metric_0050owner', 'linked': True, 'status': '80 of 80 rows · Page 3 of 4'}
+    assert result == {'first': 'metric_0050owner', 'linked': True,
+                      'status': '80 of 80 rows · Page 3 of 4 · CSV exports 80 rows'}
 
 
 def test_metric_draw_queue_coalesces_latest_filter_disposes_and_restores(capture_page):
@@ -1916,3 +1917,174 @@ class TestBackwardCompatAliases:
         }})()
         """)
         assert result == "match", f"{legacy} does not match {fw_path}: {result}"
+
+
+# ── LineChart header summary ─────────────────────────────────
+#
+# A stand-in Chart records the datasets the renderer hands it, so these tests
+# exercise the real renderer, aggregation and filter engine without painting
+# (painting is covered by test_line_chart_size_browser.py).
+
+_SUMMARY_HARNESS = """(args) => {
+    var js = args.js, cfgs = args.cfgs, rows = args.rows, steps = args.steps || [];
+    window.Chart = function(canvas, config) { this.data = config.data; this.destroy = function() {}; };
+    window._fwRenderers = window._fwRenderers || {};
+    window._chartInstances = {};
+    var html = '';
+    Object.keys(cfgs).forEach(function(id) {
+        html += '<div class="fw-chart-head"><div class="fw-chart-summary" data-chart-summary="' + id + '">'
+            + '<span class="fw-chart-summary-label"></span><span class="fw-chart-summary-value"></span></div></div>'
+            + '<canvas id="' + id + '"></canvas>';
+    });
+    document.body.innerHTML = html;
+    if (rows) window._fwFilterEngine.init('ds', rows);
+    eval(js);
+    function read(id) {
+        var box = document.querySelector('[data-chart-summary="' + id + '"]');
+        return [box.querySelector('.fw-chart-summary-label').textContent,
+                box.querySelector('.fw-chart-summary-value').textContent];
+    }
+    var out = [];
+    function snapshot() {
+        var s = {};
+        Object.keys(cfgs).forEach(function(id) { s[id] = read(id); });
+        return s;
+    }
+    Object.keys(cfgs).forEach(function(id) { window._fwRenderers.chart(id, cfgs[id]); });
+    out.push(snapshot());
+    steps.forEach(function(step) {
+        window._fwFilterEngine.setFilter('ds', 'f', step[0], 'equals', step[1]);
+        out.push(snapshot());
+    });
+    return out;
+}"""
+
+
+def _run_summary(page, cfgs, rows=None, steps=None):
+    return page.evaluate(_SUMMARY_HARNESS, {
+        "js": load_js("components/chart_base.js"), "cfgs": cfgs, "rows": rows, "steps": steps or [],
+    })
+
+
+_ROWS = [
+    {"day": "2026-04-05", "platform": "ios", "revenue": 10, "users": 5},
+    {"day": "2026-04-05", "platform": "web", "revenue": 20, "users": 5},
+    {"day": "2026-04-06", "platform": "ios", "revenue": 40, "users": 10},
+    {"day": "2026-04-06", "platform": "web", "revenue": 0, "users": 0},
+    {"day": "2026-04-07", "platform": "ios", "revenue": 60, "users": 20},
+    {"day": "2026-04-07", "platform": "web", "revenue": 90, "users": 20},
+]
+
+
+def _live(summary, **extra):
+    cfg = {"type": "chart", "dataset_id": "ds", "chartType": "line", "x": "day",
+           "value_cols": ["revenue"], "y_labels": ["Revenue"], "header_summary": summary}
+    cfg.update(extra)
+    return cfg
+
+
+def _summary(stat, **extra):
+    return {"stat": stat, "series": 0, "label": stat.title(), "format": "plain", **extra}
+
+
+def test_summary_describes_the_plotted_daily_totals_and_follows_filters(capture_page):
+    # Plotted per-day sums are 30, 40 and 150; the six raw rows would average 36.67.
+    cfgs = {"mean": _live(_summary("mean")), "sum": _live(_summary("sum")),
+            "last": _live(_summary("last")), "min": _live(_summary("min")),
+            "max": _live(_summary("max"))}
+    out = _run_summary(capture_page, cfgs, _ROWS, [("platform", "ios"), ("platform", "web")])
+    def values(step):
+        return {k: v[1] for k, v in step.items()}
+    assert values(out[0]) == {"mean": "73.33333333333333", "sum": "220", "last": "150",
+                              "min": "30", "max": "150"}
+    assert values(out[1]) == {"mean": "36.666666666666664", "sum": "110", "last": "60",
+                              "min": "10", "max": "60"}
+    assert values(out[2]) == {"mean": "36.666666666666664", "sum": "110", "last": "90",
+                              "min": "0", "max": "90"}
+    assert out[0]["mean"][0] == "Mean"
+
+
+def test_summary_of_ratio_series_is_the_mean_of_plotted_ratios(capture_page):
+    ratio = {"numerator": "revenue", "denominator": "users", "label": "ARPU"}
+    cfgs = {"mean": _live(_summary("mean"), ratios=[ratio], value_cols=["revenue", "users"]),
+            "last": _live(_summary("last"), ratios=[ratio], value_cols=["revenue", "users"])}
+    out = _run_summary(capture_page, cfgs, _ROWS, [("platform", "web")])
+    # Days: 30/10 = 3, 40/10 = 4, 150/40 = 3.75 -> mean 3.5833; the weighted ratio would be 220/60.
+    assert out[0]["mean"][1] == "3.5833333333333335"
+    assert out[0]["last"][1] == "3.75"
+    # Web only: 20/5 = 4, the 0/0 day is not plottable and not counted as zero, 90/20 = 4.5.
+    assert out[1]["mean"][1] == "4.25"
+    assert out[1]["last"][1] == "4.5"
+
+
+def test_summary_without_a_format_reads_like_the_charts_own_ratio_format(capture_page):
+    ratio = {"numerator": "revenue", "denominator": "users", "label": "ARPU"}
+    base = _live(_summary("last"), ratios=[ratio], value_cols=["revenue", "users"])
+    del base["header_summary"]["format"]
+    cfgs = {"decimal": {**base, "y_format": "decimal1"},
+            "money": {**base, "y_format": "currency"},
+            "explicit": {**base, "y_format": "decimal1",
+                         "header_summary": {**base["header_summary"], "format": "percent"}}}
+    out = _run_summary(capture_page, cfgs, _ROWS)[0]
+    assert {k: v[1] for k, v in out.items()} == {
+        "decimal": "3.8", "money": "$3.75", "explicit": "375.00%"}
+
+
+def test_summary_selects_the_named_series_by_position_or_label(capture_page):
+    rows = [{"day": "d1", "a": 1, "b": 100}, {"day": "d2", "a": 3, "b": 300}]
+    base = {"type": "chart", "dataset_id": "ds", "chartType": "line", "x": "day",
+            "value_cols": ["a", "b"], "y_labels": ["Alpha", "Beta"]}
+    cfgs = {
+        "first": {**base, "header_summary": _summary("mean", series=0)},
+        "second": {**base, "header_summary": _summary("mean", series=1)},
+        "byLabel": {**base, "header_summary": _summary("mean", series="Beta")},
+        "unknownLabel": {**base, "header_summary": _summary("mean", series="Gamma")},
+        "outOfRange": {**base, "header_summary": _summary("mean", series=2)},
+    }
+    out = _run_summary(capture_page, cfgs, rows)[0]
+    assert {k: v[1] for k, v in out.items()} == {
+        "first": "2", "second": "200", "byLabel": "200",
+        "unknownLabel": "—", "outOfRange": "—"}
+
+
+def test_summary_skips_missing_values_and_shows_a_dash_when_none_remain(capture_page):
+    def static(stat, data, **extra):
+        return {"type": "chart", "chartType": "line", "labels": ["a", "b", "c", "d"],
+                "datasets": [{"label": "S", "data": data}], "header_summary": _summary(stat, **extra)}
+    sparse = [None, 4, None, 8]
+    cfgs = {
+        "mean": static("mean", sparse), "sum": static("sum", sparse), "last": static("last", [4, 8, None, None]),
+        "min": static("min", sparse), "empty": static("mean", [None, None, None, None]),
+        "empty_sum": static("sum", []),
+        "nonfinite": static("mean", [None, "x", 2, 6]),
+        "zero": static("mean", [0, 0]),
+    }
+    out = _run_summary(capture_page, cfgs)[0]
+    assert {k: v[1] for k, v in out.items()} == {
+        "mean": "6", "sum": "12", "last": "8", "min": "4",
+        "empty": "—", "empty_sum": "—", "nonfinite": "4", "zero": "0"}
+
+
+def test_summary_survives_a_filter_that_removes_every_row_and_recovers(capture_page):
+    cfgs = {"s": _live(_summary("mean"))}
+    out = _run_summary(capture_page, cfgs, _ROWS, [("platform", "none"), ("platform", "ios")])
+    assert [step["s"][1] for step in out] == ["73.33333333333333", "—", "36.666666666666664"]
+
+
+def test_summary_uses_existing_formatters_and_renders_labels_as_text(capture_page):
+    nasty = '<img src=x onerror="window.__hit = 1">'
+    cfgs = {"cur": _live(_summary("sum", format="currency", label=nasty)),
+            "pct": _live(_summary("last", format="percent")),
+            "num": _live(_summary("max", format="number"))}
+    out = _run_summary(capture_page, cfgs, _ROWS)[0]
+    assert out["cur"] == [nasty, "$220.00"]
+    assert out["pct"][1] == "15000.00%"
+    assert out["num"][1] == "150"
+    assert capture_page.evaluate("document.querySelectorAll('img').length + (window.__hit || 0)") == 0
+
+
+def test_summary_is_not_touched_when_a_chart_configures_none(capture_page):
+    cfg = _live(None)
+    del cfg["header_summary"]
+    out = _run_summary(capture_page, {"plain": cfg}, _ROWS)[0]
+    assert out["plain"] == ["", ""]

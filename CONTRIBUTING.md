@@ -14,6 +14,11 @@ are supported identity sources; SAML is not implemented.
 
 ## Development
 
+Use a Git checkout with full history for the compatibility tests. They compare
+current output against committed framework baselines. For a shallow clone, run
+`git fetch --unshallow origin` before testing; a source archive does not include
+these historical fixtures. The framework and portal CI test jobs fetch full history.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # PowerShell: .venv\Scripts\Activate.ps1

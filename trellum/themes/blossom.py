@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 BlossomTheme = Theme(
+    text_positive="#34695a",
+    text_negative="#99435c",
+    text_warning="#745c37",
+    text_context="#675c6e",
+
     bg_main="#faf5ff",
     bg_card="#fff8fc",
     bg_card_hover="#f5eef8",

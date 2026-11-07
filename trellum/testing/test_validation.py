@@ -517,6 +517,31 @@ def test_duplicate_datasource_fails():
 # ---------------------------------------------------------------------------
 
 
+def test_scatter_points_skip_aggregate_grain_heuristic_but_keep_filter_coverage():
+    from trellum.components import DataSource, FilterBar, LineChart, ScatterChart
+    from trellum.reporting.diagnostics import compute_details
+
+    df = pd.DataFrame({'x': [1, 1, 2, 2], 'y': [10, 10, 20, 20],
+                       'platform': ['ios', 'android', 'ios', 'android']})
+    ctx = _make_ctx()
+    ctx.add_section('Points and aggregates', [
+        DataSource('points', df), DataSource('uncovered', df),
+        FilterBar('points', df, filters=[{'column': 'platform'}], propagate_to={'uncovered': {}}),
+        ScatterChart(df, 'x', 'y', title='Separate pairs', dataset_id='points'),
+        LineChart(df, 'x', 'y', title='Repeated aggregate', dataset_id='points'),
+        ScatterChart(df, 'x', 'y', title='Uncovered pairs', dataset_id='uncovered'),
+    ])
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
+    grain = _find_checks(result, check_id='chart-value-grain-mismatch')
+    assert [c.component for c in grain] == ['LineChart']
+    coverage = _find_checks(result, check_id='chart-filter-coverage')
+    assert [(c.component, c.dataset_id) for c in coverage] == [('ScatterChart', 'uncovered')]
+    scatter = [r for r in details['filter_matrix'] if r['chart_kind'] == 'ScatterChart']
+    assert all(r['static_value_columns'] == [] for r in scatter)
+    assert [f['status'] for r in scatter if r['dataset_id'] == 'points' for f in r['filters']] == ['active']
+
+
 def test_unit_indicator_column_is_not_a_grain_mismatch():
     """A literal 1-per-row column is a row counter, not a coarse merge.
 
@@ -547,6 +572,51 @@ def test_unit_indicator_column_is_not_a_grain_mismatch():
 # ---------------------------------------------------------------------------
 
 
+def test_constant_original_facts_keep_filter_coverage_without_coarse_join_inference():
+    from trellum.components import BarChart, DataSource, FilterBar
+    from trellum.reporting.diagnostics import compute_details
+
+    frame = pd.DataFrame({
+        "day": ["2026-06-12", "2026-06-12", "2026-06-13", "2026-06-13"],
+        "platform": ["iOS", "Android"] * 2,
+        "amount": [30, 30, 30, 30], "zero": [0, 0, 0, 0],
+        "daily_total": [50, 50, 70, 70],
+    })
+    ctx = _make_ctx()
+    ctx.add_section("Constant facts", [
+        DataSource("facts", frame), DataSource("uncovered", frame),
+        FilterBar("facts", frame, filters=[{"column": "platform"}],
+                  propagate_to={"uncovered": {}}),
+        BarChart(frame, "day", "amount", "Equal original facts", dataset_id="facts"),
+        BarChart(frame, "day", "zero", "Measured zeros", dataset_id="facts"),
+        BarChart(frame, "day", "daily_total", title="Coarse total", dataset_id="facts"),
+        BarChart(frame, "day", "amount", title="Uncovered facts", dataset_id="uncovered"),
+    ])
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
+    grain = _find_checks(result, check_id="chart-value-grain-mismatch")
+    assert len(grain) == 1 and "daily_total" in grain[0].message
+    coverage = _find_checks(result, check_id="chart-filter-coverage")
+    assert [(c.component, c.dataset_id) for c in coverage] == [("BarChart", "uncovered")]
+
+
+def test_hidden_native_bars_are_supported_but_unknown_renderers_still_warn():
+    from types import SimpleNamespace
+
+    from trellum.components import BarChart, Visible
+    from trellum.validation.checks.visibility import _check_visible_components
+    from trellum.validation.result import ValidationResult
+
+    frame = pd.DataFrame({"day": ["2026-06-12"], "amount": [30]})
+    native = Visible([BarChart(frame, "day", "amount", "Equal original facts", dataset_id="facts")], "view", "B")
+    custom = Visible([SimpleNamespace(dataset_id="facts")], "view", "B")
+    result = ValidationResult("hidden")
+    _check_visible_components([(native, "Native"), (custom, "Custom")],
+                              {"view": ["A", "B"]}, {"view": "A"}, result)
+    checks = _find_checks(result, check_id="live-chart-in-non-default-visible")
+    assert [(c.section, c.level) for c in checks] == [("Native", "info"), ("Custom", "warn")]
+
+
 def test_filterable_types_auto_discovered():
     """Verify dynamic discovery matches expected filterable components."""
     from trellum.validation import _get_filterable_types
@@ -555,6 +625,7 @@ def test_filterable_types_auto_discovered():
         "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart",
         "DoughnutChart", "HeatmapChart", "ScatterChart", "FunnelChart",
         "TreemapChart", "KpiRow", "DataTable", "ComparisonTable", "PivotTable",
+        "HierarchyTable", "CohortTable", "SankeyChart", "CalendarCoverage",
     }
     discovered = _get_filterable_types()
     assert discovered == expected, (

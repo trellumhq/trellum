@@ -218,9 +218,12 @@
             } else if (!isDoughnut) {
                 chart.data.datasets.forEach(function(ds, i) {
                     if (!ds._themeManaged) return;
+                    if (window._fwApplyPaletteSlot && window._fwApplyPaletteSlot(ds, chart.config.type, tc)) return;
                     var newColor = tc.chart_colors[i % tc.chart_colors.length];
                     ds.borderColor = newColor;
-                    if (chart.config.type === 'line') {
+                    if (ds._areaFill && '_fillOpacity' in ds) {
+                        ds.backgroundColor = ds._fillOpacity ? newColor + ds._fillOpacity : newColor;
+                    } else if (chart.config.type === 'line') {
                         ds.backgroundColor = newColor + '22';
                     } else {
                         ds.backgroundColor = newColor + 'cc';
@@ -235,7 +238,10 @@
                     }
                 });
             }
-            chart.update('none');
+            // Refresh Chart.js shared area/bar mark options on Grid re-entry.
+            chart.update(chart.data.datasets.some(function(ds) {
+                return Number.isInteger(ds._fwPaletteSlot);
+            }) ? undefined : 'none');
         });
     }
 
@@ -253,7 +259,7 @@
        Every new data-registering component belongs in this list. */
     var _PRIORITY_TYPES = {
         /* registrars: populate the filter engine */
-        data_source: true, scoped_data_source: true, live_data_source: true,
+        data_source: true, scoped_data_source: true, live_data_source: true, metric_view: true, period_comparison: true,
         /* filter UI: must exist before consumers read filtered rows */
         filter_bar: true,
         /* live consumers: cheap to render, and painting them late flashes */
@@ -280,6 +286,8 @@
         : null;
 
     function _renderComps(comps) {
+        // Optional calendar notes own their config-removal cleanup.
+        if (window._fwCalendarCoverage) window._fwCalendarCoverage.reconcile(comps);
         var epoch = workspace ? (window._fwWorkspaceRenderEpoch = (window._fwWorkspaceRenderEpoch || 0) + 1) : 0;
         var deferred = [], pendingVisible = 0, deferredDone = false, completed = false;
         var only = workspace && new URLSearchParams(location.search).get('only');

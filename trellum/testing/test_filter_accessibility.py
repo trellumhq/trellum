@@ -103,9 +103,9 @@ def test_native_plugin_names_and_keyboard(_playwright, filter_url):
         trigger.press('Enter')
         expect(bar.locator('.fw-date-input[data-edge="min"]')).to_be_visible()
         expect(bar.locator('.fw-date-input[data-edge="max"]')).to_be_visible()
-        expect(bar.locator('.fw-date-input[data-edge="min"]')).to_have_accessible_name('Event date From')
-        expect(bar.get_by_role('combobox', name='Event date From time')).to_be_visible()
-        expect(bar.get_by_role('combobox', name='Event date To time')).to_be_visible()
+        expect(bar.locator('.fw-date-input[data-edge="min"]')).to_have_accessible_name('Event date Start date')
+        expect(bar.get_by_role('combobox', name='Event date Start time')).to_be_visible()
+        expect(bar.get_by_role('combobox', name='Event date End time')).to_be_visible()
         bar.locator('.fw-date-input[data-edge="min"]').fill('2026-10-01')
         trigger.press('Escape')
         for group_name, button in [('Platform', 'West'), ('Flag', 'Only East')]:
@@ -160,12 +160,13 @@ def test_live_date_labels_survive_arming(_playwright, date_server):
         _assert_native_names(page)
         page.get_by_role('button', name='Date', exact=False).first.click()
         field = page.locator('.fw-date-input[data-edge="min"]')
-        expect(field).to_have_accessible_name('Date From')
+        expect(field).to_have_accessible_name('Date Start date')
         expect(field).to_be_enabled()
         expect(field).to_be_visible()
         field.fill('2026-10-30')
         field.press('Tab')
-        expect(page.locator('.fw-date-trigger')).to_contain_text('2026-10-30')
+        expect(page.locator('.fw-date-trigger')).to_contain_text('Oct 30, 2026')
+        expect(page.locator('.fw-date-trigger')).to_have_attribute('title', '2026-10-30 – 2026-11-02')
     finally:
         page.close()
 

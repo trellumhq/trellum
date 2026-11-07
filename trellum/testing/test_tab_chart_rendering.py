@@ -49,7 +49,7 @@ def tab_page():
             css, js = ctx.collect_assets()
             runtime = generate_js_runtime('light', THEME_REGISTRY, refresh_seconds=0)
             vendor = Path(trellum.__file__).resolve().parent / 'static/vendor'
-            html = f'''<!doctype html><html><head><style>{(vendor / "slimselect.css").read_text()}{css}</style>
+            html = f'''<!doctype html><html><head><style>{DefaultTheme.to_css_vars(':root')}{(vendor / "slimselect.css").read_text()}{css}</style>
                 <script src="/chart.js"></script><script src="/slimselect.js"></script>
                 </head><body>{markup}
                 <script>window._chartInstances = {{}}; window._fwRenderers = {{}};</script>

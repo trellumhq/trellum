@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from trellum.assets import STATIC_ROOT, load_js
+from trellum.assets import STATIC_ROOT, load_css, load_js
 from trellum.demo.tools.make_fixtures import build_fact_daily, write_events_yaml
 
 
@@ -151,8 +151,8 @@ def test_crowded_event_details_in_image_and_pdf_export(annotation_page):
         window.exportClones = [];
         window.html2canvas = (el, options) => {
             var onclone = options.onclone;
-            options.onclone = doc => {
-                onclone(doc);
+            options.onclone = async (doc, root) => {
+                await onclone(doc, root);
                 exportClones.push({open:doc.querySelector('details').open,
                     events:doc.querySelectorAll('details li').length});
             };
@@ -173,3 +173,25 @@ def test_crowded_event_details_in_image_and_pdf_export(annotation_page):
     # Per-chart canvas downloads retain all bands/markers and clean labels.
     image = page.evaluate('chart.toBase64Image()')
     assert image.startswith('data:image/png;base64,')
+
+
+@pytest.mark.parametrize('mode', ['grouped', 'adaptive'])
+def test_owned_events_skip_full_label_fallback(annotation_page, mode):
+    page = annotation_page
+    page.add_style_tag(content=load_css('components/adaptive_events.css'))
+    page.evaluate('''mode => {
+        const labels=chart.data.labels, datasets=chart.data.datasets;chart.destroy();
+        const dated=[], annotations=_buildAnnotations(_reportData._events,labels,dated);
+        window.chart=new Chart(document.getElementById('chart'),{
+            type:'line',data:{labels,datasets},options:{animation:false,maintainAspectRatio:false,
+                plugins:{legend:{display:false},annotation:{annotations}}},
+            plugins:[_fwLineEventLabelsPlugin(null,dated,mode)]});
+        _chartInstances.chart=chart;_refreshAllAnnotations();
+    }''', mode)
+    assert not _labels(page)
+    assert page.locator('.fw-annotation-details').count() == 0
+    assert page.evaluate('chart._fwDatedEvents.length') == 12
+    owner = '.fw-event-details' if mode == 'grouped' else '.fw-adaptive-events'
+    assert page.locator(owner).count() == 1
+    page.evaluate('chart.destroy()')
+    assert page.locator(owner).count() == 0

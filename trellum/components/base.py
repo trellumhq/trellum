@@ -8,6 +8,7 @@ render_html() generically — no hardcoded dispatch dict needed.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -125,6 +126,28 @@ class RenderContext:
         #: param bindings into the LiveDataSource's registered config and to
         #: know whether it must render its live/standalone posture at all.
         self.live_datasets: dict[str, dict] = {}
+        # Only the directly rendered Grid tile owns this fallback. Keep the
+        # reference alive in its scope rather than retaining Python object ids.
+        self._grid_color_owner: tuple[Any, int] | None = None
+
+    @contextmanager
+    def grid_color_scope(self, component: Any, slot: int | None):
+        previous = self._grid_color_owner
+        self._grid_color_owner = (component, slot) if slot is not None else None
+        try:
+            yield
+        finally:
+            self._grid_color_owner = previous
+
+    def grid_color_slot(self, component: Any) -> int | None:
+        owner = self._grid_color_owner
+        return owner[1] if owner is not None and owner[0] is component else None
+
+    def grid_color(self, component: Any) -> str | None:
+        slot = self.grid_color_slot(component)
+        if slot is None or not self.theme.chart_colors:
+            return None
+        return self.theme.chart_colors[slot % len(self.theme.chart_colors)]
 
     def next_id(self) -> str:
         self._counter += 1
@@ -184,6 +207,7 @@ class RenderContext:
         self._pending_chunks = {}
         self._chunk_manifests = {}
         self.live_datasets = {}
+        self._grid_color_owner = None
 
     @property
     def component_data(self) -> dict[str, dict]:

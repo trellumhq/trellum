@@ -26,6 +26,151 @@
     }
     function _fwLoadExportLibs(names) { return Promise.all(names.map(_fwLoadExportLib)); }
 
+    // html2canvas 1.4.1 parses legacy colors only. Resolve modern computed
+    // colors through the browser, with one cache per capture. Canvas serializes
+    // relative sRGB without premultiplying/quantizing alpha through pixel reads.
+    function _fwCaptureColorConverter() {
+        var cache = new Map();
+        var context = document.createElement('canvas').getContext('2d');
+        return function(value) {
+            if (/^(?:rgba?|hsla?)\(/i.test(value) || /^#/.test(value) || value === 'transparent') return value;
+            if (/^[a-z]+$/i.test(value) && value.toLowerCase() !== 'currentcolor' && CSS.supports('color', value)) return value;
+            if (cache.has(value)) return cache.get(value);
+            var relative = 'color(from ' + value + ' srgb r g b / alpha)';
+            if (!context || /\bcurrentcolor\b|\bvar\s*\(/i.test(value) || !CSS.supports('color', relative))
+                throw new Error('Image capture cannot convert CSS color: ' + value);
+            context.fillStyle = '#010203';
+            context.fillStyle = relative;
+            var match = /^color\(srgb\s+([^\s]+)\s+([^\s]+)\s+([^\s/)]+)(?:\s*\/\s*([^\s)]+))?\)$/.exec(context.fillStyle);
+            if (!match) throw new Error('Image capture cannot convert CSS color: ' + value);
+            var channels = match.slice(1, 4).map(Number);
+            var alpha = match[4] === undefined ? 1 : Number(match[4]);
+            if (!channels.every(Number.isFinite) || !Number.isFinite(alpha))
+                throw new Error('Image capture cannot convert CSS color: ' + value);
+            var result = 'rgba(' + channels.map(function(n) {
+                return Math.round(Math.max(0, Math.min(1, n)) * 255);
+            }).join(', ') + ', ' + Math.max(0, Math.min(1, alpha)) + ')';
+            cache.set(value, result);
+            return result;
+        };
+    }
+
+    // Walk computed function tokens, keeping quoted strings and URL contents
+    // opaque. In particular, commas in nested gradients are not stop boundaries.
+    function _fwCapturePaint(value, convert, gradient) {
+        var modern = /^(?:color|color-mix|lab|lch|oklab|oklch|light-dark)$/i;
+        var out = '', i = 0;
+        while (i < value.length) {
+            var start = i, quote = value[i];
+            if (quote === '"' || quote === "'") {
+                i++;
+                while (i < value.length) {
+                    if (value[i] === '\\') i += 2;
+                    else if (value[i++] === quote) break;
+                }
+            } else if (/[a-z_-]/i.test(value[i])) {
+                while (i < value.length && /[a-z0-9_-]/i.test(value[i])) i++;
+                var name = value.slice(start, i);
+                if (value[i] === '(') {
+                    var inner = ++i, depth = 1, q = '';
+                    while (i < value.length && depth) {
+                        var c = value[i++];
+                        if (c === '\\') i++;
+                        else if (q) { if (c === q) q = ''; }
+                        else if (c === '"' || c === "'") q = c;
+                        else if (c === '(') depth++;
+                        else if (c === ')') depth--;
+                    }
+                    if (depth) throw new Error('Image capture cannot parse computed paint: ' + value);
+                    var token = value.slice(start, i);
+                    if (modern.test(name)) {
+                        var color = convert(token);
+                        if (gradient) { gradient.modern = true; gradient.colors.add(color); }
+                        out += color;
+                    } else if (name.toLowerCase() === 'url') out += token;
+                    else {
+                        var stops = /gradient$/i.test(name) ? {modern: false, colors: new Set()} : gradient;
+                        if (stops && /^(?:rgba?|hsla?)$/i.test(name)) stops.colors.add(token);
+                        var contents = _fwCapturePaint(value.slice(inner, i - 1), convert, stops);
+                        // Modern gradient interpolation can differ from the
+                        // vendor's legacy canvas gradients. Uniform stops (the
+                        // native table rules) are exact; do not silently alter
+                        // a custom multicolor gradient's interpolation.
+                        if (stops && stops !== gradient && stops.modern && stops.colors.size > 1)
+                            throw new Error('Image capture cannot preserve modern multicolor gradient interpolation.');
+                        out += name + '(' + contents + ')';
+                    }
+                    continue;
+                }
+                if (gradient && name.toLowerCase() === 'transparent') gradient.colors.add('transparent');
+            } else i++;
+            out += value.slice(start, i);
+        }
+        return out;
+    }
+
+    function _fwCaptureCompatible(target, options) {
+        var convert = _fwCaptureColorConverter();
+        var frames = [], existing = new Set(document.querySelectorAll('iframe.html2canvas-container'));
+        // The iframe cannot inherit :hover. Retain the currently painted native
+        // table row backgrounds, including threshold/alternating intersections.
+        var hoveredRows = [];
+        target.querySelectorAll('.fw-data-table tbody tr:hover').forEach(function(row) {
+            var host = row.closest('.fw-table-scroll');
+            if (host && host.id) hoveredRows.push({id: host.id, index: row.sectionRowIndex,
+                colors: Array.from(row.cells).map(function(cell) { return getComputedStyle(cell).backgroundColor; })});
+        });
+        function cleanup() { frames.forEach(function(frame) { frame.remove(); }); }
+        options.backgroundColor = convert(options.backgroundColor);
+        var originalOnclone = options.onclone;
+        options.onclone = async function(doc, root) {
+            var frame = doc.defaultView.frameElement;
+            if (frame && frames.indexOf(frame) < 0) frames.push(frame);
+            // Caller changes (such as full event disclosures) must precede
+            // computed-paint conversion and retain their rejection/cleanup path.
+            if (originalOnclone) await originalOnclone.call(this, doc, root);
+            if (window._fwPrepareEventCapture) window._fwPrepareEventCapture(doc, root, options.scale);
+            hoveredRows.forEach(function(row) {
+                var host = doc.getElementById(row.id);
+                var cloned = host && host.querySelectorAll('tbody tr')[row.index];
+                if (!cloned || cloned.cells.length !== row.colors.length)
+                    throw new Error('The report changed while capture was rendering. Capture the updated view again.');
+                row.colors.forEach(function(color, i) { cloned.cells[i].style.setProperty('background-color', convert(color), 'important'); });
+            });
+            // The vendor has already materialized ::before/::after as elements,
+            // with computed styles. Include them, inherited/currentColor paint,
+            // and the document backgrounds that its parser reads separately.
+            var nodes = new Set([doc.documentElement, doc.body, root]);
+            root.querySelectorAll('*').forEach(function(el) { nodes.add(el); });
+            var changes = [];
+            nodes.forEach(function(el) {
+                var style = doc.defaultView.getComputedStyle(el);
+                for (var i = 0; i < style.length; i++) {
+                    var property = style[i];
+                    if (property.indexOf('--') === 0 || (!/color$/.test(property)
+                        && ['background-image', 'box-shadow', 'text-shadow'].indexOf(property) < 0)) continue;
+                    var value = style.getPropertyValue(property);
+                    var compatible = _fwCapturePaint(value, convert);
+                    if (compatible !== value) changes.push([el, property, compatible]);
+                }
+            });
+            // Read every inherited/currentColor value before rounding any
+            // ancestor, so descendants keep their original computed paint.
+            changes.forEach(function(change) { change[0].style.setProperty(change[1], change[2], 'important'); });
+        };
+        var result;
+        try { result = html2canvas(target, options); }
+        catch (error) { result = Promise.reject(error); }
+        // The vendor appends its iframe synchronously, but does not destroy it
+        // on rejection (including an onclone error). Own only this call's clones.
+        document.querySelectorAll('iframe.html2canvas-container').forEach(function(frame) {
+            if (!existing.has(frame) && frames.indexOf(frame) < 0) frames.push(frame);
+        });
+        return Promise.resolve(result).then(function(canvas) { cleanup(); return canvas; }, function(error) {
+            cleanup(); throw error;
+        });
+    }
+
     function _fwExportCapture(cb, libs) {
         var btnLoad = document.getElementById('fwExportBtn');
         if (btnLoad) btnLoad.classList.add('running');
@@ -42,6 +187,10 @@
     function _fwExportCaptureNow(cb) {
         var container = document.querySelector('.fw-container');
         if (!container) return;
+        var metricError = _metricViewCaptureError(container, _analysisComponents().components);
+        // Authored calendar context owns its snapshot-completion status.
+        if (!metricError && window._fwCalendarCoverage) metricError = window._fwCalendarCoverage.captureError(container, _analysisComponents().components);
+        if (metricError) { _analysisMessage(metricError, true); return; }
         var btn = document.getElementById('fwExportBtn');
         if (btn) btn.classList.add('running');
         var slug = document.body.getAttribute('data-report-slug') || 'report';
@@ -56,7 +205,7 @@
             });
         });
 
-        html2canvas(container, {
+        Promise.resolve().then(function() { return _fwCaptureCompatible(container, {
             backgroundColor: getComputedStyle(document.body).backgroundColor,
             scale: 2,
             useCORS: true,
@@ -65,7 +214,7 @@
             onclone: function(doc) {
                 doc.querySelectorAll('.fw-annotation-details').forEach(function(details) { details.open = true; });
             },
-        }).then(function(canvas) {
+        }); }).then(function(canvas) {
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');
             cb(canvas, slug);
@@ -73,7 +222,7 @@
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');
             console.error('Export failed:', err);
-            _analysisMessage('The report could not be captured.', true);
+            _analysisMessage(err && err.message ? err.message : 'The report could not be captured.', true);
         });
     }
 
@@ -152,10 +301,26 @@
             && style.opacity !== '0';
     }
 
+    function _monthlyAverageCaptureGuard(target) {
+        var canvases = target.matches('canvas') ? [target] : target.querySelectorAll('canvas');
+        var components = window._reportData && window._reportData.components || {};
+        for (var canvas of canvases) {
+            var cfg = components[canvas.id], chart = window._chartInstances && window._chartInstances[canvas.id];
+            // Inspect the declaration too: lazy rendering must not bypass ownership.
+            if (!(cfg && cfg.monthly_average) && !(chart && chart._fwMonthlyAverage)) continue;
+            if (chart && !chart.isDatasetVisible(0)) continue;
+            var coverage = document.getElementById(canvas.id + '-monthly-average');
+            if (coverage && target.contains(coverage)) continue;
+            if (!coverage && target.classList.contains('fw-section')) continue;
+            return 'Capture the report section to include monthly-average coverage.';
+        }
+        return '';
+    }
+
     function _analysisTargets() {
         var out = [];
         document.querySelectorAll('.fw-chart-container').forEach(function(el) {
-            if (el.querySelector('canvas') && _analysisVisible(el)) out.push(el);
+            if (el.querySelector('canvas') && _analysisVisible(el) && !_monthlyAverageCaptureGuard(el)) out.push(el);
         });
         document.querySelectorAll('.fw-section').forEach(function(el) {
             if (_analysisVisible(el)) out.push(el);
@@ -296,8 +461,10 @@
         var parents = {};
         Object.keys(components).forEach(function(id) {
             var cfg = components[id];
-            if (cfg && cfg.type === 'scoped_data_source' && cfg.dataset_id && cfg.parent_id)
+            if (cfg && (cfg.type === 'scoped_data_source' || cfg.type === 'metric_view') && cfg.dataset_id && cfg.parent_id)
                 parents[cfg.dataset_id] = cfg.parent_id;
+            if (cfg && cfg.type === 'period_comparison')
+                (cfg.outputs || []).forEach(function(ds) { parents[ds] = cfg.parent_id; });
         });
         var datasets = {};
         roots.forEach(function(root) {
@@ -311,7 +478,7 @@
                 dsId = parents[dsId];
             }
         });
-        Object.keys(datasets).forEach(function(dsId) {
+        Object.keys(datasets).sort().forEach(function(dsId) {
             if (window.fw.filterEngine && window.fw.filterEngine.isReady(dsId))
                 filters[dsId] = window.fw.filterEngine.getFilterState(dsId);
         });
@@ -338,23 +505,54 @@
             || JSON.stringify(current.filters) !== JSON.stringify(snapshot.filters);
     }
 
+    function _metricViewCaptureError(target, components) {
+        var derived = {};
+        Object.keys(components).forEach(function(id) {
+            var cfg = components[id];
+            if (cfg.type === 'metric_view') derived[cfg.dataset_id] = 'metric';
+            if (cfg.type === 'period_comparison') (cfg.outputs || []).forEach(function(ds) { derived[ds] = 'period'; });
+        });
+        var roots = [target].concat(Array.from(target.querySelectorAll('[data-fw-kind], canvas')));
+        for (var i = 0; i < roots.length; i++) {
+            var cfg = components[roots[i].id];
+            if (!cfg || !derived[cfg.dataset_id] || !_analysisVisible(roots[i])) continue;
+            var runtime = derived[cfg.dataset_id] === 'period' ? window._fwPeriodComparison : window._fwMetricViews;
+            var state = runtime && runtime.status(cfg.dataset_id);
+            if (!state || !state.ready || !window._fwFilterEngine.isReady(cfg.dataset_id))
+                return state && state.reason || 'Metric result unresolved';
+        }
+        return '';
+    }
+
     function _analysisReady(target, components) {
+        var metricError = _metricViewCaptureError(target, components);
+        if (metricError) return metricError;
         var roots = [];
         if (target.matches('[data-fw-kind]')) roots.push(target);
         Array.prototype.push.apply(roots, target.querySelectorAll('[data-fw-kind]'));
         if (target.matches('canvas')) roots.push(target);
         Array.prototype.push.apply(roots, target.querySelectorAll('canvas'));
         var chartTypes = {chart: true, line: true, doughnut: true, funnel: true,
-            scatter: true, heatmap: true, treemap: true};
-        var nonVisual = {data_source: true, scoped_data_source: true,
+            scatter: true, heatmap: true, treemap: true, sankey: true};
+        var nonVisual = {data_source: true, scoped_data_source: true, metric_view: true, period_comparison: true,
             live_data_source: true, raw_html: true};
         for (var i = 0; i < roots.length; i++) {
             var root = roots[i];
             if (!_analysisVisible(root)) continue;
             var cfg = components[root.id];
-            if (!cfg || !cfg.type || nonVisual[cfg.type]) continue;
+            if (!cfg || !cfg.type) continue;
+            if (nonVisual[cfg.type]) continue;
             if (cfg.dataset_id && window.fw.filterEngine && !window.fw.filterEngine.isReady(cfg.dataset_id))
                 return 'This section is still loading its data. Wait and try again.';
+            if (cfg.type === 'calendar_coverage' && root.dataset.coverageReady !== 'true')
+                return 'Calendar coverage is still resolving its source snapshot.';
+            if (cfg.type === 'sankey') {
+                var sankey = root.closest('.fw-sankey');
+                var sankeyState = sankey && sankey.dataset.sankeyState;
+                if (sankeyState === 'invalid')
+                    return sankey.querySelector('.fw-sankey-state').textContent || 'Sankey data is invalid.';
+                if (sankeyState === 'empty' || sankeyState === 'zero') continue;
+            }
             if (chartTypes[cfg.type] && !(window._chartInstances || {})[root.id])
                 return 'A chart in this section has not finished rendering. Scroll it into view, wait, and try again.';
             if (!chartTypes[cfg.type] && !root.childElementCount && !(root.textContent || '').trim())
@@ -366,6 +564,10 @@
             if (!_analysisVisible(canvas)) continue;
             var canvasConfig = components[canvas.id];
             if (!canvasConfig || !chartTypes[canvasConfig.type]) continue;
+            if (canvasConfig.type === 'sankey') {
+                var owner = canvas.closest('.fw-sankey');
+                if (owner && (owner.dataset.sankeyState === 'empty' || owner.dataset.sankeyState === 'zero')) continue;
+            }
             var chart = (window._chartInstances || {})[canvas.id];
             if (!chart || !canvas.width || !canvas.height)
                 return 'A chart in this section has not finished rendering. Wait for it to appear, then capture again.';
@@ -397,7 +599,11 @@
         var title = target.querySelector('.fw-chart-title');
         if (!title && target.classList.contains('fw-chart-container')) {
             var previous = target.previousElementSibling;
+            if (previous && previous.classList.contains('fw-event-rail')) previous = previous.previousElementSibling;
             if (previous && previous.classList.contains('fw-chart-title')) title = previous;
+            else if (previous && previous.classList.contains('fw-chart-head')) {
+                title = previous.querySelector('.fw-chart-title');
+            }
         }
         if (title) return title.textContent.trim();
         var section = target.closest('.fw-section');
@@ -492,6 +698,8 @@
     }
 
     function _analysisRender(target) {
+        var ownership = _monthlyAverageCaptureGuard(target);
+        if (ownership) return Promise.reject(new Error(ownership));
         var pending = _analysisPending();
         if (pending) return Promise.reject(new Error(pending));
         if (!document.fonts || !document.fonts.ready)
@@ -507,6 +715,8 @@
         return _fwLoadExportLib('html2canvas').then(function() { return document.fonts.ready; }).then(function() { return new Promise(function(resolve) {
                 requestAnimationFrame(function() { requestAnimationFrame(resolve); });
             }); }).then(function() { return _analysisFinalRender(target); }).then(function() {
+                var ownership = _monthlyAverageCaptureGuard(target);
+                if (ownership) throw new Error(ownership);
                 var recheck = _analysisPending();
                 if (recheck) throw new Error(recheck);
                 if (!target.isConnected || !_analysisVisible(target))
@@ -522,7 +732,7 @@
                 });
                 var restore = function() { hidden.forEach(function(row) { row[0].style.display = row[1]; }); };
                 return Promise.resolve().then(function() {
-                    return html2canvas(target, {backgroundColor: getComputedStyle(document.body).backgroundColor,
+                    return _fwCaptureCompatible(target, {backgroundColor: getComputedStyle(document.body).backgroundColor,
                         scale: 2, useCORS: true, logging: false});
                 }).then(function(image) {
                     var pending = _analysisPending();

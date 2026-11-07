@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 NordTheme = Theme(
+    text_positive="#d0dec4",
+    text_negative="#edd3d5",
+    text_warning="#efd6a5",
+    text_context="#d5dae1",
+
     bg_main="#2e3440",
     bg_card="#3b4252",
     bg_card_hover="#434c5e",

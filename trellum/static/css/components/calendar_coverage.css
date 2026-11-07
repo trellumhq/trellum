@@ -1,0 +1,4 @@
+.fw-calendar-coverage { color: var(--text-secondary); font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; margin: .5rem 0 1rem; }
+.fw-calendar-coverage p { margin: .25rem 0; }
+/* Only authored calendar titles need multiline room in the existing tooltip. */
+.fw-chart-tooltip.fw-calendar-tooltip { white-space: normal; overflow-wrap: anywhere; box-sizing: border-box; max-width: min(360px, calc(100vw - 24px)); }

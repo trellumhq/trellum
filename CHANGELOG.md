@@ -13,6 +13,230 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Bound large treemap detail lists to 200 rows per page while retaining every
+  leaf, and reject oversized cohort and period inputs before expanding them.
+  Preserve chart and table focus during redraws and retire removed chart subscriptions.
+
+- Add optional native linear trend fits to LineChart and ScatterChart, with
+  filter-reactive populations, descriptive fit details, bounded input handling
+  and source-colored overlays. Existing charts keep trends disabled.
+- Optional `Grid(color_cycle="theme")` assigns stable theme palette positions
+  to direct single-metric Line/Area/Bar tiles across filtering and theme changes.
+  Existing Grid colors and explicit/category colors remain unchanged. The
+  showcase and Player Overview opt into the setting for their six-chart grids.
+
+- Ordinary LineCharts now use readable adaptive event controls with local exact
+  details and collision grouping. Explicit grouped/full modes remain available;
+  native captures include clustered event identities without changing screen state.
+
+- A curated component tour with six purpose-based navigation cards and distinct
+  table/chart views. Detailed developer fixtures remain available in source.
+- A native visual upgrade report with actual v0.9.5 comparisons and clear
+  automatic versus opt-in guidance, plus component-selection guidance for agents.
+- Monthly cohort retention, heatmap and weighted-total comparisons in the
+  Monetization demo; a native stage-count Sankey in Conversion; distinct
+  compact trend colors in Player Overview.
+- Optional UTC calendar coverage notes and exact bucket hover context for
+  BarChart, with a native eight-chart example.
+
+- Optional bounded UTC period comparisons and per-series original-date context
+  for ordinary LineChart tooltips, with a native flat/grouped comparison example.
+
+- Optional ComboChart header summaries for one explicit axis and final series,
+  preserving chart values, legends, formats and CSV.
+
+- Optional Sankey header summaries for complete paths or a declared adjacent
+  boundary, preserving exact supplied records and existing graph admission.
+
+- Optional TreemapChart header summaries over final leaf entries, with
+  conservative numeric eligibility and native filtered examples.
+
+- Optional StackedBar header summaries for one exact final bar series in
+  original units, with explicit input eligibility.
+
+- Optional HeatmapChart headers summarizing current aggregate cell entries,
+  with explicit population scope and conservative numeric eligibility.
+
+- Bounded snapshot MetricView summaries, optional MiniKpi result bindings and
+  ordinary DataTable column formats, with a Marketing geography example.
+- Optional ScatterChart header summaries for point-entry counts and x/y
+  minimum, maximum or unweighted mean, preserving existing plots.
+
+- Optional shared controls and fixed plot heights for StackedBar, with native
+  Traffic Composition examples and validation of shared control owners.
+
+- Optional FunnelChart header summaries for a named stage, largest current
+  stage entry or stage-entry count, with native examples and validation.
+
+- Optional DoughnutChart header summaries for current category-entry totals,
+  maxima and counts, with explicit scope, guarded amounts and native examples.
+
+- Ordinary LineCharts now distinguish no-result states and identify retained
+  live selections; `result_presentation=False` preserves the previous presentation.
+- Live-query KPI rows and ordinary tables identify displayed selections and
+  returned-row scope, with `live_context=False` available for existing layouts.
+  Added native Line result examples and a standalone Live Result Examples demo.
+
+- Native synthetic acquisition Overview example with seven KPI cards, compact
+  daily summaries, doughnut breakdowns and collapsible detail in the component
+  showcase. Player Overview adds six compact daily trends and collapsible
+  Engagement/Revenue details while preserving its existing data and cards.
+
+- Per-dataset live-result identity and subscriptions, with owned retries,
+  abortable requests and a 30-second client deadline. Redraws retain queried
+  rows; source replacement and stale responses cannot overwrite newer results.
+  Existing report layouts and live-query endpoint contracts remain unchanged.
+
+- Optional Sankey charts for supplied complete paths or adjacent transitions,
+  with exact details, bounded snapshot validation, native filters and CSV export.
+  Native captures support completed empty and zero-flow results.
+
+- Optional CohortTable for precomputed observations and supplied forecasts, with
+  provenance, whole-cohort filtering, sampled milestones and raw CSV export.
+  Added independent native examples; existing PivotTable selectors are unchanged.
+
+- Optional HierarchyTable with expandable additive leaf-fact summaries, exact
+  decimal totals, explicit completeness states and CSV independent of expansion.
+  Snapshot validation rejects ambiguous identities and incomplete source scope;
+  existing table defaults and selectors remain unchanged. Added native examples.
+
+- Optional keyword-only BarChart and AreaChart header summaries with explicit
+  plotted-series scope, validated series selection and statistic formatting.
+  Added native examples; default plots and existing LineChart summaries remain
+  unchanged.
+
+- Optional keyword-only DataTable row drill-down through existing dropdown
+  owners, with raw string keys, clearable selection context and explained
+  local-search/report-filter empty results. Child dropdowns can explicitly
+  clear on parent changes. Added native daily observation examples and
+  validation excluding live-connected drill-down; defaults and CSV stay intact.
+
+- Optional keyword-only DataTable header and declared total-footer pinning in a
+  bounded, keyboard-scrollable region. Defaults and comparison/workspace tables
+  remain unchanged; matching totals and native capture scope are preserved.
+
+- Optional keyword-only DataTable totals declare additive sums and weighted
+  ratios over matching delivered rows before display limits, using bounded
+  decimal arithmetic and independent completeness reasons. Added native
+  examples and API guidance; existing cells, CSV and wrapper totals stay intact.
+
+- Opt-in `DataTable.row_limit` selector with bounded All display and full-population CSV.
+
+- Optional observed-day monthly averages for ordinary daily LineChart and vertical
+  BarChart: explicit reporting intervals, complete additive daily inputs, clipped
+  guides and a native coverage table. Default plots and CSV remain unchanged.
+  Section captures include coverage; isolated opted-in analysis captures direct
+  authors to the report section. Added API guidance and synthetic native examples.
+
+- Optional keyword-only LineChart `series_availability` rules withhold incomplete
+  supplied observations as null gaps, preserving measured zeros and independent
+  sibling metrics. Static row positions and filtered bound sums/ratios are
+  supported; dynamic splits reject nonempty rules. Metric-labeled selected-data
+  reasons follow plot/month/event context and respect legend visibility.
+  Summaries and CSV use masked values. Added native examples and API guidance.
+
+- Add optional daily calendar-month labels and plot dividers to LineChart,
+  AreaChart, vertical BarChart, StackedBar and ComboChart; preserve default
+  output and supplied observations. Include native synthetic examples.
+
+- Optional keyword-only LineChart `forecast_series` styling for explicitly
+  supplied static, bound wide-series and bound ratio datasets. Selected lines
+  retain supplied data and gain dashed strokes, hollow theme-following markers
+  and a matching symbol on their existing legend chip. Empty declarations
+  preserve current output; dynamic stack splits are rejected. Added API and
+  upgrade guidance, plus deterministic native examples; generation and missing
+  value aggregation semantics are unchanged.
+
+- Optional keyword-only `category_colors` on dataset-bound LineChart/StackedBar
+  category splits and static/live DoughnutChart labels. Explicit shared domains
+  map string categories to theme palette slots, with per-chart fixed overrides
+  and conflict validation. Default payloads, values, ordering and chart geometry
+  are preserved; added native deterministic examples and API/upgrade guidance.
+
+- Optional keyword-only `header_context` text on every built-in chart, rendered
+  below the title/LineChart summary without changing plot dimensions. Context is
+  escaped, wraps in narrow panels and remains independent of report selections;
+  omitted and blank values add no markup.
+
+- Optional keyword-only DataTable and ComparisonTable `cell_shading` with
+  author-defined raw-unit targets and higher/lower direction, exact static
+  numeric boundaries, theme-relative fills, a wrapping target key and accessible
+  cell outcomes. Default appearance, colored-number rules and CSV remain intact;
+  added deterministic native table examples and API/upgrade guidance.
+
+- Keyword-only report Theme roles for favorable, unfavorable, forecast and context
+  small text, with authored colors for all thirteen built-in themes and legacy
+  aliases for custom themes. KPI status text and ComparisonTable auto colors use
+  these tones; palettes, authored rules, values and component layouts remain.
+  Added deterministic native status-text examples and API/upgrade guidance.
+
+- Horizontal report BarChart value columns with keyword-only `show_values`
+  control, plus optional StackedBar visible absolute totals and fitting normalized
+  percentage labels (both off by default). New stack context explains population
+  scope and label eligibility. Added deterministic bar showcase examples while
+  preserving plotted data, styles, heights, tooltips and CSV units.
+
+- Optional report KPI availability/completeness, declared cohort age with separate
+  observed/supplied forecast values, and explicit relative-percent or percentage-point
+  comparisons. Metric reasons sit below rows; unavailable comparisons retain current
+  values. Missing mixed-row constants and undefined legacy ratio comparisons display
+  dashes, while true zero auto changes are neutral. Added validated API documentation
+  and deterministic filterable KPI state examples.
+
+- ComboChart left/right axis descriptions and grouped native legend buttons with
+  bar/line symbols, separate controls for matching captions on opposite axes,
+  keyword-only unit descriptions, and deterministic live/static showcase examples.
+  Existing plotted data, scales, heights, nearest tooltips and CSV are preserved.
+
+- Report heatmaps use a theme-hue quantity scale for nonnegative cells, with
+  explicit global/relative scale context, distinct absent coordinates and
+  default fitted values (keyword-only `show_values=False` hides them). Added
+  deterministic heatmap examples and responsive axis-slot sizing; existing
+  aggregation, palettes and data/export boundaries remain.
+
+- Report treemap hierarchy colors, an encoding key, fitting labels and native
+  expandable full-path details with exact values. Keyword-only optional tile
+  shares default off and use the complete eligible supplied/filtered population.
+  Existing geometry, supplied-color behavior and CSV scope remain; deterministic
+  treemap examples and sizing/color limitations are documented.
+
+- Compact PivotTable rows, grouped category headers and a distinct grand-total
+  band, plus keyword-only opt-in header/first-dimension freezing. Selectors,
+  calculations and CSV scope remain unchanged.
+
+- Ordinary report LineChart dots adapt to current plot spacing while isolated
+  finite measurements remain visible, including zero beyond 400 labels. Optional
+  keyword-only `tension` enables curves (straight by default), with validation and
+  deterministic density, gap, interpolation and filtered-ratio examples.
+
+- Optional explicit report ComparisonTable context for supplied periods, metric
+  units, favorable directions and unavailable reasons, with textual change
+  outcomes and static/filterable comparison examples. Raw CSV units are retained.
+
+- Compact report doughnut rings with wrapping value/share legends, keyboard
+  visibility controls, optional labeled center totals and explicit value formatting.
+  Shares and CSV retain all current-result categories; total/share context explains
+  empty, zero, incomplete, signed and nonfinite inputs. Added deterministic
+  doughnut showcase examples, honored static percentage-label options, and
+  enabled CSV downloads in reports containing only doughnut charts.
+
+- Added optional alignment, full-number and precision presentation to KPI
+  components, stacked MiniKpi labels, and mobile expansion for filtered KPI rows.
+- Standalone report `Dropdown` labels, searchable wrapping choices and disabled
+  empty feedback; underlined wrapping `TabGroup` tabs, searchable view selectors
+  and an optional panel-width-responsive `sidebar` mode. Nested and sibling views
+  preserve independent state, URL restoration and chart visibility.
+- A database-free report component showcase in the demo gallery, with interactive
+  charts, layouts, KPI presentation, report controls, table search/export and
+  date-range examples.
+- `LineChart(height=...)`: the plotting area is 220px (`"balanced"`, the
+  default) at every viewport width, with optional `"compact"` (160px) and
+  `"roomy"` (320px) sizes. The title is now kept in tile grids. Other charts keep
+  their sizes.
+- `LineChart(header_summary={...})`: an optional right-aligned mean, sum, last,
+  min or max of one plotted series, recomputed from the filtered, aggregated
+  series on every update, with an em dash when nothing is plottable. New
+  validator checks `line-chart-height-invalid` and `line-chart-summary-invalid`.
 - Seed editable source/metric context and investigation guidance during project
   setup and demo installation, preserving existing notes and ignoring local
   analysis result exports by default. Removal tracks files actually created by
@@ -36,6 +260,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   were; edited or unparseable files are kept and reported, with exit status 1.
   `--remove` is refused for the other setup modes before anything is written.
 
+- Structured assistant answer review with bounded corrections, evidence cell reconciliation and private draft handling before chat delivery.
+
+- Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
+- Optional canonical metric calculations with explicit report bindings, period and freshness checks, and structured evidence cards.
+- Offline assistant evaluation fixtures and a scorer for supplied structured captures, with model accuracy reported separately from calculation checks.
+
 ### Changed
 
 - Structure AI alert explanations into a summary, why it matters, next check, and supporting figures across the run log, draft preview, and email.
@@ -46,6 +276,49 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Setup and removal keep the line endings and trailing newlines of files you
   already have, and no longer escape non-ASCII text in the JSON files they
   update.
+
+- Enable keyboard sorting for ordinary report tables, reveal chart CSV controls
+  on keyboard focus, and keep Toggle focus outlines inside their boundaries.
+
+- AreaChart defaults use lighter overlapping fills and translucent additive
+  stacked bands that follow the preceding visible series. The component
+  showcase includes deterministic static and filterable examples.
+
+- Present report date ranges with readable locale-aware dates, paired endpoint
+  labels, quieter presets, recorded-date context, unavailable-bound feedback
+  and viewport-bounded keyboard-accessible pickers. Range calculations and
+  URL behavior are preserved.
+
+- Report comparison tables use a subtle theme-border group divider and primary
+  value emphasis, with the existing compact striped DataTable presentation.
+
+- Display report KPI comparisons as subtle pills within their existing line
+  height, and use readable tabular values for inline and stacked MiniKpi metrics.
+
+- Fit report Grid columns to the available panel width, up to `columns`, with
+  configurable minimum cell widths and narrow-panel fallback. Automatic tile
+  grids retain chart titles, controls and chart-owned heights; keyword-only
+  `show_titles` and `show_controls` can omit redundant context per Grid.
+- Keep SplitPane children and chart context together, preserve the declared
+  ratio while both pane minimums fit, and stack by panel width. Configure
+  minimums with keyword-only `left_min_width` and `right_min_width`.
+
+- DataTables use compact spacing, subtle alternating rows and numeric column
+  alignment. Search and stable sorting cover every supplied row before display
+  limits; CSV exports all current matches in the chosen order with an accurate
+  count. Static exports retain raw numeric precision and honor `columns`.
+- `LineChart` now defaults to a 220px plotting area at every viewport width
+  (previously 180 to 380px depending on the window, 200px in tile grids), and
+  keeps its title in tile grids. Pass `height="roomy"` for 320px.
+- Remove the former waitlist notice from the website privacy page.
+
+- Refresh the checkout presentation with four visual decision slides, stage
+  comparisons and an explicitly hypothetical recovery scenario. Presentations
+  can opt into a single-slide view with a read-all option.
+
+- Showcase reports, written analyses, and presentations in the README, with
+  desktop and mobile screenshots side by side and direct links to synthetic demos.
+
 ### Maintenance
 
 - Add a standalone runner-host Compose preset with required shared storage,
@@ -84,27 +357,35 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Explain which repository files reach a studio during Git sync, including
   nested project roots, assistant instructions and declared data files.
 
-### Added
-
-- Structured assistant answer review with bounded corrections, evidence cell reconciliation and private draft handling before chat delivery.
-
-- Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
-- Optional canonical metric calculations with explicit report bindings, period and freshness checks, and structured evidence cards.
-- Offline assistant evaluation fixtures and a scorer for supplied structured captures, with model accuracy reported separately from calculation checks.
-
-### Changed
-
-- Remove the former waitlist notice from the website privacy page.
-
-- Refresh the checkout presentation with four visual decision slides, stage
-  comparisons and an explicitly hypothetical recovery scenario. Presentations
-  can opt into a single-slide view with a read-all option.
-
-- Showcase reports, written analyses, and presentations in the README, with
-  desktop and mobile screenshots side by side and direct links to synthetic demos.
-
 ### Fixed
 
+- Keep optional trend validation compatible with chart objects that predate
+  trend declarations, and keep optional chart scripts owned by their components.
+
+- Resolve visual-upgrade demo images through packaged resources, including
+  source checkouts launched directly from the demo directory.
+
+- Explicit `LineChart.colors` now applies to unsplit dataset-bound series;
+  omitted colors and category-split mappings retain their previous behavior.
+- Retiring a replaced LineChart canvas no longer detaches the new canvas's
+  filter and theme binding.
+
+- Keep report toggle dimensions stable during responsive iframe resizing by
+  animating only their colors.
+
+- Include public framework API and compatibility guides in the standalone wheel.
+
+- Shared report CSV downloads now quote headers and lone carriage returns,
+  preserving field boundaries and exact text without changing ordinary cells.
+
+- Native PNG, PDF and analysis-section captures now support modern computed
+  report colors in multi-row striped/shaded tables and Pivot bands. Temporary
+  clone conversion retains sRGB color, alpha and current table bounds without
+  changing on-screen styles. Rebuild report HTML/runtime assets to apply.
+
+- Clarify the Live Ops demo's embedded snapshot, 300-event result scope and
+  separate top-15 actor ranking in its report introduction and gallery description.
+- Document both fixed-evidence analysis examples in the demo guide.
 - Populate audit action choices with ordered, organization-scoped probes instead
   of transferring duplicate history rows. Add a concurrent composite index for
   large histories with uneven action usage across organizations; preserve all labels.

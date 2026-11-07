@@ -13,6 +13,19 @@
     }
     window.getThemeColors = getThemeColors;
 
+    // Opted-in Grid tiles retain an authored palette position across draws.
+    // Resolve against the active palette, preserving the chart family's alpha.
+    window._fwApplyPaletteSlot = function(ds, type, tc) {
+        if (!ds._themeManaged || !Number.isInteger(ds._fwPaletteSlot) || ds._fwPaletteSlot < 0) return false;
+        var palette = (tc || getThemeColors()).chart_colors;
+        if (!palette.length) return false;
+        var color = palette[ds._fwPaletteSlot % palette.length];
+        ds.borderColor = color;
+        var alpha = '_fillOpacity' in ds ? ds._fillOpacity : (type === 'line' ? '22' : 'cc');
+        ds.backgroundColor = color + alpha;
+        return true;
+    };
+
     /* Let the browser resolve px/rem/em/calc()/var() exactly as report CSS
        does. Canvas APIs need a numeric pixel size, so reading the custom
        property directly with parseFloat is incorrect for relative units. */
@@ -60,7 +73,9 @@
         if (ds0 && ds0._themeManaged && Array.isArray(ds0.backgroundColor)) {
             if (isDoughnut) {
                 ds0.backgroundColor = ds0.backgroundColor.map(function(_, i) {
-                    return tc.chart_colors[i % tc.chart_colors.length];
+                    return window._fwCategoryColor(ds0._fwCategoryColors,
+                        ds0._fwCategoryKeys && ds0._fwCategoryKeys[i], tc.chart_colors) ||
+                        tc.chart_colors[i % tc.chart_colors.length];
                 });
                 var bgCard = getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#fff';
                 ds0.borderColor = bgCard;
@@ -80,6 +95,7 @@
         } else if (!isDoughnut) {
             chart.data.datasets.forEach(function(ds, i) {
                 if (!ds._themeManaged) return;
+                if (window._fwApplyPaletteSlot(ds, chart.config.type, tc)) return;
                 var newColor = tc.chart_colors[i % tc.chart_colors.length];
                 ds.borderColor = newColor;
                 if ('_fillOpacity' in ds) {
@@ -134,7 +150,12 @@
                 labels.font.size = _fontPx('--font-size-label', 12);
             }
         }
-        chart.update('none');
+        // Chart.js keeps shared scalar mark options on update('none'). Grid
+        // colors need a normal update to repaint area/bar fills; these native
+        // charts already disable animation. Preserve legacy updates otherwise.
+        chart.update(chart.data.datasets.some(function(ds) {
+            return Number.isInteger(ds._fwPaletteSlot);
+        }) ? undefined : 'none');
     }
 
     function _applyThemeToCharts(themeName) {

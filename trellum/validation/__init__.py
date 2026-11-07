@@ -18,6 +18,9 @@ from __future__ import annotations
 from typing import Any
 
 from trellum.validation.checks.annotations import _check_annotations
+from trellum.validation.checks.calendar_coverage import _check_calendar_coverage
+from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.checks.cohort_table import check_cohort_tables
 from trellum.validation.checks.columns import _check_columns
 from trellum.validation.checks.datasource import (
     _check_dataset_id_integrity,
@@ -27,8 +30,11 @@ from trellum.validation.checks.datasource import (
 from trellum.validation.checks.effectiveness import _check_filter_effectiveness
 from trellum.validation.checks.filter_accessibility import _check_filter_labels
 from trellum.validation.checks.live_query import _check_live_queries
+from trellum.validation.checks.metric_views import check_column_formats, check_metric_views
 from trellum.validation.checks.metrics import _check_metrics
+from trellum.validation.checks.period_comparison import check_period_comparison
 from trellum.validation.checks.rawhtml import _check_rawhtml
+from trellum.validation.checks.sankey import check_sankey_charts
 from trellum.validation.checks.scopes import _check_scopes
 from trellum.validation.checks.structural import _check_structural
 from trellum.validation.checks.theme import _check_theme
@@ -83,6 +89,12 @@ def validate_report(
                   _check_datasource_filterbar, ctx, comps, result)
     if ds_map is None:
         ds_map = {}
+    _run("metric-views", check_metric_views, ctx, result)
+    _run("period-comparison", check_period_comparison, ctx, result)
+    _run("calendar_coverage", _check_calendar_coverage, comps, result)
+    _run("table-column-formats", check_column_formats, comps, result)
+    _run("cohort tables", check_cohort_tables, comps, ds_map, result)
+    _run("sankey charts", check_sankey_charts, comps, ds_map, result)
     _run("dataset id integrity", _check_dataset_id_integrity, comps, ds_map, result)
     _run("filter labels", _check_filter_labels, comps, result)
     _run("slider filter columns", _check_slider_filter_columns, comps, result)
@@ -91,6 +103,7 @@ def validate_report(
     _run("theme", _check_theme, ctx, comps, result)
     _run("annotations", _check_annotations, ctx, comps, events, result)
     _run("columns", _check_columns, comps, ds_map, result)
+    _run("chart options", _check_chart_options, comps, result)
     _run("metrics", _check_metrics, ctx, comps, ds_map, result)
     _run("toggle and visible", _check_toggle_visible, comps, result)
     _run("scopes", _check_scopes, ctx, result)

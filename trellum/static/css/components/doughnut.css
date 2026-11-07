@@ -1,0 +1,40 @@
+/* Layout follows the component's panel width, independently of chart heights. */
+.fw-doughnut { container-type: inline-size; min-width: 0; margin-bottom: var(--spacing-md); }
+.fw-doughnut .fw-doughnut-layout { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; min-width: 0; }
+.fw-doughnut .fw-chart-container.fw-doughnut-ring { flex: 0 0 170px; width: 170px; height: 170px; max-width: 100%; margin: 0; overflow: visible; }
+.fw-doughnut .fw-doughnut-ring.is-empty::before { content: ''; position: absolute; inset: 14px; border: 1px dashed var(--border-color); border-radius: 50%; pointer-events: none; }
+.fw-doughnut .fw-doughnut-center { position: absolute; inset: 30px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; pointer-events: none; overflow-wrap: anywhere; color: var(--text-main); }
+.fw-doughnut .fw-doughnut-center[hidden], .fw-doughnut [hidden] { display: none; }
+.fw-doughnut .fw-doughnut-center-label, .fw-doughnut .fw-doughnut-center-scope { font-size: var(--font-size-label); color: var(--text-secondary); max-width: 100%; }
+.fw-doughnut .fw-doughnut-center-value { font-size: var(--font-size-body); font-weight: 600; max-width: 100%; font-variant-numeric: tabular-nums; }
+.fw-doughnut .fw-doughnut-legend { flex: 1 1 300px; min-width: 0; }
+.fw-doughnut .fw-doughnut-legend-head, .fw-doughnut .fw-doughnut-entry { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .65fr) minmax(0, .6fr); align-items: center; gap: 10px; padding: 6px 4px; width: 100%; box-sizing: border-box; }
+.fw-doughnut .fw-doughnut-legend-head { font-size: var(--font-size-label); color: var(--text-secondary); align-items: end; }
+.fw-doughnut .fw-doughnut-legend-head span:nth-child(n+2) { text-align: right; }
+.fw-doughnut .fw-doughnut-entry { border: 0; border-bottom: 1px solid var(--border-color); background: transparent; color: var(--text-main); font: inherit; font-size: var(--font-size-body); text-align: left; cursor: pointer; min-height: 36px; }
+.fw-doughnut .fw-doughnut-entry:hover { background: var(--bg-card); }
+.fw-doughnut .fw-doughnut-entry:focus-visible, .fw-doughnut .fw-doughnut-context button:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
+.fw-doughnut .fw-doughnut-category { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+.fw-doughnut .fw-doughnut-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fw-doughnut .fw-doughnut-swatch { width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; }
+.fw-doughnut .fw-doughnut-hidden { font-size: var(--font-size-label); color: var(--text-secondary); }
+.fw-doughnut .fw-doughnut-entry[aria-pressed=false] .fw-doughnut-name { text-decoration: line-through; }
+.fw-doughnut .fw-doughnut-value, .fw-doughnut .fw-doughnut-share { text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
+.fw-doughnut .fw-doughnut-share { color: var(--text-secondary); }
+.fw-doughnut .fw-doughnut-context { font-size: var(--font-size-label); color: var(--text-secondary); margin-top: 8px; overflow-wrap: anywhere; }
+.fw-doughnut .fw-doughnut-context:empty { display: none; }
+.fw-doughnut .fw-doughnut-context button { margin-left: 8px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--radius-control); padding: 6px 10px; cursor: pointer; font: inherit; }
+.fw-doughnut .fw-chart-dl:focus-visible { opacity: 1; }
+@container (max-width: 485px) {
+    .fw-doughnut .fw-doughnut-legend { flex-basis: 100%; }
+    .fw-doughnut .fw-doughnut-entry { min-height: 44px; }
+    .fw-doughnut .fw-doughnut-context button { min-height: 44px; }
+}
+
+/* Optional header adds height above the unchanged ring/legend layout. */
+.fw-doughnut-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 4px 8px; min-width: 0; margin-bottom: 12px; text-align: right; overflow-wrap: anywhere; }
+.fw-doughnut-summary-label { color: var(--text-secondary); font-size: var(--font-size-label); min-width: 0; }
+.fw-doughnut-summary-value { color: var(--text-main); font-size: var(--font-size-body); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; }
+.fw-doughnut-summary-scope, .fw-doughnut-summary-reason { flex-basis: 100%; color: var(--text-secondary); font-size: var(--font-size-label); }
+.fw-doughnut-summary-reason:empty { display: none; }
+.fw-doughnut-summary-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

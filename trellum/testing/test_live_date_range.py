@@ -115,7 +115,7 @@ def test_seven_days_live_bounds_results_custom_empty_null_and_error(browser, dat
             "since": "2026-10-26", "until": "2026-11-02"}
         assert response.value.json()["rows"][-1] == ["2026-11-02", None]
         expect(page.locator(".fw-table tbody tr")).to_have_count(8)
-        expect(page.locator(".fw-date-trigger-text")).to_have_text("2026-10-26 – 2026-11-02")
+        expect(page.locator(".fw-date-trigger-text")).to_have_text("Oct 26, 2026 – Nov 2, 2026")
         # SQL null stays null in the engine and displays as an empty table cell.
         assert page.evaluate("window._fwFilterEngine.getFiltered('dates').at(-1).value") is None
         expect(page.locator(".fw-table tbody tr").last.locator("td").last).to_have_text("")
@@ -217,7 +217,6 @@ def test_unavailable_seven_day_selection_retains_truthful_trigger_and_sends_no_p
         page.set_content(plugin.render_html("dates", "day", "Date", {}, frame))
         page.evaluate(load_js("components/date_range_filter.js"))
         trigger = page.locator(".fw-date-trigger-text")
-        before = trigger.inner_text()
         page.evaluate("""({fc, change}) => {
             const button = document.querySelector('.fw-date-preset[data-days="7"]');
             for (const key of ['days', 'hours']) {
@@ -232,6 +231,7 @@ def test_unavailable_seven_day_selection_retains_truthful_trigger_and_sends_no_p
             window.dateParams = [];
             window._fwFilterTypes.date_range.wireControls(document.body, {}, 'dates', h);
         }""", {"fc": config, "change": change})
+        before = trigger.inner_text()
         button = page.get_by_role("button", name="7D", exact=True)
         assert button.is_disabled()
         # Also exercise a button enabled before the bounds became unavailable.
@@ -278,7 +278,8 @@ def test_unavailable_live_bounds_preserve_selected_date_trigger_and_send_no_para
             "since": "2026-10-26", "until": "2026-11-02"}
         page.wait_for_function("!window._fwLiveQuery.getCaptureStatus().pending")
         before = page.locator(".fw-date-trigger-text").inner_text()
-        assert before == "2026-10-26 – 2026-11-02"
+        assert before == "Oct 26, 2026 – Nov 2, 2026"
+        assert page.locator(".fw-date-trigger").get_attribute("title") == "2026-10-26 – 2026-11-02"
         page.on("request", lambda request: writes.append(request.post_data_json)
                 if request.url.endswith("/_fw/live-query") else None)
         page.evaluate("value => window.liveDateConfig.max_date = value", maximum)

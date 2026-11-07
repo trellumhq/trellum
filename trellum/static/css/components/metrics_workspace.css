@@ -13,6 +13,7 @@
 .fw-metric-block { margin-bottom:28px; }
 .fw-metric-block .fw-chart-title { display:none; }
 .fw-metric-block .fw-chart-container { height:280px; }
+.fw-metric-block .fw-chart-container.fw-line-chart { height:280px; }
 .fw-metric-block .fw-kpi-grid { grid-template-columns:minmax(0,260px); }
 .fw-metric-block[hidden], .fw-section:has(> .fw-metric-block[hidden]) { display:none; }
 body:not(.fw-only) .fw-metric-block[data-metric-snapshot] .fw-kpi-grid { display:none; }
@@ -27,6 +28,7 @@ body.fw-metrics-embedded .fw-metric-snapshot-note { display:none; }
   #fwMetricsWorkspace summary { top:0; }
   #fwMetricsWorkspace .fw-metric-actions { top:28px; right:auto; left:0; }
   .fw-metric-block .fw-chart-container { height:230px; }
+  .fw-metric-block .fw-chart-container.fw-line-chart { height:230px; }
   #fwMetricsShowAll, #fwMetricsHideAll { min-height:44px; }
   .fw-metric-choices label { min-height:36px; }
 }

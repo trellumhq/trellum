@@ -1,6 +1,384 @@
 # Framework Compatibility Policy
 
+For an illustrated overview of this report update, start with the
+[visual upgrade guide](report-visual-upgrade.md). It separates the defaults
+received after rebuilding from features authors explicitly enable. The
+[authoring guide](report-authoring.md) maps reporting questions to components.
+
+## Unreleased: optional native linear trends
+
+LineChart and ScatterChart accept keyword-only `trend_line=None`. Existing
+reports retain their source plots, legends, CSV and summary calculations.
+Explicit `{"method": "linear", "series": "each"}` adds filter-reactive,
+bounded OLS fits for eligible daily lines or numeric pairs. Unsupported sources
+or insufficient data show an unavailable reason; no sampling or extrapolation
+is performed. Source colors, including optional Grid slots, also color the fit.
+See [native trends](report-chart-trends.md) for population and resource limits.
+
+## Unreleased: optional Grid theme colors
+
+Keyword-only `Grid(color_cycle="theme")` is opt-in; omitted/`None` keeps
+existing rendering. Direct single-metric Line/Area/ordinary Bar tiles receive
+stable authored palette positions. Explicit colors, category splits and nested
+Grid ownership remain intact. Filtering and active-theme changes preserve
+positions without changing data, CSV, heights or column layout. See
+[Grid theme colors](report-grid-colors.md) for exclusions and examples.
+
+## Unreleased: explicit filtered LineChart colors
+
+Existing `LineChart.colors` lists now apply to unsplit dataset-bound value and
+ratio series, where they were previously ignored. Omitted/empty lists and
+unspecified positions retain theme colors. Active category splits retain their
+existing category mapping; use `category_colors` for shared category identities.
+If a report supplied an unused list but needs the previous theme colors, remove
+the list. Values, calculations and plotting geometry are unchanged.
+
+## Unreleased: optional calendar coverage
+
+`CalendarCoverage` and `BarChart.bucket_context` are keyword-only opt-ins.
+Existing reports keep their plots, aggregation, nearest tooltips, CSV schema
+and layout. The optional shared note adds height; exact hover dates use an
+authored UTC calendar mapping over one complete snapshot. See the
+[calendar coverage guide](report-kpi-buckets.md) for bounds and limitations.
+
+## Unreleased: explicit period comparisons
+
+`PeriodComparison` is an optional bounded snapshot projection. It leaves
+existing supplied comparisons and their controls unchanged. Ordinary LineChart
+`point_context=None` is keyword-only; omitted context preserves the existing
+tooltip and payload. Opt-in original dates require unambiguous wide-series
+identities. UTC windows, completeness and unsupported source contracts are
+documented in [period comparisons](report-period-comparison.md). Chart CSV
+retains its plotted-value schema and excludes the extra hover context.
+
+## Unreleased: report keyboard controls
+
+Ordinary sortable table headers now participate in keyboard navigation and
+retain focus after Enter/Space sorting. Existing chart CSV buttons become
+visible on keyboard focus; Toggle focus outlines stay inside their boundaries.
+No API or data changes are required. Pointer layout, workspace paging, sorting
+and CSV contracts remain unchanged. See [report keyboard controls](report-keyboard.md).
+
+## Unreleased: optional ComboChart summaries
+
+Keyword-only `header_summary=None` preserves historical output. A declaration
+selects one exact final caption on the left or right axis. Existing aggregation,
+plot geometry, nearest-series tooltips and raw CSV remain unchanged. See
+[Combo summaries](report-combo-summaries.md) for actual static/bound formatting,
+selected-input eligibility and retained limitations. Rebuild matching assets;
+no migration is required.
+
+## Unreleased: optional Sankey summaries
+
+Keyword-only `header_summary=None` retains historical output. Path summaries
+describe grouped complete paths; adjacent-transition summaries require one
+explicit boundary. Existing graph admission, geometry, raw-unit CSV and capture
+readiness remain unchanged. See [Sankey summaries](report-sankey-summaries.md)
+for empty/zero distinctions and formatting. Rebuild matching assets; no migration.
+
+## Unreleased: optional TreemapChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructor positions,
+markup and payloads. Enabled summaries reduce final leaf entries after current
+grouping; numeric results require safe nonnegative supplied values and complete
+leaf coverage. Count is independent of numeric eligibility. Existing sizing,
+colors, plot heights and CSV remain unchanged. See
+[TreemapChart summaries](report-treemap-summaries.md) for scope and retained
+precision/grouping limits. Rebuild matching assets; no migration is needed.
+
+## Unreleased: optional StackedBar summaries
+
+Keyword-only `header_summary=None` preserves existing constructor positions,
+markup and payloads. Opted-in summaries require an exact final bar caption and
+retain original units in Percentage mode. Local/shared controls, plot heights,
+legacy static title omission and CSV units remain unchanged.
+See [StackedBar summaries](report-stacked-summaries.md) for input scope, owned
+listener cleanup and precision limits. Rebuild matching assets; no migration.
+
+## Unreleased: optional HeatmapChart summaries
+
+Keyword-only `header_summary=None` preserves existing calls and default output.
+Opted-in headers describe retained aggregate cells after `drop_empty`, before
+color normalization. Numeric summaries require eligible original inputs;
+existing plot coercion, coordinate identity and CSV limitations remain.
+See [Heatmap summaries](report-heatmap-summaries.md). Rebuild matching assets;
+no database or host migration is required.
+
+## Unreleased: snapshot metric views and table column formats
+
+`MetricView` adds a bounded derived dataset over an ordinary snapshot or one
+scoped snapshot. Keyword-only `MiniKpi.binding=None` and
+`DataTable.column_formats=None` preserve existing supplied metrics and table
+formatting. Explicit column formats affect display/search; CSV and numeric sort
+retain raw values. Comparison and workspace tables keep their existing formats.
+See [metric views and formatting](report-metric-views.md) for source bounds,
+precision, lifecycle and capture scope. No database or host migration is needed.
+
+## Unreleased: optional ScatterChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors and plots.
+Opted-in summaries count point entries or summarize one coordinate of complete
+finite pairs; they do not summarize bubble pixels or infer rates. Structural
+filter checks remain active, while the aggregate-by-x grain heuristic no longer
+misclassifies separate Scatter points. Rebuild report assets; see
+[Scatter summary guidance](report-scatter-summaries.md).
+
+## Unreleased: optional shared StackedBar controls and height
+
+Keyword-only `show_controls=True` and `height=None` preserve existing constructors,
+responsive plot sizes and local controls. Opt-in shared controls require explicit
+native Toggle IDs unique across the report, including inactive scopes. Explicit
+integer heights apply to the plot at every viewport. Plotted values, normalization,
+CSV units and independent legends retain their current semantics. Rebuild matching
+report assets; no host or database migration is required.
+See [Traffic Composition](report-traffic-composition.md).
+
+## Unreleased: optional FunnelChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors, plots and
+CSV schema. Explicit named-stage, maximum or entry-count declarations use
+`scope="current_stages"`; no sequential conversion or cross-stage total is
+inferred. Invalid amounts and ambiguous labels explain unavailable summaries.
+Existing grouping/order is preserved. Rebuild matching report assets; no host
+or database migration is required. See [Funnel summaries](report-funnel-summaries.md).
+
+## Unreleased: optional DoughnutChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors, markup,
+plots and CSV. Explicit `sum`, `max` or `count` declarations use
+`scope="all_categories"`, including hidden entries in the current result.
+Sum/max withhold invalid amounts; count describes entries independently of
+amount completeness. Rebuild matching report assets for the option; no host
+or database migration is required. See [Doughnut summaries](report-doughnut-summaries.md).
+
+## Unreleased: report result presentation
+
+New ordinary LineCharts default to `result_presentation=True`; no-result text
+uses the existing plot area, and retained live selections add context above it.
+Live-bound KPI rows and ordinary DataTables default to `live_context=True`,
+sharing one displayed-result note per dataset and native section. Notes add
+wrapping height; existing card sizes, plotted values and ordinary KPI/table
+loading feedback remain unchanged. Both keyword-only flags accept `False`
+to preserve the prior presentation. Legacy payloads without their markers and
+metrics workspace consumers retain their behavior.
+
+No host endpoint, artifact, constructor positional-argument or CSV change is
+required. See [Line result presentation](report-line-results.md) and
+[live KPI/table context](report-live-result-context.md) for scope, lifecycle,
+capture and completeness limits.
+
+## Unreleased: live-result identity and request ownership
+
+The live-query binder adds detached per-dataset state and subscriptions without
+changing component constructors, request bodies, host gates or completed layouts.
+Native registration owns snapshot installation so repeat rendering preserves
+queried rows. Source replacement invalidates old work; a 30-second client
+deadline covers fetch and body parsing. Malformed success envelopes retain the
+previous result and report failure instead of becoming empty results. The first
+429 still receives one automatic retry. Consumers must release subscriptions;
+snapshot replacement requires new objects. Rebuild matching runtime assets;
+no host or database migration is required. See [live-result state](live-result-state.md).
+
+## Unreleased: optional SankeyChart
+
+`SankeyChart` adds a snapshot-only chart API without changing existing chart
+constructors or defaults. Complete paths preserve grouped path identities in
+details/CSV; adjacent transitions never imply complete journeys or one total
+across boundaries. Live-connected and chunked populations fail validation.
+The existing Chart.js stack loads its bundled Sankey plugin on demand.
+Image captures retain current scroll/disclosure scope; completed empty and
+zero-flow states are capturable while invalid input blocks native analysis
+capture. See [Sankey charts](report-sankey-charts.md) for bounds and exact data rules.
+
+## Unreleased: optional CohortTable
+
+`CohortTable` is an additive component API for author-supplied snapshot cells.
+Existing constructors, PivotTable selectors, aggregations and KPI layouts stay
+unchanged. Filters select complete precomputed cohorts; partial or altered
+populations withhold the local result. Live sources, generated forecasts and
+arbitrary-precision object numerics are unsupported. CSV contains all selected
+source cells, while image exports retain the current horizontal view.
+See [cohort tables](report-cohort-tables.md) for provenance and resource bounds.
+Rebuild matching Python/HTML/data/runtime assets; no host migration is required.
+
+## Unreleased: optional HierarchyTable
+
+`HierarchyTable` is a new snapshot-only component; existing table constructors,
+PivotTable selectors and aggregation behavior are unchanged. It consumes
+uniquely identified additive leaf facts and includes collapsed descendants in
+every parent total. Incomplete inputs are withheld by default; explicit
+`known_subtotals=True` labels partial totals. CSV exports matching leaf facts
+once, independent of expansion. Live/chunked populations and source encoding
+that merges typed identities are rejected. Rebuild matching Python/HTML/data/
+runtime assets; no host or database migration is required.
+See [hierarchy tables](report-hierarchy-tables.md) for supported inputs and bounds.
+
+## Unreleased: optional BarChart and AreaChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors, plots and
+output. Nonempty declarations require an explicit statistic and
+`scope="plotted_series"`, with a selected series when more than one is plotted.
+Summaries describe the final plotted vector after filters, aggregation, sorting
+and Top-N/Other; they do not infer completeness or weighted ratio totals.
+Existing LineChart declarations and calculations retain their current contract.
+Rebuild matching Python/HTML/data/runtime assets for new summaries. No database
+or host migration is required. See [chart summaries](report-chart-summaries.md).
+
+## Unreleased: optional DataTable row drill-down
+
+Keyword-only `DataTable.drill_down=None` preserves default output and positional
+and subclass constructors. Opt-in declarations target existing dropdown owners
+and keep raw row keys separate from displayed/exported columns. Static and
+ordinary DataSource/ScopedDataSource populations and owners are supported;
+live-connected drill-down fails validation. Comparison/workspace tables ignore
+injected runtime options. `clear_on_parent_change=True` is a strict optional
+child-dropdown flag with nonempty `depends_on`; omitted/false cascades retain
+their prior behavior. No public filter API, host or database migration is needed.
+Rebuild matching HTML/data/runtime assets. Existing FilterBar URL serialization
+and its limitations remain; see [row drill-down](report-data-tables.md#optional-row-drill-down).
+
+## Unreleased: optional DataTable matching-population totals
+
+Keyword-only `DataTable.totals=None` preserves existing callers and output.
+Nonempty declarations add explicit additive sums or weighted ratios over
+matching delivered records before the display limit. The first displayed
+column labels Total; provide a label column if every metric needs a sum.
+Incomplete/unsafe inputs and undeclared live-query scope withhold affected
+totals with reasons. ComparisonTable has no new totals argument; Pivot totals
+and CSV remain unchanged. Static typed numeric inputs are additive payload
+metadata. Rebuild matching Python/HTML/data/runtime assets; older runtimes
+do not render totals. No database or host migration is needed. Native captures
+include the rendered footer within the current bounded table viewport. See
+[Report data tables](report-data-tables.md#optional-totals-over-matching-delivered-rows).
+
+## Unreleased: native capture colors
+
+Rebuild report HTML/runtime assets to capture native striped and threshold-shaded
+tables, ComparisonTables, Pivot bands and theme-relative component colors with
+the bundled html2canvas. PNG, PDF and analysis-section captures convert modern
+computed colors to 8-bit sRGB in a temporary clone, retaining alpha and the
+current table viewport. On-screen styles, source data and CSV stay unchanged.
+This uses browser relative-color serialization; browsers unable to convert a
+color report a capture failure and restore controls. Custom multicolor modern
+gradients reject because the vendor cannot preserve their interpolation;
+uniform modern stops used by native table separators are supported. Other
+html2canvas CSS limitations still apply. No Python API, host or database
+migration is needed.
+
+## Unreleased: DataTable ranked row-count selection
+
+`DataTable.row_limit` and `ComparisonTable.row_limit` are keyword-only opt-ins.
+`None` preserves legacy `max_rows` output and payloads. Choices are 10, 20, 50,
+100 and `"all"`; All is bounded to 1,000 matching rows, while CSV continues to
+include all matching delivered rows. Existing callers and workspace definition
+tables retain their prior behavior. Rebuild report artifacts to include the
+selector configuration and runtime.
+
 This document defines the stability tiers for framework APIs and the deprecation process for removing or changing them.
+
+
+## Unreleased: observed-day monthly averages
+
+Ordinary LineChart and vertical BarChart accept keyword-only
+`monthly_average=None`. Opting in requires an explicit additive daily metric,
+unique or complete-sum aggregation, inclusive base dates and unit. At most 1200
+calendar months bound coverage rows. Default payloads, plot geometry and CSV
+remain unchanged; this does not enable `month_context`. Scoped date ranges
+intersect the declared interval; live-query scope is unsupported. Incomplete
+legacy daily subtotals suppress the option instead of changing plotted values.
+Coverage follows availability context in normal document flow. Native section
+captures include it; opted-in isolated plot analysis captures reject and direct
+authors to the report section. Raw external canvas images cannot include DOM
+coverage. Rebuild matching HTML/data/runtime assets. No host or database
+migration is needed. See [the API and coverage contract](report-monthly-averages.md).
+
+
+## Unreleased: supplied LineChart observation availability
+
+Keyword-only `series_availability=None` is additive on ordinary static/bound
+LineChart series and bound ratios. Nonempty rules intentionally withhold a
+supplied point when any selected raw contributor lacks finite required inputs
+or its declared state is not `available`. Complete zero remains zero; legacy
+undeclared skip-null sums remain unchanged. Dynamic `stack_by` and
+`stack_by_options` reject nonempty rules. Static points retain row positions;
+bound points use currently delivered/filtered x groups. Absent dates stay absent,
+and empty selections produce no observation or note. Explicit dataset binding
+still wins over `static=True`; prior positional/subclass calls remain valid.
+
+Short metric reasons follow plot/month/event context only for visible affected
+series. Summaries and CSV consume masked values; report/section captures include
+the note, while canvas-only captures omit it. Rebuild matching HTML/data/assets;
+older runtimes cannot enforce the new withholding semantics. No database or host
+migration is needed. See [the API and input contract](report-line-availability.md).
+
+
+## Optional daily month context
+
+The five vertical category-axis chart families accept keyword-only
+`month_context=False`. Existing calls retain their output. `True` declares
+supplied daily reporting dates and adds a 24px month row plus dividers only
+for valid, unique, increasing canonical dates. Horizontal/ranked bars cannot
+opt in. No dates, values or monthly statistics are inferred. Explicit dataset
+binding still wins over `static=True`. Rebuild reports to pick up the runtime;
+no host migration or export runtime update is required. See
+[the input and capture contract](report-month-context.md).
+
+
+## LineChart dated-event labels
+
+New LineChart builds default to keyword-only `event_labels="adaptive"`: dated
+buttons above the unchanged plot with local exact event details. A 40px rail
+(48px on phones) appears only when eligible events exist; compact date labels
+also have a visible name key. Explicit `"grouped"` retains numbered markers and
+their disclosure; `"full"` retains in-plot labels with collision protection.
+Native report/section exports include an exact key for clustered events and
+expand open details in the capture clone, subject to documented image bounds.
+This is an intentional default appearance change. Payloads missing the flag, other chart families
+and the two-argument shared annotation helper retain full labels. Positional and
+subclass constructors, explicit dataset binding precedence, values, event marks,
+weekday lines and plot heights are preserved. Rebuild matching assets; no
+artifact schema version changes. See [dated events](report-line-events.md) for
+retained loader/date limits and export behavior, and [MIGRATIONS](MIGRATIONS.md).
+
+## Declared category colors
+
+Keyword-only `category_colors=None` is additive on LineChart, StackedBar and
+DoughnutChart only. Positional/subclass constructors, explicit dataset binding
+precedence and omitted-option payloads/markup are preserved. Definitions are
+validated again at render, after supplied bindings; no automatic binding is
+introduced. New declarations require matching rebuilt runtime assets. Existing
+static LineChart.colors keep their authored values; the dataset-bound colors
+omission remains. Static wide-column lines/bars reject category declarations;
+legacy aggregation semantics and limitations remain. See
+[category colors](report-category-colors.md) and [migration guidance](MIGRATIONS.md).
+
+## Supplied LineChart forecast styling
+
+LineChart adds keyword-only `forecast_series=None`, an additive declaration of
+wide-series positions or exact displayed labels. Omitted, `None` and empty
+sequences preserve the existing chart payload. Enabled declarations add role
+metadata to the selected static datasets or bound chart config; matching
+framework assets render dashed lines, hollow points and a forecast symbol in
+the existing HTML legend. Positional/subclass calls and explicit `dataset_id`
+precedence remain unchanged. Static, bound wide-series and bound ratio paths
+are supported; nonempty declarations with dynamic stack splits are rejected.
+See [LineChart supplied forecasts](report-line-forecasts.md) and the
+[migration guide](MIGRATIONS.md). This presentation API does not generate values
+or change bound aggregation's existing missing-input behavior.
+
+## KPI declaration metadata
+
+`KpiCard` adds keyword-only `availability`, `maturity` and `comparison`; bound
+`KpiRow` dictionaries share the same shape. These additive payload fields require
+matching rebuilt assets to apply their semantics. Older runtimes ignore them;
+do not mix new data with old runtime assets when withholding is required.
+Positional/subclass construction, metric claim overrides, explicit `dataset_id`
+precedence and old percent/currency units remain. Declared state does not change
+DataSource transport/loading or metric-registry policies. Missing explicit null
+constants in mixed rows now stay missing; undefined legacy ratio comparisons
+show neutral reasons, and true zero auto changes are neutral. Valid legacy
+reductions and explicit favorable-direction overrides remain. See
+[KPI states](report-kpi-states.md) and the [migration guide](MIGRATIONS.md).
 
 ## Stability Tiers
 
@@ -21,6 +399,7 @@ These are the public contracts that reports and custom JS depend on. Changes mus
 | `window._fwEmbed` | Optional. A host stamps this `true` (same mechanism as `window._fwShareLink`, and alongside it) on a view served for framing by another origin — an embed link. The framework runtime does not act on it; it exists so host-injected scripts can tell an embedded view apart from a plain share view. Its companions `window._fwEmbedOrigins` and `window._fwEmbedBadge` are host-private and carry no framework contract. Absent (or `false`) on every other view. |
 | `report.yaml` schema | All documented fields in `AGENTS.md` |
 | `Component` public methods | `render_html(ctx)`, `client_js()`, `css()`, `cdn_deps()` |
+| Built-in chart header context | Optional keyword-only `header_context` on LineChart, AreaChart, BarChart, StackedBar, ComboChart, DoughnutChart, HeatmapChart, FunnelChart, TreemapChart and ScatterChart. This is generated presentation markup; it adds no `data.json` fields. |
 | `BaseReport` interface | `generate(ctx)`, `load_config(path)` |
 | `ReportContext` public methods | `add_section()`, `set_scope()`, `get_connection()`, `metrics()`, `mark()`, date properties |
 | `query_df()` signature | `query_df(conn, sql, params=None, cache_ttl=None, label=None, compact_text=True)`. Since 0.9.0 a repeated text column comes back as a `category` column unless `compact_text=False`; see MIGRATIONS.md. |
@@ -284,3 +663,10 @@ non-additive time rules cannot be replaced by an overall sum. Ratio operand
 reductions are conservatively routed to `query_metric` for weighted calculation
 or a granted source query. Raw reads and descriptive min/max/count/nunique reads
 remain exploratory and receive no approved-calculation assurance.
+
+## Optional DataTable pinning
+
+New builds may opt in to keyword-only `DataTable.pin_header`, `pin_footer` and
+`pin_height`; all default to the existing unpinned output. Footer pinning
+requires declared totals. Existing reports need no edits; rebuild only to use
+the new behavior. See [report data tables](report-data-tables.md#optional-datatable-edge-pinning).

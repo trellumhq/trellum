@@ -1,0 +1,66 @@
+.fw-choice {
+    min-width: 0;
+    max-width: 100%;
+    margin-bottom: var(--spacing-md);
+    --ss-primary-color: var(--primary-fill);
+    --ss-bg-color: var(--bg-card);
+    --ss-font-color: var(--text-main);
+    --ss-font-placeholder-color: var(--text-secondary);
+    --ss-border-color: var(--border-color);
+    --ss-disabled-color: var(--bg-main);
+    --ss-focus-color: var(--primary-fill);
+    --ss-border-radius: var(--radius-control);
+    --ss-font-size: var(--font-size-interface);
+}
+.fw-choice > label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+    font-size: var(--font-size-interface);
+    overflow-wrap: anywhere;
+}
+.fw-choice > select {
+    padding: 6px 12px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-control);
+}
+.fw-choice .ss-main.ss-disabled { color: var(--text-secondary); }
+.fw-choice > select, .fw-choice .ss-main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    height: auto;
+    margin-bottom: 0;
+    box-sizing: border-box;
+    font-size: var(--font-size-interface);
+}
+.fw-choice .ss-main .ss-values { min-width: 0; }
+.fw-choice .ss-main .ss-single {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+    padding: 3px 0;
+}
+.ss-content.fw-report-select {
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+    --ss-primary-color: var(--primary-fill);
+    --ss-bg-color: var(--bg-card);
+    --ss-font-color: var(--text-main);
+    --ss-border-color: var(--border-color);
+    --ss-font-size: var(--font-size-interface);
+}
+.ss-content.fw-report-select .ss-list .ss-option {
+    min-height: 36px;
+    box-sizing: border-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.ss-content.fw-report-select .ss-search input { min-width: 0; }
+@media (max-width: 640px) {
+    .fw-choice > select, .fw-choice .ss-main,
+    .ss-content.fw-report-select .ss-list .ss-option { min-height: 44px; }
+}

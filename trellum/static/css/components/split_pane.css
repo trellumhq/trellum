@@ -1,0 +1,16 @@
+.fw-split {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+    min-width: 0;
+}
+.fw-split-pane {
+    flex: var(--fw-pane-grow) 1 var(--fw-pane-basis);
+    min-width: min(100%, var(--fw-pane-basis));
+    max-width: 100%;
+}
+.fw-split-pane .fw-chart-title { min-width: 0; overflow-wrap: anywhere; }
+.fw-split-pane :is([data-stack-toggle], [data-normalize-toggle]) {
+    max-width: 100%;
+    flex-wrap: wrap;
+}

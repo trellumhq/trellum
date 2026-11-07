@@ -1,0 +1,9 @@
+/* Only an explicitly sized StackedBar overrides responsive plot heights. */
+.fw-chart-container.fw-stacked-height { height: var(--fw-stacked-height); }
+/* Owned header content wraps without changing the plot box. */
+.fw-stacked-summary { min-width: 0; overflow-wrap: anywhere; }
+.fw-stacked-summary-scope, .fw-stacked-summary-reason { flex-basis: 100%; text-align: right; }
+.fw-stacked-summary-description {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

@@ -7,12 +7,18 @@ many chart types are on it."""
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+import math
+import re
+from collections.abc import Mapping
+from datetime import date
+from html import escape
+from numbers import Real
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
 from trellum.assets import load_css, load_js
-from trellum.components.base import Component
+from trellum.components.base import Component, RenderContext
 
 #: The glyph on every chart's download button.
 _DOWNLOAD_SVG = (
@@ -35,6 +41,133 @@ def _clean_list(values: list) -> list:
         v
         for v in values
     ]
+
+def _validate_category_colors(value: Any) -> dict[str, Any] | None:
+    """Validate and copy the opt-in declaration without touching caller mappings."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("category_colors must be a mapping or None")
+    if set(value) - {"domain", "column", "slots", "overrides"}:
+        raise ValueError("category_colors has unknown fields; use domain, column, slots, overrides")
+    for key in ("domain", "column"):
+        if not isinstance(value.get(key), str) or not value[key].strip():
+            raise ValueError(f"category_colors {key} must be a nonempty string")
+    slots = value.get("slots")
+    if not isinstance(slots, Mapping) or not slots:
+        raise ValueError("category_colors slots must be a nonempty mapping")
+    for category, index in slots.items():
+        if (not isinstance(category, str) or isinstance(index, bool)
+                or not isinstance(index, int) or not 0 <= index <= 2**31 - 1):
+            raise ValueError("category_colors slots require string categories and integer indices 0..2147483647")
+    overrides = value.get("overrides", {})
+    if not isinstance(overrides, Mapping):
+        raise ValueError("category_colors overrides must be a mapping")
+    for category, color in overrides.items():
+        if (category not in slots or not isinstance(color, str)
+                or not re.fullmatch(r"#[0-9a-fA-F]{6}", color)):
+            raise ValueError("category_colors overrides require declared categories and #RRGGBB colors")
+    result = {"domain": value["domain"], "column": value["column"], "slots": dict(slots)}
+    if "overrides" in value:
+        result["overrides"] = dict(overrides)
+    return result
+
+
+def _category_colors_config(chart: Component, ctx: RenderContext) -> dict[str, Any]:
+    """Check applicability after supplied binding, and report-wide domain identity.
+
+    Previously registered declarations belong to this RenderContext's render;
+    using them also makes reset() clear the domain definitions automatically.
+    Column names and chart-local overrides are deliberately not domain identity.
+    """
+    declaration = _validate_category_colors(chart.category_colors)
+    if declaration is None:
+        return {}
+    column = declaration["column"]
+    if chart._component_type == "doughnut_chart":
+        if column != chart.label:
+            raise ValueError("DoughnutChart category_colors column must equal label")
+    else:
+        if not chart.dataset_id:
+            raise ValueError("category_colors requires a dataset-bound category split; static wide-column "
+                             "LineChart/StackedBar y columns are series, not category rows")
+        splits = [chart.stack_by] + list((chart.stack_by_options or {}).values())
+        if column not in [s for s in splits if s]:
+            raise ValueError("category_colors column must be a configured stack_by or nonempty stack_by_options value")
+    for config in ctx.component_data.values():
+        previous = config.get("category_colors")
+        if (previous and previous["domain"] == declaration["domain"]
+                and previous["slots"] != declaration["slots"]):
+            raise ValueError(f"Conflicting category_colors slots for domain {declaration['domain']!r}; "
+                             "use identical category/slot definitions within one RenderContext")
+    return {"category_colors": declaration}
+
+
+def _month_context_config(chart: Component) -> dict[str, bool]:
+    """Validate the author's daily-label declaration, including after mutation."""
+    if type(chart.month_context) is not bool:
+        raise ValueError("month_context must be bool")
+    if not chart.month_context:
+        return {}
+    if (getattr(chart, "horizontal", False) or getattr(chart, "sort", None) is not None
+            or getattr(chart, "top_n", None) is not None):
+        raise ValueError("month_context requires a vertical chronological axis without sort or top_n")
+    return {"month_context": True}
+
+
+def _monthly_average_config(chart: Component) -> dict[str, Any]:
+    """Copy and validate the explicit additive daily reporting contract."""
+    value = chart.monthly_average
+    if value is None:
+        return {}
+    keys = {"metric", "aggregation", "start", "end", "unit"}
+    if not isinstance(value, dict) or set(value) != keys:
+        raise ValueError("monthly_average requires exactly metric, aggregation, start, end and unit")
+    value = dict(value)
+    if value["metric"] != "daily_additive" or value["aggregation"] not in ("unique", "sum_complete"):
+        raise ValueError("monthly_average requires metric='daily_additive' and aggregation='unique' or 'sum_complete'")
+    dates = []
+    for key in ("start", "end"):
+        text = value[key]
+        if not isinstance(text, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
+            raise ValueError("monthly_average dates must be canonical Gregorian YYYY-MM-DD")
+        try:
+            dates.append(date.fromisoformat(text))
+        except ValueError as exc:
+            raise ValueError("monthly_average dates must be real Gregorian days") from exc
+    start, end = dates
+    if start > end or (end.year - start.year) * 12 + end.month - start.month + 1 > 1200:
+        raise ValueError("monthly_average requires start <= end and at most 1200 calendar months")
+    unit = value["unit"]
+    if (not isinstance(unit, str) or not unit.strip() or len(unit) > 60
+            or any(ord(c) < 32 or ord(c) == 127 for c in unit) or re.search(r"[<>]", unit)):
+        raise ValueError("monthly_average unit must be nonempty plain text of at most 60 characters")
+    if (getattr(chart, "ratios", None) or getattr(chart, "y_format", None) in ("percent", "ratio")
+            or getattr(chart, "forecast_series", None) or getattr(chart, "stack_by", None)
+            or getattr(chart, "stack_by_options", None) or getattr(chart, "horizontal", False)
+            or getattr(chart, "sort", None) is not None or getattr(chart, "top_n", None) is not None
+            or getattr(chart, "stacked", False) or getattr(chart, "net_color", False)):
+        raise ValueError("monthly_average requires one ordinary additive daily line or vertical bar series")
+    columns = (chart.y if isinstance(chart.y, list) else [chart.y]) if chart._component_type == "line_chart" else (chart.y_cols or [chart.y])
+    # Bound series use column fallbacks; static series retain legacy zip behavior.
+    count = len(columns) if chart.dataset_id else min(len(columns), len(chart.y_labels or columns))
+    if count != 1:
+        raise ValueError("monthly_average requires exactly one plotted series")
+    if not chart.dataset_id:
+        if value["aggregation"] != "unique":
+            raise ValueError("monthly_average static snapshots require aggregation='unique'")
+        inputs = []
+        raw_values = chart.df[columns[0]].tolist() if columns[0] in chart.df else [None] * len(chart.df)
+        for raw in raw_values:
+            if raw is None or raw is pd.NA or (isinstance(raw, Real) and math.isnan(raw)):
+                inputs.append({"kind": "unknown"})
+            elif isinstance(raw, Real) and not isinstance(raw, bool) and math.isfinite(raw):
+                inputs.append({"kind": "finite", "value": float(raw)})
+            else:
+                inputs.append({"kind": "invalid"})
+        value["inputs"] = inputs
+    return {"monthly_average": value}
+
 
 class _ChartBase(Component):
     """Shared base for line/bar/stacked-bar charts that use ``renderChart``."""
@@ -70,23 +203,70 @@ def _scatter_radius(v, series: pd.Series, max_r: float = 20.0, min_r: float = 3.
         return min_r
     return max(min_r, (float(v) / float(mx)) ** 0.5 * max_r)
 
-def _chart_container_html(cid: str, title: str = "", extra_before: str = "") -> str:
+def _chart_container_html(
+    cid: str,
+    title: str = "",
+    extra_before: str = "",
+    *,
+    container_class: str = "",
+    container_style: str = "",
+    title_class: str = "",
+    summary: bool = False,
+    header_context: Optional[str] = None,
+) -> str:
+    """The chart's title, optional controls and canvas box.
+
+    The keyword-only arguments are for a chart that sizes its own box
+    (``container_class``), keeps its title where tiles hide it
+    (``title_class``) or carries a header summary the runtime fills in
+    (``summary``). Called without them the markup is the original.
+    """
     dl_btn = (
         f'<button class="fw-chart-dl" data-csv-chart="{cid}" '
         f'title="Download CSV">{_DOWNLOAD_SVG}</button>'
     )
+    box = f"fw-chart-container {container_class}".strip()
+    style_attr = f' style="{escape(container_style, quote=True)}"' if container_style else ""
+    context = _header_context_html(cid, header_context)
+    if summary:
+        head = (
+            '<div class="fw-chart-head">'
+            f'{_title_html(title, cls=title_class, margin=False)}'
+            f'<div class="fw-chart-summary" data-chart-summary="{cid}">'
+            '<span class="fw-chart-summary-label"></span>'
+            '<span class="fw-chart-summary-value"></span></div></div>'
+        )
+    else:
+        head = _title_html(title, cls=title_class)
     return (
-        f'{_title_html(title)}{extra_before}'
-        f'<div class="fw-chart-container">'
-        f'<canvas id="{cid}"></canvas>{dl_btn}</div>'
+        f'{head}{context}{extra_before}'
+        f'<div class="{box}"{style_attr}>'
+        f'<canvas id="{cid}"{_context_description_attr(cid, header_context)}></canvas>{dl_btn}</div>'
     )
 
-def _title_html(title: str) -> str:
+def _validate_header_context(value: Optional[str]) -> None:
+    if value is not None and not isinstance(value, str):
+        raise ValueError("header_context must be text or None")
+
+def _header_context_html(cid: str, value: Optional[str]) -> str:
+    _validate_header_context(value)
+    if value is None or not value.strip():
+        return ""
+    return (f'<div class="fw-chart-header-context" id="{cid}-header-context">'
+            f'{escape(value, quote=True)}</div>')
+
+def _context_description_attr(cid: str, value: Optional[str]) -> str:
+    _validate_header_context(value)
+    return f' aria-describedby="{cid}-header-context"' if value is not None and value.strip() else ""
+
+def _title_html(title: str, *, cls: str = "", margin: bool = True) -> str:
     if not title:
         return ""
+    name = f"fw-chart-title {cls}".strip()
+    bottom = "margin-bottom:4px;" if margin else ""
     return (
-        f'<div class="fw-chart-title" style="font-size:13px;'
-        f'color:var(--text-secondary);margin-bottom:4px;">{title}</div>'
+        f'<div class="{name}" style="font-size:13px;'
+        f'color:var(--text-secondary);{bottom}">{title}</div>'
     )
 
 def _stack_toggle_html(

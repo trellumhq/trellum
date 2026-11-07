@@ -77,6 +77,13 @@ class Theme:
     header_fill: str = "var(--bg-header)"
     on_header: str = "var(--on-accent)"
 
+    # Small status text is separate from decorative/chart accents. Aliases keep
+    # legacy custom themes responsive to their own light or dark palette.
+    text_positive: str = field(default="var(--accent-green)", kw_only=True)
+    text_negative: str = field(default="var(--accent-red)", kw_only=True)
+    text_warning: str = field(default="var(--accent-yellow)", kw_only=True)
+    text_context: str = field(default="var(--text-muted)", kw_only=True)
+
     def to_css_vars(self, selector: str = ":root") -> str:
         """Convert theme fields to CSS custom properties.
 
