@@ -9,7 +9,7 @@ import pandas as pd
 from trellum import BaseReport
 from trellum.components import DataTable, Grid, Panel, RawHTML, TabGroup
 
-_IMAGES = files("trellum.docs").joinpath("images", "report-upgrade")
+_IMAGES = files("trellum.docs").joinpath("images").joinpath("report-upgrade")
 
 
 def _capture(version, component, width=900):
