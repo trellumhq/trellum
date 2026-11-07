@@ -9,6 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- A curated component tour with six purpose-based navigation cards and distinct
+  table/chart views. Detailed developer fixtures remain available in source.
+- A native visual upgrade report with actual v0.9.5 comparisons and clear
+  automatic versus opt-in guidance, plus component-selection guidance for agents.
+- Monthly cohort retention, heatmap and weighted-total comparisons in the
+  Monetization demo; a native stage-count Sankey in Conversion; distinct
+  compact trend colors in Player Overview.
 - Optional UTC calendar coverage notes and exact bucket hover context for
   BarChart, with a native eight-chart example.
 
@@ -324,6 +331,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   nested project roots, assistant instructions and declared data files.
 
 ### Fixed
+
+- Explicit `LineChart.colors` now applies to unsplit dataset-bound series;
+  omitted colors and category-split mappings retain their previous behavior.
+- Retiring a replaced LineChart canvas no longer detaches the new canvas's
+  filter and theme binding.
 
 - Keep report toggle dimensions stable during responsive iframe resizing by
   animating only their colors.

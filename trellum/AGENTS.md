@@ -28,6 +28,7 @@ it is cheaper than it looks, and far cheaper than guessing.
 |---|---|
 | The user wants a number, not a report | `trellum guide answer` — query the source by name, reply with the number |
 | What components exist? | `trellum` — the bare command lists all of them |
+| Which components and options suit this report? | `trellum guide components` and [the report authoring decisions](docs/report-authoring.md) — choose by question, grain and interaction |
 | What does this validator check id mean? | `trellum checks`, then `trellum guide validation` |
 | How do I filter a chart? | `trellum guide filters` |
 | How do I show freshness or a last-event time in a report? | `trellum guide header` |
@@ -39,8 +40,9 @@ it is cheaper than it looks, and far cheaper than guessing.
 | What did the portal publish, and did the build there pass? | `trellum guide portal` — the MCP loop, when `.mcp.json` names a `trellum` server |
 | Everything else | `README.md`, read the relevant section only |
 
-**Before writing a generator, read `trellum guide queries` and
-`trellum guide format`.** Those two rules are not guessable from the API, and
+**Before writing a generator, read `trellum guide queries`,
+`trellum guide format` and [the report authoring decisions](docs/report-authoring.md).**
+The data rules are not guessable from the API, and
 getting them wrong produces a report that builds cleanly and displays nothing
 useful.
 
@@ -291,11 +293,37 @@ fixed rollup (e.g. period-over-period reference rollups).
 <!-- topic: generator -->
 ## The 5-step process to write generator.py
 
+First choose the report's shape using [report authoring decisions](docs/report-authoring.md).
+State the question, each dataset's grain, additive inputs or ratio denominator,
+and which selections must update each view. Choose native components for that
+shape before copying an existing report. Use `trellum guide components` for
+the component choices and generated constructor signatures.
+
+The usual overview is a shared `FilterBar`, a few `KpiRow` metrics, and compact
+`LineChart` trends in a responsive `Grid`; add detailed charts/tables below or
+in a collapsible `Section`. This is a composition to author, not an automatic
+report template. Select options only when they answer the question:
+
+| Situation | Choice and default |
+|---|---|
+| Several comparable daily trends | Opt into `height="compact"`; default LineChart height is `"balanced"`. Grid keeps titles and local controls visible by default. |
+| Units, denominator or fixed snapshot scope need explanation | Opt into `header_context`; it is authored text and never updates its dates after filtering. |
+| One displayed statistic helps reading the plot | Opt into the chart family's `header_summary` contract. A mean of plotted ratios is unweighted; use a ratio of sums KPI for an overall rate. |
+| The same categories appear in several charts | Opt into shared `category_colors` on supported LineChart, StackedBar and DoughnutChart paths. For distinct metric tiles, use LineChart `colors` by series position; bound charts apply them only without an active category split. |
+| Missing observations must stay unknown | Opt into LineChart `series_availability` and KPI `availability` declarations where supported. Legacy bound sums can otherwise turn missing inputs into zeros/subtotals. |
+| Dates need calendar context | Opt into `month_context` only for daily dates; `monthly_average` separately requires an additive daily quantity and explicit coverage contract. Neither computes regression. |
+
+Ordinary LineChart defaults already include straight segments, adaptive dots,
+grouped dated-event labels and result messages. Do not recreate those in custom
+JavaScript. Curves (`tension`), supplied forecast styling (`forecast_series`),
+comparison registrars, maturity and coverage declarations are separate opt-ins;
+none infers a forecast or regression. See the decision guide before adding them.
+
 1. Subclass `BaseReport` and implement `generate(self, ctx)`.
 2. Load a DataFrame using the reader for your source. For configured files, use `ctx.read_source("name")`; for databases, use `conn = ctx.get_connection("name")` and `query_df(conn, queries.X, params={...})`. Source names come from `data-sources/config.yaml`.
 3. Wrap each DataFrame in a `DataSource` + a `FilterBar` placed together in an **untitled section**: `ctx.add_section("", [DataSource(...), FilterBar(...)])`. Untitled is required for sticky positioning.
 4. Add content sections: `ctx.add_section(title, [...])`.
-5. **Every chart, KPI, and table component MUST carry `dataset_id="..."`** pointing to its DataSource. Without it the component renders statically and silently ignores filters — this is the most common mistake.
+5. **Every chart, KPI row, and table intended to follow filters MUST carry `dataset_id="..."`** pointing to its DataSource. A deliberately fixed snapshot must be clearly labeled; for chart families supporting it, omit `dataset_id` and use `static=True` to prevent automatic binding. Ordinary chart paths give explicit `dataset_id` precedence; CohortTable rejects combining it with `static=True`. Standalone `KpiCard` values remain supplied snapshots; a `MiniKpi` needs an explicit supported binding to become reactive.
 
 To copy from, list what this project actually has (`ls reports/`) and open one.
 Report names are not named here on purpose: this file ships with the framework
@@ -327,6 +355,11 @@ question.
 
 **Before writing any custom HTML, CSS, or JS, name the framework component you ruled out and why.** Most needs are already solved.
 
+Start with [report authoring decisions](docs/report-authoring.md) for the
+question-to-component choices, defaults and safe opt-ins. Use this inventory
+with the generated signatures below; related components do not necessarily
+take the same argument names or summary declarations.
+
 | Need | Required component |
 |---|---|
 | Filters / dropdowns / sticky filter bar | `DataSource` + `FilterBar` |
@@ -340,7 +373,7 @@ question.
 | Heatmap / day×hour / cohort grid | `HeatmapChart` |
 | Funnel | `FunnelChart` |
 | Treemap | `TreemapChart` |
-| Scatter / correlation / bubble | `ScatterChart` |
+| Relationship between supplied observations / bubble | `ScatterChart` — no automatic correlation coefficient or fitted regression |
 | Supplied complete paths / adjacent transitions | `SankeyChart` (`docs/report-sankey-charts.md`); never infer complete journeys from adjacent edges |
 | Dual-axis bar + line | `ComboChart` |
 | Ratio metrics (ARPDAU, ARPPU, retention, conversion) | `LineChart(ratios=[{numerator, denominator, label}])` — never hand-roll the division in JS |
@@ -348,12 +381,15 @@ question.
 | Tables | `DataTable`, `ComparisonTable`, `PivotTable`, `HierarchyTable` (additive leaf facts; `docs/report-hierarchy-tables.md`), `CohortTable` (precomputed cohort cells; `docs/report-cohort-tables.md`) |
 | Layout | `Grid`, `Panel`, `SplitPane`, `TabGroup` |
 | Card-panel grid | `Grid(card=True)` |
+| Compact secondary metrics sharing a filtered aggregate | `MetricView` + explicitly bound `MiniKpi`; ordinary unchunked snapshots only (`docs/report-metric-views.md`) |
+| Filtered complete daily period comparisons | `PeriodComparison` + native Toggle + `ComparisonTable`; separate from supplied static comparison values (`docs/report-period-comparison.md`) |
+| Authored calendar bucket coverage / cohort horizon context | `CalendarCoverage` + eligible `BarChart(bucket_context=...)`; reports calendar/input coverage and maturity from an explicit observed-through horizon, without calculating bucket values (`docs/report-kpi-buckets.md`) |
 | Cross-grain filter sync | `FilterBar(propagate_to={target_ds: {src_col: tgt_col}})` |
 | A/B test report | `ABCompare.from_users(df, variant_col=..., control=..., test=..., metrics=[Metric(...)])` — the front door: a per-user frame in YOUR column names, out comes the finished component with an SRM badge and raw / winsor / CUPED modes (a `Metric` that declares `pre_col` opts into CUPED). Groups fetched separately (one query per arm)? `ABCompare.from_groups({"Control": df_a, "Test": df_b}, metrics=[...])`. Self-contained — no DataSource/FilterBar needed. The raw constructor `ABCompare(rows=..., modes=...)` plus `trellum.stats.ab.{winsorize_user_df, cuped_user_df, bootstrap_ab_cis}` remains for custom row sets. See `trellum/README.md` "A/B Testing". |
 
 `RawHTML` is the **exception, not the default**. It is permitted only when **both**:
 
-1. The visualization is genuinely novel (force-directed graph, Sankey, etc.) and no combination of framework components can express it.
+1. The visualization is genuinely novel (for example a force-directed graph) and no combination of framework components can express it. Supplied path/transition diagrams already have `SankeyChart`.
 2. You have explicitly named the components you considered and why each was insufficient.
 
 For complex reports prefer the **hybrid pattern**: framework components for filters/standard charts/KPIs; `RawHTML` only for the genuinely novel section. The custom JS must subscribe to the framework filter engine — `window._fwFilterEngine.subscribe(dsId, id, fn)` — instead of managing its own filter state. See `trellum/README.md` "Custom Dashboards" for the full pattern and the `fw.*` API.

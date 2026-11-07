@@ -33,7 +33,7 @@ from trellum.components import (
 )
 from trellum.data import query_df
 
-from . import custom_sections, queries
+from . import cohort_quality, custom_sections, queries
 
 _LOOKBACK_DAYS = 180
 # The tier-by-month heatmap needs its six month-columns; a 90-day default
@@ -192,6 +192,10 @@ class MonetizationReport(BaseReport):
                 ratio="1:1",
             ),
         ])
+
+        # Retention has a different grain and no campaign attribution. Keep
+        # its identity filters and monthly observations independent of spend.
+        cohort_quality.add_section(ctx, conn, queries.RETENTION)
 
         # ── The Journey: what those installs then DO ─────────────────
         # Acquisition to purchase as a living metro map, on its own

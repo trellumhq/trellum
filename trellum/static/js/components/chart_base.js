@@ -1084,7 +1084,9 @@ function _fwUpdateLineResult(canvas, cfg, spec, rows) {
         function retire() {
             owned.dispose();
             var bindings = window._fwCategoryChartBindings;
-            if (bindings && bindings.has(canvas.id)) bindings.get(canvas.id)();
+            // A replacement canvas can already own this id when the old
+            // observer runs. Retire only the binding this presenter used.
+            if (bindings && owned.binding && bindings.get(canvas.id) === owned.binding) owned.binding();
             delete canvas._fwBarLive;
         }
         var off = null, observer = new MutationObserver(function() {
@@ -1119,6 +1121,7 @@ function _fwUpdateLineResult(canvas, cfg, spec, rows) {
             },
             update: function(next, selectedRows) {
                 owned.spec = next; owned.rows = selectedRows;
+                owned.binding = window._fwCategoryChartBindings && window._fwCategoryChartBindings.get(canvas.id);
                 owned.scope = window._currentScope;
                 owned.source = _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
                 if (owned.source) owned.source.live = !!window._fwFilterEngine.isLiveDataset(owned.source.id);
@@ -1618,7 +1621,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                         var den = gr3.map[l][spec.denominator] || 0;
                         return den > 0 ? num / den : null;
                     });
-                    var rc = colors[ri % colors.length];
+                    var rc = isLine && cfg.colors && cfg.colors[ri]
+                        ? cfg.colors[ri] : colors[ri % colors.length];
                     if (isLine) {
                         datasets3.push({ label: spec.label, data: ratData,
                             backgroundColor: rc + '22', borderColor: rc,
@@ -1728,7 +1732,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 for (var i2 = 0; i2 < cfg.value_cols.length; i2++) {
                     var col2 = cfg.value_cols[i2];
                     var d2 = gr2.labels.map(function(l) { return gr2.map[l][col2] || 0; });
-                    var c2 = colors[i2 % colors.length];
+                    var c2 = isLine && cfg.colors && cfg.colors[i2]
+                        ? cfg.colors[i2] : colors[i2 % colors.length];
                     var ds2 = { label: ylabels[i2] || col2, data: d2,
                         backgroundColor: isLine ? c2 + '22' : c2 + 'cc', borderColor: c2,
                         borderWidth: isLine ? 2.5 : 1, pointRadius: isLine ? 2 : undefined, tension: 0 };

@@ -454,6 +454,8 @@ class LineChart(_ChartBase):
                 cfg_r["max_stacks"] = self.max_stacks
             if self.show_labels:
                 cfg_r["show_labels"] = True
+            if self.colors:
+                cfg_r["colors"] = list(self.colors)
             cfg_r.update(self._summary_config())
             cfg_r.update(self._style_config())
             cfg_r.update(category_config)
@@ -500,6 +502,8 @@ class LineChart(_ChartBase):
                 cfg["max_stacks"] = self.max_stacks
             if self.show_labels:
                 cfg["show_labels"] = True
+            if self.colors:
+                cfg["colors"] = list(self.colors)
             cfg.update(self._summary_config())
             cfg.update(self._style_config())
             cfg.update(category_config)

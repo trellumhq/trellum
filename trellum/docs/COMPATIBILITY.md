@@ -1,5 +1,19 @@
 # Framework Compatibility Policy
 
+For an illustrated overview of this report update, start with the
+[visual upgrade guide](report-visual-upgrade.md). It separates the defaults
+received after rebuilding from features authors explicitly enable. The
+[authoring guide](report-authoring.md) maps reporting questions to components.
+
+## Unreleased: explicit filtered LineChart colors
+
+Existing `LineChart.colors` lists now apply to unsplit dataset-bound value and
+ratio series, where they were previously ignored. Omitted/empty lists and
+unspecified positions retain theme colors. Active category splits retain their
+existing category mapping; use `category_colors` for shared category identities.
+If a report supplied an unused list but needs the previous theme colors, remove
+the list. Values, calculations and plotting geometry are unchanged.
+
 ## Unreleased: optional calendar coverage
 
 `CalendarCoverage` and `BarChart.bucket_context` are keyword-only opt-ins.

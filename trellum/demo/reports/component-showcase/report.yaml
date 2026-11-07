@@ -1,68 +1,35 @@
 name: Report Component Showcase
 slug: component-showcase
-description: >-
-  Explore reusable report components and their optional settings in one place.
-  Deterministic synthetic daily revenue and activity examples demonstrate
-  responsive charts, filtering and scoped summaries without a database.
+description: 'Choose native report components by purpose: metrics, time series, category
+  charts, tables, patterns and responsive layouts. Synthetic daily campaign and cohort
+  observations demonstrate scoped filters, totals and optional context, with links
+  to complete business demos.'
 version: 0.1.0
 studio: framework
 category: Components
-tags: [components, examples, charts, tables, metrics, layouts]
+tags:
+- components
+- examples
+- charts
+- tables
+- metrics
+- layouts
 theme: trellum dark
 data_sources: []
 display:
   icon: panels-top-left
-  color: "#4e79a7"
+  color: '#4e79a7'
   priority: 0
-
 annotations:
   events:
-  - date: '2026-07-28'
-    end_date: '2026-08-05'
-    label: Synthetic carry-in window
-    type: event
-  - date: '2026-08-02'
-    label: Synthetic release A
-    type: release
-  - date: '2026-08-03'
-    label: Synthetic campaign start
+  - date: '2026-09-01'
+    label: Autumn campaign launch
     type: campaign
-  - date: '2026-08-04'
-    end_date: '2026-08-12'
-    label: Synthetic experiment
-    type: ab_test
-  - date: '2026-08-06'
-    label: Synthetic same-day release
+  - date: '2026-09-08'
+    label: Store update
     type: release
-  - date: '2026-08-06'
-    label: Synthetic same-day incident
-    type: incident
-  - date: '2026-08-06'
-    label: Synthetic same-day campaign
-    type: campaign
-  - date: '2026-08-08'
-    label: Synthetic maintenance
-    type: incident
-  - date: '2026-08-11'
-    label: Synthetic midweek release
-    type: release
-  - date: '2026-08-18'
-    end_date: '2026-08-20'
-    label: Synthetic deliberately long event name with a complete original date range
-      that wraps on a phone
-    type: event
-  - date: '2026-08-22'
-    label: Synthetic later release
-    type: release
-  - date: '2026-08-26'
-    label: Synthetic final weekly bucket exclusion
-    type: event
-  - date: '2026-08-30'
-    end_date: '2026-09-04'
-    label: Synthetic carry-out window
-    type: campaign
   weekday_highlight:
     days:
     - 0
     label: Sundays
-    default_visible: true
+    default_visible: false

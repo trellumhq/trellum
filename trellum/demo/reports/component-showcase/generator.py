@@ -58,6 +58,14 @@ from . import (
 
 class ComponentShowcaseReport(BaseReport):
     def generate(self, ctx):
+        from .tour import add_sections
+        add_sections(ctx)
+
+    def generate_reference(self, ctx):
+        """Exhaustive developer fixtures; excluded from the visitor tour."""
+        from copy import deepcopy
+
+        ctx.config["annotations"] = deepcopy(examples_annotations.ANNOTATIONS)
         ctx.set_header(subtitle="Reusable report components and optional settings")
         # RawHTML supplies explanatory prose; interactive examples below use
         # the framework components and their normal filtering runtime.

@@ -54,3 +54,16 @@ WHERE event_date BETWEEN :start_date AND :end_date
   AND network_type = 'paid'
 ORDER BY event_date
 """
+
+# Cohort observations remain separate from daily revenue and campaign spend.
+RETENTION = """
+SELECT cohort_date,
+       title,
+       platform,
+       day_number,
+       cohort_size,
+       retained_users
+FROM fact_retention
+WHERE cohort_date BETWEEN :start_date AND :end_date
+ORDER BY cohort_date
+"""

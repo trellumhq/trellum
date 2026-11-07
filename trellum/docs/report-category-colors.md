@@ -56,9 +56,11 @@ buckets keep their existing fallback even when the same text is declared.
 Static wide-column LineChart and StackedBar inputs are series columns rather
 than category rows; they reject this option with an explanation. Legacy static
 `stack_by` is not reinterpreted. Existing static `LineChart.colors` remain
-authoritative across theme switches. Dataset-bound `LineChart.colors` are
-still omitted by the existing dataset path; use named `overrides` for mapped
-categories. This option does not change ComboChart `line_colors` or supplied
+authoritative across theme switches. Dataset-bound `LineChart.colors` apply by
+series position to unsplit value and ratio series, including across filters and
+theme redraws. Omitted or empty lists and missing entries retain theme fallback.
+Active category splits retain their category-color rules and ignore that list;
+use named `overrides` for mapped categories. This option does not change ComboChart `line_colors` or supplied
 Treemap colors.
 
 For a static or dataset-bound `DoughnutChart`, `column` must equal `label`.

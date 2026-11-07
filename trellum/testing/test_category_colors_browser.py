@@ -265,6 +265,13 @@ def _browser_check(tmp_path, width):
     for cfg in changed_data['components'].values():
         cfg.pop('category_colors', None)
         cfg.pop('category_keys', None)
+    # Later line presentation defaults are independently tested. This fixture
+    # has no events or missing results; retain all data, colors, geometry and
+    # canvas assertions while comparing the historical color-only contract.
+    for payload in (baseline_data, changed_data):
+        for cfg in payload['components'].values():
+            cfg.pop('event_labels', None)
+            cfg.pop('line_result_presentation', None)
     assert baseline_data['components'] == changed_data['components']
     shots = Path(os.environ.get('TRELLUM_SCREENSHOT_DIR', str(tmp_path / 'evidence')))
     shots.mkdir(parents=True, exist_ok=True)
@@ -435,6 +442,15 @@ def _browser_check(tmp_path, width):
                 window._reportData.components[id]=cfg;window._fwRenderers[cfg.type](id,cfg);}""",current['id'])
             assert _semantic(_state(page,title)) == _semantic(current)
         assert page.evaluate('window._categoryThemeAdds-window._categoryThemeRemoves') == live_counts
+        # The retired canvas's asynchronous presenter cleanup must not detach
+        # the replacement canvas from filters or theme changes.
+        page.evaluate("window._fwFilterEngine.setFilter('category_spend','replacement-probe','channel','equals','Retargeting')")
+        assert list(_colors(_state(page, 'Spend declared'))) == ['Retargeting']
+        _theme(page, 'trellum dark')
+        assert _colors(_state(page, 'Spend declared')) == {'Retargeting': _palette(page)[2]}
+        page.evaluate("window._fwFilterEngine.clearFilter('category_spend','replacement-probe')")
+        _theme(page, 'trellum light')
+        assert _semantic(_state(page, 'Spend declared')) == _semantic(changed_states['Spend declared'])
         # Removing the opt-in on a reused StackedBar config must recreate the
         # normal live binding after disposing its category-specific listeners.
         page.evaluate("""id=>{const cfg=window._reportData.components[id];

@@ -19,7 +19,7 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
     report = discover_report(str(source))
     ctx = ReportContext(config=report.load_config(str(source)),
                         slug="component-showcase", output_dir=str(tmp_path))
-    report().generate(ctx)
+    report().generate_reference(ctx)
     events = local_annotation_events(ctx.config)
     assert len(events) == 13
     from trellum.reporting.diagnostics import compute_details

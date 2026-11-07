@@ -17,6 +17,17 @@
   <a href="https://github.com/trellumhq/trellum/blob/main/LICENSE">AGPL-3.0-only</a>
 </p>
 
+## Choose a report and explore the components
+
+The bundled `component-showcase` is a short, interactive tour grouped by purpose.
+Switch table and chart views to see their differences; use Player Overview,
+Monetization and Conversion to see components working together in complete reports.
+The bundled `report-upgrade` guide shows native v0.9.5 and current captures.
+
+- [Choose components and options for a report](docs/report-authoring.md)
+- [Visual upgrade: automatic changes and explicit opt-ins](docs/report-visual-upgrade.md)
+- [Business demo stories and data scope](docs/report-demo-stories.md)
+
 ## Install
 
 Trellum requires Python 3.11 or newer. Install the package from PyPI:
