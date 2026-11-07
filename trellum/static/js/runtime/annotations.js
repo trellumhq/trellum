@@ -126,7 +126,7 @@
         return lum > 0.35 ? '#111' : '#fff';
     }
 
-    // An optional collector is used ONLY by grouped LineCharts. Associate the
+    // An optional collector is used by owned LineChart event modes. Associate the
     // original event with the annotation here, at the one eligibility/snap path;
     // never recover dates or identities from positioned category labels.
     function _buildAnnotations(events, labels, dated) {
@@ -153,9 +153,16 @@
         // server sent is shown verbatim.
         var activeScope = window._currentScope;
         var minD = labels[0], maxD = labels[labels.length - 1];
-        var annos = {};
+        var annos = {}, identities = new Map();
         (events || []).forEach(function(ev, i) {
             var evType = ev.type || 'release';
+            // Source metadata + occurrence distinguishes duplicate declarations
+            // without changing identity when a filter removes earlier events.
+            if (dated) {
+                var source = JSON.stringify([ev.date, ev.end_date || '', ev.label, evType, ev.studio || '']);
+                var occurrence = identities.get(source) || 0;
+                identities.set(source, occurrence + 1);
+            }
             if (_annoVisible[evType] === false) return;
             if (activeScope && ev.studio && ev.studio !== 'shared' && ev.studio !== activeScope) return;
             if (ev.date > maxD || (ev.end_date || ev.date) < minD) return;
@@ -196,7 +203,7 @@
             annos[key]._fwEvent = ev;
             if (dated) {
                 annos[key].label.display = false;
-                dated.push({key: key, index: i, event: ev, annotation: annos[key]});
+                dated.push({key: key, index: i, identity: source + ':' + occurrence, event: ev, annotation: annos[key]});
             }
         });
         // Recurring weekday markers — thin vertical lines drawn on every
@@ -224,9 +231,292 @@
         return annos;
     }
 
+    function _eventIdentity(d) {
+        return d.identity || 'source:' + d.index;
+    }
+    function _eventDate(d) {
+        var date = String(d.event.date);
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return Number(date.slice(8, 10)) + ' ' + months[Number(date.slice(5, 7)) - 1];
+    }
+    function _eventColor(d) {
+        var style = _ANNO_STYLES[d.event.type] || _ANNO_STYLES.release;
+        return style.border || style.color;
+    }
+    function _eventRow(d) {
+        var row = document.createElement('li'), name = document.createElement('strong');
+        row.dataset.eventItem = _eventIdentity(d);
+        row.dataset.eventFocus = _eventIdentity(d);
+        row.tabIndex = -1;
+        row.style.setProperty('--event-color', _eventColor(d));
+        name.textContent = String(d.event.label == null ? '' : d.event.label);
+        var date = document.createElement('time');
+        date.dateTime = String(d.event.date);
+        date.textContent = String(d.event.date) + (d.event.end_date ? ' – ' + d.event.end_date : '') + ' · ' + (d.event.type || 'release');
+        row.append(name, date);
+        if (d.annotation.xMin !== d.event.date || d.annotation.xMax !== (d.event.end_date || d.event.date)) {
+            var mapping = document.createElement('span');
+            mapping.className = 'fw-event-mapping';
+            mapping.textContent = 'Plot position uses the existing date buckets/clipping: ' + d.annotation.xMin +
+                (d.annotation.xMin !== d.annotation.xMax ? ' – ' + d.annotation.xMax : '') + '. Original dates shown above.';
+            row.append(mapping);
+        }
+        return row;
+    }
+    // DOM annotation owner. Rail height is outside the canvas container: no
+    // data geometry, source dataset, tooltip or drag handler changes are needed.
+    function _adaptiveEventLabelsPlugin(previous, dated) {
+        var rail, root, key, panel, list, title, exportKey, chartRef;
+        var groups = [], eligible = [], selected = previous && previous.selected || [];
+        var owner = previous && previous.owner, pendingFocus = previous && previous.focusKey;
+        var restoreFocus = pendingFocus && document.activeElement === document.body;
+        var scroll = previous && previous.scroll || 0, signature = '', controls = new Map();
+        var listeners = new AbortController(), removal;
+        function focusKey() {
+            var active = document.activeElement;
+            return (rail && rail.contains(active) || root && root.contains(active)) ? active.dataset.eventFocus : null;
+        }
+        function focusChart(chart) {
+            if (!chart.canvas.hasAttribute('tabindex')) chart.canvas.tabIndex = -1;
+            if (!chart.canvas.hasAttribute('aria-label') && !chart.canvas.hasAttribute('aria-labelledby'))
+                chart.canvas.setAttribute('aria-label', chart.canvas.dataset.fwTitle || 'Report chart');
+            chart.canvas.focus({preventScroll: true});
+        }
+        function describe(chart, add) {
+            var id = chart.canvas.id + '-adaptive-events';
+            var tokens = (chart.canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) { return t && t !== id; });
+            if (add) tokens.push(id);
+            if (tokens.length) chart.canvas.setAttribute('aria-describedby', tokens.join(' '));
+            else chart.canvas.removeAttribute('aria-describedby');
+        }
+        function highlight(chart) {
+            var selectedSet = new Set(selected), byKey = new Map();
+            dated.forEach(function(d) {
+                byKey.set(d.key, d);
+                var a = d.annotation;
+                if (d.baseWidth === undefined) d.baseWidth = a.borderWidth;
+                a.borderWidth = selectedSet.has(_eventIdentity(d)) ? d.baseWidth + 2 : d.baseWidth;
+            });
+            // Resolve the annotation plugin's element options too, without a
+            // recursive update or adding another source annotation.
+            var plugin = window['chartjs-plugin-annotation'];
+            if (plugin) plugin.getAnnotations(chart).forEach(function(el) {
+                var d = byKey.get(el.options.id);
+                if (d) el.options.borderWidth = d.annotation.borderWidth;
+            });
+        }
+        function updatePanel(chart, keepScroll) {
+            var previousScroll = keepScroll ? list.scrollTop : 0;
+            var selectedSet = new Set(selected);
+            var rows = eligible.filter(function(d) { return selectedSet.has(_eventIdentity(d)); });
+            panel.hidden = !rows.length;
+            title.textContent = rows.length === 1 ? rows[0].event.label : rows.length + ' events · original dates';
+            list.firstChild.replaceChildren.apply(list.firstChild, rows.map(_eventRow));
+            list.scrollTop = previousScroll;
+            controls.forEach(function(items, button) {
+                button.setAttribute('aria-expanded', String(!panel.hidden && button.dataset.eventControl === owner));
+            });
+            highlight(chart);
+        }
+        function close(chart, returnFocus) {
+            selected = [];
+            updatePanel(chart, false);
+            chart.draw();
+            if (returnFocus) {
+                var button = Array.from(controls.keys()).find(function(b) { return b.dataset.eventControl === owner; });
+                if (button) button.focus({preventScroll: true}); else focusChart(chart);
+            }
+        }
+        function build(chart) {
+            rail = document.createElement('div'); rail.className = 'fw-event-rail';
+            rail.id = chart.canvas.id + '-event-rail';
+            root = document.createElement('div'); root.className = 'fw-adaptive-events';
+            root.id = chart.canvas.id + '-adaptive-events';
+            key = document.createElement('div'); key.className = 'fw-event-key';
+            panel = document.createElement('div'); panel.className = 'fw-event-panel'; panel.hidden = true;
+            panel.id = chart.canvas.id + '-event-panel';
+            var closeButton = document.createElement('button'); closeButton.type = 'button';
+            closeButton.className = 'fw-event-close'; closeButton.textContent = '×';
+            closeButton.setAttribute('aria-label', 'Close event details'); closeButton.dataset.eventFocus = 'close';
+            title = document.createElement('h4'); title.tabIndex = -1; title.dataset.eventFocus = 'details';
+            list = document.createElement('div'); list.className = 'fw-adaptive-event-list';
+            list.tabIndex = 0; list.dataset.eventFocus = 'list'; list.setAttribute('role', 'region');
+            list.setAttribute('aria-label', 'Exact event details'); list.append(document.createElement('ol'));
+            panel.append(closeButton, title, list);
+            exportKey = document.createElement('div'); exportKey.className = 'fw-event-export-key'; exportKey.hidden = true;
+            root.append(key, panel, exportKey);
+            closeButton.addEventListener('click', function() { close(chartRef, true); }, {signal: listeners.signal});
+            [root, rail].forEach(function(el) {
+                el.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && selected.length) { e.preventDefault(); close(chartRef, true); }
+                }, {signal: listeners.signal});
+                el.addEventListener('click', function(e) {
+                    var button = e.target.closest('[data-event-control]');
+                    if (!button || !controls.has(button)) return;
+                    owner = button.dataset.eventControl;
+                    selected = controls.get(button).map(_eventIdentity);
+                    updatePanel(chartRef, false); chartRef.draw(); title.focus({preventScroll: true});
+                }, {signal: listeners.signal});
+            });
+        }
+        function button(chart, items, text, control) {
+            var el = document.createElement('button'); el.type = 'button'; el.textContent = text;
+            el.dataset.eventControl = control; el.dataset.eventFocus = control;
+            el.setAttribute('aria-controls', panel.id); el.setAttribute('aria-expanded', 'false');
+            el.setAttribute('aria-label', items.length === 1 ? text + ' · ' + items[0].event.label + ' · ' + items[0].event.date : text + ' · Show exact event names and dates');
+            el.style.setProperty('--event-color', _eventColor(items[0]));
+            controls.set(el, items); return el;
+        }
+        function reconcile(chart) {
+            chartRef = chart;
+            if (!root) build(chart); else scroll = list.scrollTop;
+            var focused = focusKey() || (restoreFocus && pendingFocus);
+            pendingFocus = null; restoreFocus = false;
+            var slot = chart.canvas.parentElement;
+            if (eligible.length) {
+                if (rail.nextElementSibling !== slot) slot.before(rail);
+                if (slot.nextElementSibling && slot.nextElementSibling.id === chart.canvas.id + '-month-context') slot = slot.nextElementSibling;
+                if (slot.nextElementSibling !== root) slot.after(root);
+            } else {
+                // Empty populations retain no sibling nodes either. Existing
+                // legend/title lookup contracts then remain intact.
+                rail.remove(); root.remove();
+            }
+            rail.hidden = root.hidden = !eligible.length;
+            rail.style.marginLeft = chart.chartArea.left + 'px';
+            rail.style.marginRight = Math.max(0, chart.width - chart.chartArea.right) + 'px';
+            describe(chart, !!eligible.length);
+            var eligibleIds = new Set(eligible.map(_eventIdentity));
+            selected = selected.filter(function(id) { return eligibleIds.has(id); });
+            var next = JSON.stringify([groups.map(function(g) { return [g.text, g.left, g.width, g.events.map(function(d) { return [d.index, d.event, d.annotation.xMin, d.annotation.xMax]; })]; }), chart.width <= 600]);
+            if (next !== signature) {
+                controls.clear(); rail.replaceChildren(); key.replaceChildren();
+                groups.forEach(function(g) {
+                    var control = 'rail:' + JSON.stringify(g.events.map(_eventIdentity));
+                    var el = button(chart, g.events, g.text, control);
+                    el.style.left = (g.left - chart.chartArea.left) + 'px'; el.style.width = g.width + 'px'; rail.append(el);
+                });
+                if (groups.some(function(g) { return g.events.length > 1; })) {
+                    key.append(button(chart, eligible, 'View all ' + eligible.length + ' events', 'all'));
+                } else if (chart.width <= 600 || groups.some(function(g) { return g.compact; })) {
+                    eligible.forEach(function(d) { key.append(button(chart, [d], _eventDate(d) + ' · ' + d.event.label, 'key:' + _eventIdentity(d))); });
+                }
+                var exportHeading = document.createElement('strong'); exportHeading.textContent = 'Event key · original dates';
+                var exportList = document.createElement('ol');
+                eligible.forEach(function(d) { exportList.append(_eventRow(d)); });
+                exportKey.replaceChildren(exportHeading, exportList);
+                exportKey.dataset.clustered = String(groups.some(function(g) { return g.events.length > 1; }));
+                signature = next;
+            }
+            // Membership/width changes may replace a cluster control. Keep the
+            // return target attached to a surviving original identity.
+            if (selected.length && !Array.from(controls.keys()).some(function(b) { return b.dataset.eventControl === owner; })) {
+                var replacement = Array.from(controls.keys()).find(function(b) { return controls.get(b).some(function(d) { return _eventIdentity(d) === selected[0]; }); });
+                if (replacement) owner = replacement.dataset.eventControl;
+            }
+            updatePanel(chart, true); list.scrollTop = scroll;
+            if (focused) {
+                var target = Array.from(root.querySelectorAll('[data-event-focus]')).concat(Array.from(rail.querySelectorAll('[data-event-focus]')))
+                    .find(function(el) { return el.dataset.eventFocus === focused && !el.closest('[hidden]'); });
+                if (!target && eligible.length) target = rail.querySelector('button');
+                if (target) target.focus({preventScroll: true}); else focusChart(chart);
+            }
+        }
+        function layout(chart) {
+            var area = chart.chartArea, x = chart.scales.x;
+            groups = []; eligible = [];
+            if (!area || !x || area.width <= 0) return;
+            var labelIndexes = new Map(chart.data.labels.map(function(label, i) { return [label, i]; }));
+            dated.forEach(function(d) {
+                var start = x.getPixelForValue(labelIndexes.get(d.annotation.xMin));
+                var end = x.getPixelForValue(labelIndexes.get(d.annotation.xMax));
+                if (!Number.isFinite(start) || !Number.isFinite(end) || Math.max(start, end) < area.left || Math.min(start, end) > area.right) return;
+                groups.push({anchor: Math.max(area.left, Math.min(area.right, start)), events: [d]});
+            });
+            groups.sort(function(a, b) { return a.anchor - b.anchor || a.events[0].event.date.localeCompare(b.events[0].event.date) || a.events[0].index - b.events[0].index; });
+            eligible = groups.map(function(g) { return g.events[0]; }).sort(function(a, b) { return a.event.date.localeCompare(b.event.date) || a.index - b.index; });
+            var source = groups;
+            source.forEach(function(g, i) { g.first = g.last = i; });
+            var ctx = chart.ctx; ctx.save(); ctx.font = '12px ' + Chart.defaults.font.family;
+            function measure(g) {
+                var first = source[g.first].events[0], last = source[g.last].events[0], count = g.last - g.first + 1;
+                g.compact = chart.width <= 600;
+                g.text = count === 1 ? _eventDate(first) + (g.compact ? '' : ' · ' + first.event.label) :
+                    count + ' events · ' + _eventDate(first) + (first.event.date !== last.event.date ? '–' + _eventDate(last) : '');
+                if (count === 1 && ctx.measureText(g.text).width + 20 > area.width) {
+                    g.compact = true; g.text = _eventDate(first);
+                }
+                g.width = Math.min(area.width, Math.max(44, ctx.measureText(g.text).width + 20));
+                g.left = Math.max(area.left, Math.min(area.right - g.width, g.anchor - g.width / 2));
+            }
+            // Stack merging is linear after sorting. Each source event is kept
+            // once; full names are always reachable through View all.
+            var fitted = [];
+            groups.forEach(function(item) {
+                var g = {anchor: item.anchor, first: item.first, last: item.last};
+                measure(g);
+                while (fitted.length && fitted[fitted.length - 1].left + fitted[fitted.length - 1].width + 6 > g.left) {
+                    var prev = fitted.pop(); g.first = prev.first; g.anchor = prev.anchor; measure(g);
+                }
+                fitted.push(g);
+            });
+            fitted.forEach(function(g) { g.events = source.slice(g.first, g.last + 1).map(function(item) { return item.events[0]; }); });
+            groups = fitted; ctx.restore(); chart._fwEventMarkers = groups;
+        }
+        return {
+            id: 'fwAdaptiveEvents',
+            beforeInit: function(chart) {
+                chart._fwDatedEvents = dated;
+                chart._fwTakeEventDetails = function() { return {selected: selected.slice(), owner: owner, focusKey: focusKey(), scroll: list ? list.scrollTop : 0}; };
+                removal = new MutationObserver(function() {
+                    if (document.getElementById(chart.canvas.id) === chart.canvas) return;
+                    var id = chart.canvas.id;
+                    chart.destroy();
+                    if (window._chartInstances[id] === chart) delete window._chartInstances[id];
+                });
+                removal.observe(document.body, {childList: true, subtree: true});
+            },
+            afterUpdate: function(chart) { layout(chart); reconcile(chart); },
+            beforeDestroy: function(chart) {
+                chart.canvas._fwEventDetailsState = chart._fwTakeEventDetails();
+                listeners.abort(); if (removal) removal.disconnect(); describe(chart, false);
+                if (rail) rail.remove(); if (root) root.remove();
+                delete chart._fwEventMarkers; delete chart._fwDatedEvents; delete chart._fwTakeEventDetails;
+            }
+        };
+    }
+    // Called from the shared export clone contract. Only captured descendants
+    // change; the screen's disclosure, scroll and focus are never touched.
+    window._fwPrepareEventCapture = function(doc, root, scale) {
+        var selector = '.fw-adaptive-events:not([hidden])';
+        var owners = Array.from(root.querySelectorAll(selector));
+        if (root.matches(selector)) owners.unshift(root);
+        if (!owners.length) return;
+        owners.forEach(function(owner) {
+            var key = owner.querySelector('.fw-event-export-key');
+            if (key && key.dataset.clustered === 'true') key.hidden = false;
+            owner.querySelectorAll('.fw-adaptive-event-list').forEach(function(list) {
+                list.style.maxHeight = 'none'; list.style.overflow = 'visible'; list.scrollTop = 0;
+            });
+        });
+        var box = root.getBoundingClientRect(), ratio = scale || 1;
+        if (box.width * ratio > 16384 || box.height * ratio > 16384 || box.width * box.height * ratio * ratio > 32000000)
+            throw new Error('Event capture exceeds the 16,384px / 32 megapixel image limit. Select a smaller chart or section.');
+    };
+
     // Per-chart native canvas plugin. It adds no layout padding, datasets or
     // annotation geometry. Canvas drawing is included in existing PNG/PDF paths.
-    function _lineEventLabelsPlugin(previous, dated) {
+    function _lineEventLabelsPlugin(previous, dated, mode) {
+        if (mode === 'adaptive') {
+            // A compatibility-mode owner may have handed its old disclosure
+            // over during a mode change. Adaptive owns fresh DOM on both sides
+            // of the plot, so retire that disclosure rather than stranding it.
+            if (previous && previous.root) {
+                if (previous.root.contains(document.activeElement)) previous.focusKey = 'details';
+                previous.root.remove();
+            }
+            return _adaptiveEventLabelsPlugin(previous, dated);
+        }
         var root = previous && previous.root, signature = '', handedOff = false;
         var pendingFocus = previous && previous.focusKey;
         var restoreFocus = pendingFocus && document.activeElement === document.body;

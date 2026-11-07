@@ -43,14 +43,14 @@ def test_event_labels_is_keyword_only_and_preserves_subclasses():
 
     assert inspect.signature(Child).parameters["extra"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
     assert inspect.signature(Child).parameters["event_labels"].kind == inspect.Parameter.KEYWORD_ONLY
-    assert Child(_df(), "day", "value", "Title").event_labels == "grouped"
+    assert Child(_df(), "day", "value", "Title").event_labels == "adaptive"
     ctx = RenderContext(theme=THEME_REGISTRY["trellum light"])
     Child(_df(), "day", "value").render_html(ctx)
-    assert next(iter(ctx.component_data.values()))["event_labels"] == "grouped"
+    assert next(iter(ctx.component_data.values()))["event_labels"] == "adaptive"
     assert [f.name for f in dataclasses.fields(LineChart) if f.init and not f.kw_only][-2:] == ["height", "header_summary"]
 
 
-@pytest.mark.parametrize("mode", ["grouped", "full"])
+@pytest.mark.parametrize("mode", ["adaptive", "grouped", "full"])
 @pytest.mark.parametrize("options", [
     {"static": True}, {"dataset_id": "d"}, {"dataset_id": "d", "static": True},
     {"dataset_id": "d", "stack_by": "channel"},
@@ -128,7 +128,9 @@ def _historical(path):
 def _build(output, *, baseline=False):
     output.mkdir(parents=True, exist_ok=True)
     module = _module()
-    line = LineChart
+    def line(*args, **kwargs):
+        kwargs.setdefault("event_labels", "grouped")
+        return LineChart(*args, **kwargs)
     historical = _historical("trellum/components/charts/line_area.py") if baseline else None
     if historical:
         # Execute the actual required baseline Python, without another checkout

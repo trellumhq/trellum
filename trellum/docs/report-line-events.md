@@ -1,19 +1,37 @@
 # LineChart dated events
 
-Newly built ordinary `LineChart`s use keyword-only `event_labels="grouped"`.
-They retain native annotation lines and translucent range bands, replacing full
-in-plot event names with small numbered canvas markers. An expandable native
-list below the unchanged plot contains every eligible event's original name,
-exact `date`, optional `end_date`, and type. Names and dates are literal text.
+Newly built ordinary `LineChart`s use keyword-only `event_labels="adaptive"`.
+They retain native annotation lines and translucent range bands. Sparse labels
+show dates and names in a 40px rail above the unchanged plot (48px on phones).
+Narrow charts show date buttons plus a wrapping, visible name key beneath the
+plot. No eligible dated events means no rail, key or reserved space.
+
+Colliding controls merge into literal counts and original start-date spans, such
+as “3 events · 1 Sep–3 Sep”. These are counts, never lookup numbers or a claim
+that the separate events form one continuous duration. Each original mark and
+range band remains. A “View all N events” button opens every eligible event in
+chronological order in a local scroller bounded to 280px. Nothing is paginated
+or silently omitted.
+
+Click, tap or keyboard-activate a native event button to open exact names,
+original dates, optional range end dates and types beside its chart. The
+associated marks are highlighted. Close or Escape returns focus to the owning
+control; a surviving source identity retains focus through redraws and
+regrouping. When all events disappear, owned focus returns to the named chart.
+Unrelated filter focus is preserved. Phone event buttons and Close have at
+least 44px touch targets. Event names are literal text and wrap in the key and
+details. Plot tooltips, zoom, controls and metric filters retain their behavior.
 
 ```python
 LineChart(daily, "day", "orders", "Orders", static=True)
 LineChart(daily, "day", "orders", "Full labels", static=True,
           event_labels="full")
+LineChart(daily, "day", "orders", "Numbered compatibility markers", static=True,
+          event_labels="grouped")
 LineChart(rows, "day", "orders", "Selected orders", dataset_id="orders")
 ```
 
-Only `"grouped"` and `"full"` are accepted, including when options are changed
+Only `"adaptive"`, `"grouped"` and `"full"` are accepted, including when options are changed
 before rendering. `"full"` uses in-plot labels with collision protection:
 crowded labels move into the ordinary event-details disclosure, while sparse
 labels remain in the plot. Grouped mode keeps its separate numbered markers
@@ -24,6 +42,9 @@ option. Explicit `dataset_id` still takes precedence over `static=True`; omit
 two-argument `window._buildAnnotations(events, labels)` calls keep full labels.
 Generated payloads without `event_labels` also keep full labels.
 
+## Explicit grouped compatibility mode
+
+`event_labels="grouped"` keeps numbered canvas markers and a collapsed list.
 Starts within about 52 CSS pixels of the first start form a group. Groups follow
 x position, with original event order breaking ties. Font measurement and edge
 clamping can merge further groups to avoid marker collisions; every event is
@@ -68,14 +89,26 @@ timezone, continuous coverage or calendar inference is made.
 ## Exports and rebuilding
 
 CSV and chart-only data downloads retain supplied values and existing names.
-Native canvas PNG/PDF capture includes markers. For grouped mode, normal report export preserves
-the current collapsed/expanded disclosure state and does not add a scope footer.
-Full-label collision disclosures expand in the export clone only; their on-screen
-state remains unchanged. Collapsed exports show marker numbers/counts without full names;
-expand the list before report export to include event names. Long expanded lists
-retain their local scroll viewport in screen capture.
+Canvas-only PNG/PDF remains canvas-only; off-canvas rail and event details
+require native report/section capture. Adaptive labels do not add metric data
+or DOM details to a canvas image.
+
+Native report/section captures preserve the rail and visible name key. Their
+export clone expands any open adaptive details to include all selected rows;
+clusters additionally include a compact exact event key with every eligible
+name, type and original date/range. The screen's open state, local scroll and
+focus stay unchanged. Captures exceeding 16,384 pixels in either dimension or
+32 megapixels at capture scale fail with an explicit smaller-selection message,
+rather than cutting off event identities. Full-label collision disclosures keep
+their existing clone expansion. Explicit grouped captures retain their current
+collapsed/expanded list and local scroll viewport.
+
+The shared capture pipeline must call
+`window._fwPrepareEventCapture(doc, root, options.scale)` in its `onclone` hook,
+after caller clone changes and before computed-paint conversion. This helper
+only changes captured descendants. A canvas-only target has no event descendants.
 
 Rebuild generated reports with matching framework assets for this default
 appearance change. Existing generated payloads without the flag remain full
-labels; there is no artifact schema change. Use `event_labels="full"` to retain
-the old presentation when rebuilding.
+labels; there is no artifact schema change. Use `event_labels="full"` or
+`event_labels="grouped"` to retain a previous presentation when rebuilding.

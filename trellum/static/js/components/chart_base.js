@@ -813,8 +813,9 @@ function _createChart(id, canvas, spec) {
     // view. A genuinely different result retains the existing reset behavior.
     var lineView = spec.lineResultPresentation ? (previous ? _fwLineResultView(previous) : canvas._fwLineResultView) : null;
     if (lineView && lineView.signature !== JSON.stringify([spec.labels, spec.datasets.map(function(ds) { return [ds.label, ds.data]; })])) lineView = null;
-    var eventDetails = spec.eventLabels === 'grouped' && previous && previous._fwTakeEventDetails
-        ? previous._fwTakeEventDetails() : (spec.eventLabels === 'grouped' && canvas._fwEventDetailsState);
+    var ownedEvents = spec.eventLabels === 'grouped' || spec.eventLabels === 'adaptive';
+    var eventDetails = ownedEvents && previous && previous._fwTakeEventDetails
+        ? previous._fwTakeEventDetails() : (ownedEvents && canvas._fwEventDetailsState);
     var comboFocus = spec.comboAxes && document.activeElement &&
         document.activeElement.closest('.fw-combo-context') &&
         document.activeElement.closest('.fw-combo-context').id === id + '-combo-context'
@@ -833,7 +834,7 @@ function _createChart(id, canvas, spec) {
     var axisFont = window._fwFontPx('--font-size-axis', 12);
     var labelFont = window._fwFontPx('--font-size-label', 12);
     var events = window._reportData && window._reportData._events;
-    var datedEvents = spec.eventLabels === 'grouped' ? [] : null;
+    var datedEvents = ownedEvents ? [] : null;
     var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels, datedEvents) : {};
     var plugins = {
         legend: { display: false },
@@ -982,8 +983,8 @@ function _createChart(id, canvas, spec) {
         plugins: (spec.stackedControlView ? [{id: 'fwStackControlView', beforeDestroy: _fwRememberStackControlView}] : []).concat(spec.lineResultPresentation ? [{id: 'fwLineResultView', beforeDestroy: function(chart) {
             if (canvas.isConnected) canvas._fwLineResultView = _fwLineResultView(chart);
         }}] : []).concat(spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
-            spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
-                ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : []).concat(
+            ownedEvents && window._fwLineEventLabelsPlugin
+                ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents, spec.eventLabels)] : []).concat(
             spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
             spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : []).concat(
             // Ordinary BarChart calendar tooltip cleanup is option-owned.

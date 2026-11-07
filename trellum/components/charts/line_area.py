@@ -292,9 +292,9 @@ class LineChart(_ChartBase):
     chart plots after filters and aggregation, so it always matches the line.
     See the LineChart section of the README.
 
-    ``event_labels``: keyword-only ``"grouped"`` (default) draws numbered
-    event markers with a collapsed list of original names and dates below
-    the plot. ``"full"`` keeps legacy in-plot labels without a details row.
+    ``event_labels``: keyword-only ``"adaptive"`` (default) shows dated buttons
+    above the plot, with local exact event details. ``"grouped"`` retains
+    numbered markers; ``"full"`` retains legacy in-plot labels.
 
     ``monthly_average=None`` optionally declares one additive daily quantity,
     its inclusive reporting interval and observed-day monthly guides/coverage.
@@ -348,7 +348,7 @@ class LineChart(_ChartBase):
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
-    event_labels: str = field(default="grouped", kw_only=True)
+    event_labels: str = field(default="adaptive", kw_only=True)
     series_availability: Optional[list[dict] | tuple[dict, ...]] = field(default=None, kw_only=True)
     result_presentation: bool = field(default=True, kw_only=True)
     point_context: Optional[list[dict]] = field(default=None, kw_only=True)
@@ -357,7 +357,7 @@ class LineChart(_ChartBase):
 
     @classmethod
     def css(cls) -> str:
-        return super().css() + load_css("components/line_results.css")
+        return super().css() + load_css("components/line_results.css") + load_css("components/adaptive_events.css")
 
     def __post_init__(self):
         _month_context_config(self)
@@ -405,8 +405,8 @@ class LineChart(_ChartBase):
                 **({"line_result_presentation": True} if self.result_presentation else {})}
 
     def _validate_event_labels(self) -> None:
-        if not isinstance(self.event_labels, str) or self.event_labels not in ("grouped", "full"):
-            raise ValueError("LineChart event_labels must be 'grouped' or 'full'.")
+        if not isinstance(self.event_labels, str) or self.event_labels not in ("adaptive", "grouped", "full"):
+            raise ValueError("LineChart event_labels must be 'adaptive', 'grouped' or 'full'.")
 
     def render_html(self, ctx: RenderContext) -> str:
         month_config = {**_month_context_config(self), **_monthly_average_config(self)}
