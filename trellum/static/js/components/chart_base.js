@@ -804,6 +804,8 @@ function _createChart(id, canvas, spec) {
     spec.datasets.forEach(function(ds) {
         window._fwApplyPaletteSlot(ds, spec.type || 'bar', window.getThemeColors());
     });
+    var trendCfg = spec.trendConfig;
+    if (trendCfg && trendCfg.trend_line && !trendCfg.dataset_id) spec = window._fwTrends.line(trendCfg, null, spec, null);
     var previous = window._chartInstances[id];
     if (spec.stackedControlView) {
         if (previous && previous._fwStackControlView) _fwRememberStackControlView(previous);
@@ -827,6 +829,7 @@ function _createChart(id, canvas, spec) {
         window._chartInstances[id].destroy();
         delete window._chartInstances[id];
     }
+    if (!spec.trends) delete canvas._fwTrendView;
     delete canvas._fwEventDetailsState;
     delete canvas._fwLineResultView;
     // A cloned replacement canvas may still carry the previous description.
@@ -991,7 +994,8 @@ function _createChart(id, canvas, spec) {
             spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
             spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : []).concat(
             // Ordinary BarChart calendar tooltip cleanup is option-owned.
-            spec.calendarCoverage ? [window._fwCalendarCoverage.plugin()] : [])
+            spec.calendarCoverage ? [window._fwCalendarCoverage.plugin()] : []).concat(
+            spec.trends ? [window._fwTrends.plugin(spec.trends)] : [])
     });
     if (spec.stackedControlView) window._chartInstances[id]._fwStackControlView = spec.stackedControlView;
     window._chartInstances[id]._fwThemeManagedAxes = true;
@@ -1211,6 +1215,13 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         delete canvas._fwBarLive;
     }
 
+    // Trend adoption/removal also changes ownership of source lifecycle updates.
+    if (previousBindings && previousBindings.has(id) && canvas._fwBarLive &&
+            !!canvas._fwBarLive.trendOwned !== !!cfg.trend_line) {
+        previousBindings.get(id)();
+        delete canvas._fwBarLive;
+    }
+
     /* ── Live mode ─────────────────────────────────────────── */
     if (cfg.dataset_id) {
         var taggedBars = cfg.bar_values || cfg.stack_labels || scopedLive;
@@ -1324,8 +1335,9 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.point_context) spec = window._fwLinePointContextSpec(cfg, labelRows, spec);
             // Bar-only calendar declaration; no shared aggregation changes.
             if (cfg.bucket_context) spec = window._fwCalendarCoverage.spec(cfg, labelRows, spec);
-            return _fwUpdateLineResult(canvas, cfg,
+            spec = _fwUpdateLineResult(canvas, cfg,
                 window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec)), labelRows);
+            return cfg.trend_line ? window._fwTrends.line(cfg, labelRows, spec, activeStackBy) : spec;
         }
 
         var labelRows;
@@ -1374,6 +1386,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                             var llabel = multipleRatios ? (lname + ' · ' + lspec.label) : lname;
                             lineDatasets.push({
                                 label: llabel, data: lRatData,
+                                ...(cfg.trend_line ? {_fwTrendSource: {ratio: lspec.label, group: lname}} : {}),
                                 backgroundColor: lcolor + '22', borderColor: lcolor,
                                 borderWidth: 2.5, pointRadius: 2, tension: 0
                             });
@@ -1408,6 +1421,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                         var lcolor2 = categoryColor(lname2);
                         lineDatasets.push({
                             label: lname2, data: lineData,
+                            ...(cfg.trend_line ? {_fwTrendSource: {group: lname2}} : {}),
                             backgroundColor: lcolor2 + '22', borderColor: lcolor2,
                             borderWidth: 2.5, pointRadius: 2, tension: 0
                         });
@@ -1777,8 +1791,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }
         // Ordinary BarChart context owns structural source replacement updates.
         if (cfg.bucket_context) window._fwCalendarCoverage.bind(canvas, cfg, _drawLive);
-        if (taggedBars) canvas._fwBarLive = chartOwner ? {cfg: cfg, draw: _drawLive, scope: stackScope,
-            source: stackSource, stackGroup: stackGroup, normalizeGroup: normalizeGroup} : {cfg: cfg, draw: _drawLive};
+        if (taggedBars) canvas._fwBarLive = chartOwner ? {cfg: cfg, trendOwned: !!cfg.trend_line, draw: _drawLive, scope: stackScope,
+            source: stackSource, stackGroup: stackGroup, normalizeGroup: normalizeGroup} : {cfg: cfg, trendOwned: !!cfg.trend_line, draw: _drawLive};
         if (scopedLive && !window._fwMetricsWorkspace) {
             // Opted-in charts own one binding across renderAll, changed configs
             // and canvas replacement. Untagged live charts retain their path.
@@ -1793,12 +1807,12 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
             var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
-            var lifeOff = chartOwner ? window._fwFilterEngine.subscribeLifecycle(function(event) {
-                var source = comboOwner && _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
+            var lifeOff = (chartOwner || cfg.trend_line) ? window._fwFilterEngine.subscribeLifecycle(function(event) {
+                var source = (comboOwner || cfg.trend_line) && _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
                 if (event.dataset_id !== cfg.dataset_id && (!source || event.dataset_id !== source.id)) return;
                 // Structural parent replacement does not run the engine's row
                 // notify cascade. Retire this Combo's cached scoped result.
-                if (comboOwner && source && source.subset) window._fwFilterEngine._cache[cfg.dataset_id] = null;
+                if ((comboOwner || cfg.trend_line) && source && source.subset) window._fwFilterEngine._cache[cfg.dataset_id] = null;
                 if (event.type === 'init' || event.type === 'scope') {
                     unsubscribe();
                     unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
@@ -1865,6 +1879,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
         lineStyle: cfg.line_style, tension: cfg.tension,
+        trendConfig: cfg.trend_line ? cfg : null,
         forecastSeries: cfg.forecast_series,
         monthContext: cfg.month_context === true,
         eventLabels: cfg.event_labels,

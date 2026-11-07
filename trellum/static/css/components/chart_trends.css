@@ -1,0 +1,15 @@
+.fw-chart-trends { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:8px 0; color:var(--text-secondary); font-size:var(--font-size-label,12px); }
+.fw-trend-key { display:inline-flex; align-items:center; gap:6px; }
+.fw-trend-sample { display:inline-flex; align-items:center; gap:3px; }
+.fw-trend-sample > span { display:block; width:6px; height:2px; background:currentColor; }
+.fw-trend-sample > span:nth-child(even) { width:1px; }
+.fw-chart-trends button { color:var(--text-main); background:var(--bg-card); border:1px solid var(--border-color); border-radius:5px; padding:6px 10px; cursor:pointer; font:inherit; }
+.fw-chart-trends details { flex-basis:100%; min-width:0; }
+.fw-chart-trends summary { display:inline-flex; align-items:center; gap:6px; cursor:pointer; width:fit-content; padding:6px 0; list-style:none; }
+.fw-chart-trends summary::before { content:"▸"; }
+.fw-chart-trends details[open] > summary::before { content:"▾"; }
+.fw-chart-trends summary::-webkit-details-marker { display:none; }
+.fw-chart-trends details:not([open]) > :not(summary) { display:none; }
+.fw-chart-trends p { margin:5px 0; overflow-wrap:anywhere; line-height:1.5; }
+.fw-trend-details { flex-basis:100%; min-width:0; overflow-wrap:anywhere; }
+@media(max-width:600px) { .fw-chart-trends button,.fw-chart-trends summary { min-height:44px; box-sizing:border-box; display:inline-flex; align-items:center; } }

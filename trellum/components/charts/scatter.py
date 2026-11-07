@@ -10,6 +10,7 @@ import pandas as pd
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
 from trellum.components.charts._scatter_summary import scatter_summary_config
+from trellum.components.charts._trends import trend_config
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,
@@ -25,7 +26,8 @@ class ScatterChart(Component):
 
     Pass ``size`` column name to enable bubble mode (point radius scales
     with the value).  Use ``color_by`` to split data into separate series
-    by a categorical column.
+    by a categorical column. ``trend_line`` optionally declares independent
+    unweighted linear fits; see docs/report-chart-trends.md.
     """
 
     df: pd.DataFrame
@@ -40,6 +42,7 @@ class ScatterChart(Component):
     static: bool = False
     header_context: Optional[str] = field(default=None, kw_only=True)
     header_summary: Optional[dict] = field(default=None, kw_only=True)
+    trend_line: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="scatter_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
@@ -47,9 +50,10 @@ class ScatterChart(Component):
     def __post_init__(self) -> None:
         _validate_header_context(self.header_context)
         scatter_summary_config(self)
+        trend_config(self)
 
     def render_html(self, ctx: RenderContext) -> str:
-        summary = scatter_summary_config(self)
+        summary = {**scatter_summary_config(self), **trend_config(self, ctx)}
         cid = ctx.next_id()
 
         if self.dataset_id:

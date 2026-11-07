@@ -93,7 +93,7 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
         window._fwMetricDrawLeases[id](); delete window._fwMetricDrawLeases[id];
     }
     if (!canvas) return;
-    var active = true, unsubscribe = function() {}, lease = null;
+    var active = true, unsubscribe = function() {}, lifeOff = null, lease = null;
     function resetZoom() {
         var c = window._chartInstances[id]; if (c && c.resetZoom) c.resetZoom();
     }
@@ -106,6 +106,7 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
     });
     function dispose() {
         active = false; unsubscribe(); observer.disconnect();
+        if (lifeOff) lifeOff();
         canvas.removeEventListener('dblclick', resetZoom);
         window.removeEventListener('fw-theme-change', current);
         if (lease) {
@@ -126,11 +127,14 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
     var xFmt = fmtMap[cfg.x_format] || fmtCompact;
     var yFmt = fmtMap[cfg.y_format] || fmtCompact;
 
-    function _buildChart(datasets) {
+    function _buildChart(datasets, rows) {
         if (window._chartInstances[id]) {
             window._chartInstances[id].destroy();
             delete window._chartInstances[id];
         }
+        if (!cfg.trend_line) delete canvas._fwTrendView;
+        var trends = cfg.trend_line ? window._fwTrends.result(cfg, rows, {datasets: datasets}, true, cfg.color_by) : null;
+        if (trends) trends.yFormat = cfg.y_format;
         _fwScatterSummary(canvas, cfg, datasets);
         var tc = window.getThemeColors();
         var isBubble = datasets.some(function(ds) {
@@ -141,6 +145,7 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
         var labelFont = window._fwFontPx('--font-size-label', 12);
         window._chartInstances[id] = new Chart(canvas, {
             type: isBubble ? 'bubble' : 'scatter',
+            plugins: trends ? [window._fwTrends.plugin(trends)] : [],
             data: { datasets: datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
@@ -232,7 +237,7 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
                     _themeManaged: true, _fillOpacity: '99'
                 });
             }
-            _buildChart(datasets);
+            _buildChart(datasets, rows);
         } else _buildChart(cfg.datasets);
     }
     if (cfg.dataset_id) {
@@ -244,6 +249,19 @@ window._fwRenderers['scatter'] = function renderScatter(id, cfg) {
         } else {
             unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
             window.addEventListener('fw-theme-change', current);
+            if (cfg.trend_line) lifeOff = window._fwFilterEngine.subscribeLifecycle(function(event) {
+                var engine = window._fwFilterEngine, source = cfg.dataset_id, seen = new Set();
+                for (var depth = 0; source && depth < 64 && !seen.has(source); depth++) {
+                    seen.add(source);
+                    source = engine._scopes[source] && engine._scopes[source].parent;
+                }
+                if (!seen.has(event.dataset_id)) return;
+                if (event.dataset_id !== cfg.dataset_id) engine._cache[cfg.dataset_id] = null;
+                if (event.type === 'init' || event.type === 'scope') {
+                    unsubscribe(); unsubscribe = engine.subscribe(cfg.dataset_id, id, current);
+                }
+                current();
+            });
             current();
         }
     } else draw();

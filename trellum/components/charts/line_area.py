@@ -13,6 +13,7 @@ from trellum.assets import load_css
 from trellum.components.base import RenderContext
 from trellum.components.charts._header_summary import header_summary_config
 from trellum.components.charts._point_context import _LinePointContextAssets, point_context_config
+from trellum.components.charts._trends import trend_config
 from trellum.components.charts.base import (
     _category_colors_config,
     _chart_container_html,
@@ -192,6 +193,10 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     """
     problems: list[tuple[str, str]] = []
     try:
+        trend_config(chart)
+    except ValueError as exc:
+        problems.append(("line-chart-trend-invalid", str(exc)))
+    try:
         point_context_config(chart)
     except ValueError as exc:
         problems.append(("line-chart-point-context-invalid", str(exc)))
@@ -304,6 +309,9 @@ class LineChart(_ChartBase):
     supplied inputs per point. Invalid supplied observations become null gaps
     with selected-data context below the plot. See docs/report-line-availability.md.
 
+    ``trend_line``: optional keyword-only linear OLS declaration. Fits eligible
+    observed daily values without altering source data; see docs/report-chart-trends.md.
+
     ``result_presentation``: keyword-only bool, default True. Show precise
     no-result messages and requested/displayed live result context without
     changing plotted values. See docs/report-line-results.md; False opts out.
@@ -352,6 +360,7 @@ class LineChart(_ChartBase):
     series_availability: Optional[list[dict] | tuple[dict, ...]] = field(default=None, kw_only=True)
     result_presentation: bool = field(default=True, kw_only=True)
     point_context: Optional[list[dict]] = field(default=None, kw_only=True)
+    trend_line: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
@@ -412,7 +421,8 @@ class LineChart(_ChartBase):
         month_config = {**_month_context_config(self), **_monthly_average_config(self)}
         self._validate_event_labels()
         forecast_indices = _forecast_series_indices(self)
-        availability_config = {**_series_availability_config(self), **point_context_config(self, ctx)}
+        availability_config = {**_series_availability_config(self), **point_context_config(self, ctx),
+                               **trend_config(self, ctx)}
         if self.point_context is not None:
             ctx.render_child(_LinePointContextAssets())
         category_config = _category_colors_config(self, ctx)
