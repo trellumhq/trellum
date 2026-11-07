@@ -224,7 +224,7 @@ def test_runtime_scope_calendar_and_explicit_unavailable_probes(tmp_path):
         + m.SOURCE
         + "'}}};\n"
     )
-    script += load_js("runtime/filter_engine.js") + "\n" + load_js("runtime/calendar_coverage.js")
+    script += load_js("runtime/filter_engine.js") + "\n" + load_js("components/calendar_coverage.js")
     script += "\nconst raw=" + frame.to_json(orient="records") + ";const d=" + json.dumps(d) + ";"
     script += r'''
 const e=window._fwFilterEngine,c=window._fwCalendarCoverage,source=d.dataset_id;

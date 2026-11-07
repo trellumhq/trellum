@@ -546,6 +546,12 @@ def _build(output, baseline=False):
         theme=THEME_REGISTRY['trellum light'],
     )
     module.add_sections(ctx)
+    # Monthly guide comparisons isolate the annotation mode from the later
+    # adaptive-event default, which has separate interaction/paint coverage.
+    from trellum.validation.walk import _all_components
+    for component, _ in _all_components(ctx):
+        if type(component).__name__ == 'LineChart':
+            component.event_labels = 'grouped'
     result = validate_report(ctx, details=compute_details(ctx))
     assert result.summary['warn'] == result.summary['fail'] == 0, [
         (c.id, c.message) for c in result.checks if c.level in ('warn', 'fail')

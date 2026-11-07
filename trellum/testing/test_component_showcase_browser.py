@@ -509,7 +509,14 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             event_window.locator('input[data-edge="min"]').dispatch_event('change')
             event_window.locator('input[data-edge="max"]').fill('2026-08-20')
             event_window.locator('input[data-edge="max"]').dispatch_event('change')
-            expect(event_section.locator('.fw-event-details summary')).to_contain_text('1 event · 1 group')
+            # The current default names the event directly; the explicit
+            # grouped comparison above retains its separate disclosure.
+            selected_events = event_section.locator('.fw-event-rail button')
+            expect(selected_events).to_have_count(1)
+            selected_events.click()
+            expect(event_section.locator('.fw-event-panel')).to_contain_text('2026-08-18 – 2026-08-20')
+            expect(event_section.locator('.fw-event-panel li')).to_have_count(1)
+            event_section.get_by_role('button', name='Close event details').click()
             event_window.locator('.fw-date-trigger').click()
             event_section.get_by_role('button', name='Partner', exact=True).click()
             event_live_id = event_section.locator('canvas').get_attribute('id')

@@ -14,7 +14,7 @@ class _ChartTrendAssets(Component):
 
     @classmethod
     def client_js(cls):
-        return load_js("runtime/chart_trends.js")
+        return load_js("components/chart_trends.js")
 
     @classmethod
     def css(cls):
@@ -27,7 +27,7 @@ def trend_config(chart, ctx=None):
     Shape validation runs at construction and rendering. Population eligibility
     belongs to the runtime: an unavailable fit must leave its source visible.
     """
-    value = chart.trend_line
+    value = getattr(chart, "trend_line", None)
     if value is None:
         return {}
     def bad(message):

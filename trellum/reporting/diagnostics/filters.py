@@ -132,14 +132,9 @@ def _classify_filter(
         ),
     }
 
-def _compute_view_matrix(
-    sections: list[dict],
-    scope: str | None,
-    chart_counter: list[int],
-) -> list[ChartFilterRow]:
-    """Build filter-coverage rows for one view (flat or one scope's sections)."""
+def _view_filter_sources(sections: list[dict]):
+    """Collect dataset columns, frames, parent links and FilterBars for a view."""
     from trellum.components.filterable import DataSource, FilterBar, ScopedDataSource
-    from trellum.components.layout import RawHTML
     from trellum.components.metric_views import MetricView
     from trellum.components.period_comparison import PeriodComparison
 
@@ -195,6 +190,11 @@ def _compute_view_matrix(
         if target in seen:
             scoped_parents.pop(child, None)
 
+    return pairs, ds_columns, ds_dfs, scoped_parents, fbs
+
+
+def _filterbars_by_dataset(fbs: list[Any], scoped_parents: dict[str, str]) -> dict[str, list[Any]]:
+    """Map every directly covered or inherited dataset to its FilterBars."""
     # Build dataset_id → list[FilterBar]. A DataSource is "covered"
     # by a FilterBar if it is the FilterBar's primary DS or appears in
     # its propagate_to. A chart may be covered by MULTIPLE FilterBars:
@@ -215,6 +215,22 @@ def _compute_view_matrix(
             for fb in fb_by_ds.get(parent_id, []):
                 if all(existing is not fb for existing in fb_by_ds.setdefault(child_id, [])):
                     fb_by_ds[child_id].append(fb)
+    return fb_by_ds
+
+
+def _compute_view_matrix(
+    sections: list[dict],
+    scope: str | None,
+    chart_counter: list[int],
+) -> list[ChartFilterRow]:
+    """Build filter-coverage rows for one view (flat or one scope's sections)."""
+    from trellum.components.filterable import DataSource, FilterBar
+    from trellum.components.layout import RawHTML
+    from trellum.components.metric_views import MetricView
+    from trellum.components.period_comparison import PeriodComparison
+
+    pairs, ds_columns, ds_dfs, scoped_parents, fbs = _view_filter_sources(sections)
+    fb_by_ds = _filterbars_by_dataset(fbs, scoped_parents)
 
     rows: list[ChartFilterRow] = []
     for comp, sec_title in pairs:

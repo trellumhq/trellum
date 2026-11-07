@@ -174,7 +174,7 @@ class CalendarCoverage(Component):
 
     @classmethod
     def client_js(cls):
-        return load_js("runtime/calendar_coverage.js")
+        return load_js("components/calendar_coverage.js")
 
     @classmethod
     def css(cls):

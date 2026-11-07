@@ -42,7 +42,7 @@ def test_static_context_and_literal_tooltip():
     ctx=RenderContext(theme=DEFAULT_THEME)
     c.render_html(ctx)
     cfg=next(iter(ctx.component_data.values()))
-    script='global.window=global;'+load_js('runtime/point_context.js')+'''
+    script='global.window=global;'+load_js('components/point_context.js')+'''
         const cfg=CFG;
         const spec=_fwLinePointContextSpec(cfg,null,{labels:['Day 1','Day 2'],datasets:[]});
         const original={callbacks:{label:()=> 'preserved'}};

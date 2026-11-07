@@ -36,7 +36,9 @@ def test_api_strict_keyword_only_and_actual_baseline_payload(tmp_path):
     assert inspect.signature(LineChart).parameters['result_presentation'].kind == inspect.Parameter.KEYWORD_ONLY
     for frame in (pd.DataFrame({'day': ['2026-10-01', '2026-10-02'], 'value': [0, 0]}),
                   pd.DataFrame({'day': ['2026-10-01', '2026-10-02'], 'value': [2, 7]})):
-        for binding in ({'static': True}, {'dataset_id': 'orders'}):
+        # Isolate result feedback from the later, approved adaptive-event default.
+        for binding in ({'static': True, 'event_labels': 'grouped'},
+                        {'dataset_id': 'orders', 'event_labels': 'grouped'}):
             before = render(old.LineChart(frame, 'day', 'value', 'Supplied', **binding))
             assert render(LineChart(frame, 'day', 'value', 'Supplied', result_presentation=False, **binding)) == before
             html, cfg = render(LineChart(frame, 'day', 'value', 'Supplied', **binding))

@@ -78,10 +78,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'yes'
     runs-on: ubuntu-latest
-    # Normal run is well under 10 minutes. Without a cap, a wedged step rides
-    # GitHub's 6-hour default -- a Chromium download stall has already burned
-    # two full 360-minute runner slots on exactly that.
-    timeout-minutes: 30
+    # The complete report/browser suite reached 86% in 29 minutes on the
+    # hosted runner. Keep every test and leave time for coverage and demo
+    # builds, while bounding a stalled run well below GitHub's 6-hour default.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -119,6 +119,9 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           python -m playwright install --with-deps chromium
+          # Native PDF export checks rasterize the real downloaded file.
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftoppm -v
 
       # The WHOLE suite, not a hand-listed subset -- an unlisted file is a file
       # nobody runs, which is how test_interactions.py sat dead for months.

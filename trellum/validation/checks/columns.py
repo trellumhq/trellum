@@ -14,6 +14,41 @@ from trellum.validation.walk import (
 )
 
 
+def _check_stack_options(comp: Any, name: str, sec: str, result: ValidationResult) -> None:
+    """Validate stack ordering and limits for line and stacked-bar charts."""
+    valid_stack_sort = {"volume_desc", "volume_asc", "label_asc", "label_desc"}
+    stack_sort = getattr(comp, "stack_sort", None)
+    if stack_sort is not None and stack_sort not in valid_stack_sort:
+        result.fail(
+            "stack-sort-invalid-value",
+            f"{name} stack_sort='{stack_sort}' is not one of "
+            f"{sorted(valid_stack_sort)}.",
+            component=name, section=sec,
+        )
+    stack_by = getattr(comp, "stack_by", None)
+    if stack_sort is not None and not stack_by and not getattr(comp, "stack_by_options", None):
+        result.warn(
+            "stack-sort-without-stack-by",
+            f"{name} sets stack_sort='{stack_sort}' but has neither stack_by "
+            f"nor stack_by_options — the setting has no effect.",
+            component=name, section=sec,
+        )
+    max_stacks = getattr(comp, "max_stacks", None)
+    if max_stacks is not None and (not isinstance(max_stacks, int) or max_stacks < 1):
+        result.fail(
+            "max-stacks-invalid-value",
+            f"{name} max_stacks={max_stacks!r} must be a positive integer.",
+            component=name, section=sec,
+        )
+    if max_stacks is not None and not stack_by and not getattr(comp, "stack_by_options", None):
+        result.warn(
+            "max-stacks-without-stack-by",
+            f"{name} sets max_stacks={max_stacks} but has neither stack_by "
+            f"nor stack_by_options — the setting has no effect.",
+            component=name, section=sec,
+        )
+
+
 def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result: ValidationResult) -> None:
     """Category 6: Component column / parameter validation."""
     _VALID_AGGS = {"sum", "abssum", "ratio", "count", "purchase_pct", "avg_by_date"}
@@ -153,37 +188,7 @@ def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result:
         # Catches typos like stack_sort="alpha" which would silently fall back
         # to volume_desc in the runtime; better to fail at build time.
         if name in ("LineChart", "StackedBar"):
-            _VALID_STACK_SORT = {"volume_desc", "volume_asc", "label_asc", "label_desc"}
-            ss = getattr(comp, "stack_sort", None)
-            if ss is not None and ss not in _VALID_STACK_SORT:
-                result.fail(
-                    "stack-sort-invalid-value",
-                    f"{name} stack_sort='{ss}' is not one of "
-                    f"{sorted(_VALID_STACK_SORT)}.",
-                    component=name, section=sec,
-                )
-            sb = getattr(comp, "stack_by", None)
-            if ss is not None and not sb and not getattr(comp, "stack_by_options", None):
-                result.warn(
-                    "stack-sort-without-stack-by",
-                    f"{name} sets stack_sort='{ss}' but has neither stack_by "
-                    f"nor stack_by_options — the setting has no effect.",
-                    component=name, section=sec,
-                )
-            ms = getattr(comp, "max_stacks", None)
-            if ms is not None and (not isinstance(ms, int) or ms < 1):
-                result.fail(
-                    "max-stacks-invalid-value",
-                    f"{name} max_stacks={ms!r} must be a positive integer.",
-                    component=name, section=sec,
-                )
-            if ms is not None and not sb and not getattr(comp, "stack_by_options", None):
-                result.warn(
-                    "max-stacks-without-stack-by",
-                    f"{name} sets max_stacks={ms} but has neither stack_by "
-                    f"nor stack_by_options — the setting has no effect.",
-                    component=name, section=sec,
-                )
+            _check_stack_options(comp, name, sec, result)
 
         if name == "ComboChart":
             for bc in (getattr(comp, "bar_cols", None) or []):

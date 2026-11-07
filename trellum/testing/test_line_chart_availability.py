@@ -202,6 +202,7 @@ def _build(output, baseline=False):
     output.mkdir(parents=True, exist_ok=True)
     module = _module(ROOT / 'trellum/demo/reports/component-showcase/examples_line_availability.py', 'availability_examples')
     historical = False
+    original = LineChart
     if baseline:
         try:
             source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/line_area.py'],
@@ -213,13 +214,16 @@ def _build(output, baseline=False):
             path = output / 'baseline_line_area.py'
             path.write_bytes(source)
             original = _module(path, 'availability_baseline').LineChart
-        def factory(*args, **kwargs):
-            kwargs.pop('series_availability', None)
-            return original(*args, **kwargs)
-        module.LineChart = factory
         (output / 'baseline-reference.txt').write_text(
             'Actual dependency Git sources: ' + BASELINE if historical
             else 'Current opt-out control (dependency history unavailable)')
+    def factory(*args, **kwargs):
+        if baseline:
+            kwargs.pop('series_availability', None)
+        # Compare availability independently of the later adaptive-event default.
+        kwargs.setdefault('event_labels', 'grouped')
+        return original(*args, **kwargs)
+    module.LineChart = factory
     ctx = ReportContext(config={'name': 'Supplied line observations', 'studio': 'shared', 'category': 'Test',
         'description': 'Synthetic daily platform and channel contributions, supplied input availability and selected rates.',
         'theme': 'trellum light', 'annotations': {'events': [

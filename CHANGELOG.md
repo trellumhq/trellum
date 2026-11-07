@@ -359,6 +359,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep optional trend validation compatible with chart objects that predate
+  trend declarations, and keep optional chart scripts owned by their components.
+
 - Resolve visual-upgrade demo images through packaged resources, including
   source checkouts launched directly from the demo directory.
 

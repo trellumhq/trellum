@@ -12,7 +12,7 @@ class _LinePointContextAssets(Component):
 
     @classmethod
     def client_js(cls):
-        return load_js("runtime/point_context.js")
+        return load_js("components/point_context.js")
 
 
 def point_context_config(chart, ctx=None):

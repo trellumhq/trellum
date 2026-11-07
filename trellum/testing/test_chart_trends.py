@@ -25,7 +25,7 @@ TREND = {"method": "linear", "series": "each"}
 
 
 def js(expression):
-    source = "global.window=global;" + load_js("runtime/chart_trends.js")
+    source = "global.window=global;" + load_js("components/chart_trends.js")
     source += '\nprocess.stdout.write(JSON.stringify((' + expression + ')));'
     return json.loads(subprocess.check_output(['node', '-e', source], text=True))
 

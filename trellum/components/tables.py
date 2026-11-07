@@ -183,6 +183,19 @@ class DataTable(Component):
                 f'<div id="{cid}" class="fw-table-scroll"></div>'
             )
 
+        reg = self._static_config(show_cols, numeric_cols, column_formats,
+                                  show_search, row_limit, totals, drill_down, shading)
+
+        table_html = (
+            f'<div class="fw-table-header fw-data-table-header">{search_html}{_row_limit_control(row_limit, cid)}{dl_btn}</div>'
+            f'<div id="{cid}" class="fw-table-scroll"></div>'
+        )
+        ctx.register(cid, reg)
+        return table_html
+
+    def _static_config(self, show_cols, numeric_cols, column_formats, show_search,
+                       row_limit, totals, drill_down, shading) -> dict[str, Any]:
+        """Build display and raw-value payloads over the supplied population."""
         # Retain the supplied population. max_rows is a display limit applied
         # after local search and sort, never a search or export limit.
         df = self.df[show_cols]
@@ -265,13 +278,7 @@ class DataTable(Component):
                     context["metric_column"], *context.get("reason_columns", {}).values(),
                 ]))
                 reg["comparisonRows"] = df_to_json_records(self.df[metadata_cols])
-
-        table_html = (
-            f'<div class="fw-table-header fw-data-table-header">{search_html}{_row_limit_control(row_limit, cid)}{dl_btn}</div>'
-            f'<div id="{cid}" class="fw-table-scroll"></div>'
-        )
-        ctx.register(cid, reg)
-        return table_html
+        return reg
 
     def _cell_shading_config(self) -> dict:
         """Validate at render time as declarations may be mutated by authors."""
