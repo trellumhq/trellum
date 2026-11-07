@@ -7,7 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Branding
+
+- Add reusable lattice wordmarks, favicon formats and a shared login/setup lockup.
+
 ### Added
+
+- Seed editable source/metric context and investigation guidance during project
+  setup and demo installation, preserving existing notes and ignoring local
+  analysis result exports by default. Removal tracks files actually created by
+  setup and deletes only unchanged owned scaffolds; edited notes and ignore
+  protection for retained results stay in place. Unchanged guidance generated
+  before context scaffolding is still recognized during removal. Windows setup
+  and removal reject reparse points and pin scaffold directories against
+  replacement while preserving edited notes and exports.
 
 - Administrators can include hidden, expired and disabled reports on the regular
   Reports page with a default-off option. Cards and lists identify repository
@@ -91,6 +104,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 
 ### Fixed
+
+- Populate audit action choices with ordered, organization-scoped probes instead
+  of transferring duplicate history rows. Add a concurrent composite index for
+  large histories with uneven action usage across organizations; preserve all labels.
 
 - Keep nested and adjacent report tab panels independent when switching tabs or restoring tab selections from a URL.
 - Keep Reports and Analyses mounted while switching catalogs, and retain page
