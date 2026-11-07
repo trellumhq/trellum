@@ -2,7 +2,10 @@
 
 import base64
 import fnmatch
+import os
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -19,6 +22,28 @@ from trellum.runner.discovery import discover_report
 from trellum.validation import validate_report
 
 PACKAGE = Path(trellum.__file__).resolve().parent
+
+
+def test_visual_guide_resolves_package_assets_from_demo_shim():
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env.pop("FW_PROJECT_ROOT", None)
+    script = """
+from pathlib import Path
+import runpy
+import trellum
+
+assert Path(trellum.__file__).parent == Path.cwd() / "trellum"
+guide = runpy.run_path("reports/report-upgrade/generator.py")
+assets = list(guide["_IMAGES"].iterdir())
+assert sum(path.name.endswith(".png") for path in assets) == 27
+guide["_capture"]("v0.9.5", "table")
+guide["_capture"]("opt-in", "trends", 390)
+"""
+    subprocess.run(
+        [sys.executable, "-c", script], cwd=PACKAGE / "demo", env=env,
+        check=True, capture_output=True, text=True, timeout=30,
+    )
 
 
 @pytest.fixture

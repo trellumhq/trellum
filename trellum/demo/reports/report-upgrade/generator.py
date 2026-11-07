@@ -2,15 +2,14 @@
 
 import base64
 import html
-from pathlib import Path
+from importlib.resources import files
 
 import pandas as pd
 
-import trellum
 from trellum import BaseReport
 from trellum.components import DataTable, Grid, Panel, RawHTML, TabGroup
 
-_IMAGES = Path(trellum.__file__).resolve().parent / "docs/images/report-upgrade"
+_IMAGES = files("trellum.docs").joinpath("images", "report-upgrade")
 
 
 def _capture(version, component, width=900):

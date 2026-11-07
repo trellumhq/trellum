@@ -359,6 +359,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Resolve visual-upgrade demo images through packaged resources, including
+  source checkouts launched directly from the demo directory.
+
 - Explicit `LineChart.colors` now applies to unsplit dataset-bound series;
   omitted colors and category-split mappings retain their previous behavior.
 - Retiring a replaced LineChart canvas no longer detaches the new canvas's
