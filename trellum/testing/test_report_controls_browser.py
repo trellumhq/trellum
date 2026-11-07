@@ -292,7 +292,11 @@ def test_report_choices_tabs_and_painted_charts(tmp_path, width):
             assert page.locator('#legacy-c1').is_visible()
             page.get_by_role('button', name='A1', exact=True).click()
             assert page.locator('#legacy-i2').is_visible()
-            page.locator('select[data-tab-id="legacy-b"]').select_option('0', force=True)
+            legacy = page.locator('select[data-tab-id="legacy-b"]')
+            legacy.evaluate("el=>el.slim.open()")
+            page.locator('.ss-content.ss-open-below, .ss-content.ss-open-above').last.get_by_text('B1', exact=True).click()
+            assert legacy.input_value() == '0'
+            assert 'tab.legacy-b=' not in page.url  # Default selection is omitted.
             assert page.locator('#legacy-b1').is_visible() and page.locator('#legacy-c1').is_visible()
             page.get_by_role('button', name='C2', exact=True).click()
             assert page.locator('#legacy-b1').is_visible() and page.locator('#legacy-c2').is_visible()

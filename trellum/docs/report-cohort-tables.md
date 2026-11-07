@@ -185,3 +185,7 @@ forecasts, optional milestone, observed-only and existing PivotTable examples.
 Its `examples_cohorts.add_sections(ctx)` module uses independent
 `showcase_cohorts_supplied` and `showcase_cohorts_observed` datasets and named
 sections; no private renderer or source data is needed.
+
+Snapshots accept at most 128 source columns. Admission checks row and column
+counts before expansion and accumulates the serialized byte budget as rows are
+normalized, so oversized inputs fail before the whole decoded copy is allocated.

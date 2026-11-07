@@ -13,6 +13,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Bound large treemap detail lists to 200 rows per page while retaining every
+  leaf, and reject oversized cohort and period inputs before expanding them.
+  Preserve chart and table focus during redraws and retire removed chart subscriptions.
+
 - Add optional native linear trend fits to LineChart and ScatterChart, with
   filter-reactive populations, descriptive fit details, bounded input handling
   and source-colored overlays. Existing charts keep trends disabled.

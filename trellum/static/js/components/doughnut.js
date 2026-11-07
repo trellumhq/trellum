@@ -125,7 +125,7 @@ function _fwDoughnutLegend(chart, root, cfg, population, supplied) {
     // ordinary updates so toggling visibility never drops keyboard focus.
     if (entries._keys !== JSON.stringify(keys)) {
         var focused = document.activeElement;
-        var focusKey = focused && focused.dataset.doughnutKey;
+        var focusKey = focused && entries.contains(focused) && focused.dataset.doughnutKey;
         entries.replaceChildren();
         labels.forEach(function(label, i) {
             var button = document.createElement('button'); button.type = 'button';
@@ -332,17 +332,36 @@ window._fwRenderers['doughnut'] = function renderDoughnut(id, cfg) {
         } else {
             // Keep one subscription/theme listener when the same component is
             // reinitialized, including a replaced canvas or dataset binding.
-            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, draw);
+            var retired = false, observer;
+            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, function(rows) {
+                if (document.getElementById(id) !== canvas) { dispose(); return; }
+                draw(rows);
+            });
+            function dispose() {
+                if (retired) return;
+                retired = true;
+                unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
+                if (observer) observer.disconnect();
+                if (bindings[id] === dispose) delete bindings[id];
+                if (document.getElementById(id) !== canvas) {
+                    var oldChart = window._chartInstances[id];
+                    if (oldChart && oldChart.canvas === canvas) {
+                        oldChart.destroy(); delete window._chartInstances[id];
+                    }
+                }
+            }
             var onTheme = function() {
                 if (document.getElementById(id) !== canvas) {
-                    bindings[id](); delete bindings[id]; return;
+                    dispose(); return;
                 }
                 draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             };
             window.addEventListener('fw-theme-change', onTheme);
-            bindings[id] = function() {
-                unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
-            };
+            bindings[id] = dispose;
+            observer = new MutationObserver(function() {
+                if (document.getElementById(id) !== canvas) dispose();
+            });
+            observer.observe(document.body, {childList: true, subtree: true});
             draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
         }
     } else draw();

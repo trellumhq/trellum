@@ -321,3 +321,13 @@ def test_validate_report_flags_a_chart_changed_after_construction():
     flagged = [c for c in validate_report(ctx).checks if c.id == "line-chart-summary-invalid"]
     assert len(flagged) == 1 and flagged[0].level == "fail"
     assert flagged[0].section == "Charts"
+
+
+@pytest.mark.parametrize('series', [1, 'users'])
+def test_bound_summary_uses_column_fallback_for_short_labels(series):
+    chart = LineChart(_df(), 'day', ['revenue', 'users'], dataset_id='d',
+                      y_labels=['Revenue'], header_summary={'stat': 'mean', 'series': series})
+    assert _render(chart)[1]['header_summary']['series'] == series
+    with pytest.raises(ValueError, match='series'):
+        LineChart(_df(), 'day', ['revenue', 'users'], y_labels=['Revenue'],
+                  header_summary={'stat': 'mean', 'series': series})

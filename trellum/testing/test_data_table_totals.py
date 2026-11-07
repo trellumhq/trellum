@@ -370,6 +370,7 @@ def test_native_controls_full_population_sort_search_csv_and_independent_kpi(tot
     assert _footer(page, bound) == initial
     assert len(_export(page, bound)["rows"]) == 36
     selector = page.locator(f'[data-table-row-limit="{bound}"]')
+    selector.focus()
     selector.select_option("all")
     assert selector.evaluate("e=>e===document.activeElement")
     assert page.locator(f"#{bound} tbody tr").count() == 36

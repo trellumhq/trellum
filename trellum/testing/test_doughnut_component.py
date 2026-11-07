@@ -375,3 +375,19 @@ def test_ordinary_png_capture_includes_html_legend_and_center(report_page, tmp_p
     assert destination.stat().st_size > 10000
     assert page.locator('.fw-doughnut-entry').count() == 10
     assert page.locator('.fw-doughnut-center-value').inner_text() == '$100,000.00'
+
+
+def test_independent_focus_and_detached_bound_cleanup(report_page):
+    page = report_page
+    root = _root(page, 'Filterable acquisition revenue')
+    cid = _cid(page, 'Filterable acquisition revenue')
+    other = _root(page, 'Default ring')
+    focused = other.locator('.fw-doughnut-entry').first
+    focused.focus()
+    page.evaluate('id=>_fwRenderers.doughnut(id,_reportData.components[id])', cid)
+    assert focused.evaluate('el=>el===document.activeElement')
+    before = page.evaluate('window._doughnutThemeAdds-window._doughnutThemeRemoves')
+    root.evaluate('el=>el.remove()')
+    page.wait_for_function('id=>!window._chartInstances[id] && !window._fwDoughnutBindings[id]', arg=cid)
+    assert page.evaluate('id=>_fwFilterEngine._subscribers.showcase_doughnuts.filter(s=>s.id===id).length', cid) == 0
+    assert page.evaluate('window._doughnutThemeAdds-window._doughnutThemeRemoves') == before - 1

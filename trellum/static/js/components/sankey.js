@@ -350,7 +350,7 @@
         button.addEventListener('click',download);
         window.addEventListener('fw-theme-change',queue);
         if (cfg.dataset_id && window._fwFilterEngine) unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id,id,queue);
-        if (cfg.header_summary != null && cfg.dataset_id && window._fwFilterEngine && window._fwFilterEngine.subscribeLifecycle) {
+        if (cfg.dataset_id && window._fwFilterEngine && window._fwFilterEngine.subscribeLifecycle) {
             var engine = window._fwFilterEngine;
             lifeOff = engine.subscribeLifecycle(function(event) {
                 var ds = cfg.dataset_id, seen = new Set(), all = configs();

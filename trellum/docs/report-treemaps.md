@@ -120,3 +120,9 @@ The `component-showcase/examples_treemaps.py` module supplies deterministic
 static and filterable examples, repeated leaf names, long paths, tiny and dense
 tiles, shares off/on, categorical/numeric colors and zero/missing/signed sizing
 diagnostics. It exposes `add_sections(ctx)` for report composition.
+
+Full-path details show up to 200 leaves per page, retaining access to every leaf.
+The color key shows at most 200 first-level groups and explains overflow. The
+selected detail page, disclosure state and horizontal scroll survive redraws.
+Native captures retain the current detail page; chart geometry and source data
+are unchanged.

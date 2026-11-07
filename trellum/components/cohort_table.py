@@ -18,6 +18,7 @@ from trellum.components.base import Component, RenderContext
 MAX_COHORTS = 120
 MAX_HORIZONS = 64
 MAX_RECORDS = 7680
+MAX_COLUMNS = 128
 MAX_BYTES = 4 * 1024 * 1024
 MAX_TEXT = 2048
 
@@ -122,6 +123,8 @@ class CohortTable(Component):
             raise ValueError("CohortTable requires a DataFrame with unique columns")
         if len(frame) > MAX_RECORDS:
             raise ValueError(f"CohortTable exceeds {MAX_RECORDS} source records")
+        if len(frame.columns) > MAX_COLUMNS:
+            raise ValueError(f"CohortTable exceeds {MAX_COLUMNS} source columns")
         if not isinstance(self.title, str) or len(self.title) > MAX_TEXT:
             raise ValueError("CohortTable title is too long or is not text")
         if self.dataset_id is not None:
@@ -163,7 +166,9 @@ class CohortTable(Component):
             _number(self.milestone["threshold"], "milestone.threshold")
             _text(self.milestone["label"], "milestone.label")
         records, cohorts, horizons, seen = [], {}, set(), set()
-        for row in frame.to_dict("records"):
+        payload_bytes = 2
+        for values in frame.itertuples(index=False, name=None):
+            row = dict(zip(frame.columns, values))
             identity = _text(row[self.cohort], "cohort identity")
             month = row[self.cohort_month]
             if not isinstance(month, str) or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", month) or month.startswith("0000"):
@@ -192,7 +197,12 @@ class CohortTable(Component):
             if self.reason and not _null(row[self.reason]):
                 if not isinstance(row[self.reason], str) or len(row[self.reason]) > MAX_TEXT:
                     raise ValueError("CohortTable reason must be text of at most 2048 characters or null")
-            records.append({col: _primitive(v) for col, v in row.items()})
+            record = {col: _primitive(v) for col, v in row.items()}
+            payload_bytes += len(json.dumps(record, ensure_ascii=False, allow_nan=False,
+                                            separators=(",", ":")).encode()) + bool(records)
+            if payload_bytes > MAX_BYTES:
+                raise ValueError("CohortTable exceeds 4 MiB cell/metadata serialization")
+            records.append(record)
         milestone = None
         if self.milestone is not None:
             milestone = {**self.milestone, "threshold": _number(self.milestone["threshold"], "milestone.threshold")}
@@ -249,6 +259,8 @@ def _render_source_frame(ctx, dataset_id):
     raw = ctx.raw_data_blocks.get(f"_ds_{source}")
     if not raw:
         raise ValueError("CohortTable effective snapshot is missing")
+    if len(raw.get("_cols", [])) > MAX_COLUMNS:
+        raise ValueError(f"CohortTable exceeds {MAX_COLUMNS} source columns")
     parts = [raw]
     manifest = ctx._chunk_manifests.get(source, {})
     if manifest:
@@ -260,6 +272,8 @@ def _render_source_frame(ctx, dataset_id):
     rows = []
     for part in parts:
         cols, vocab = part["_cols"], part.get("_dict", {})
+        if len(cols) > MAX_COLUMNS:
+            raise ValueError(f"CohortTable exceeds {MAX_COLUMNS} source columns")
         for values in part["_data"]:
             rows.append({col: vocab[col][v] if col in vocab else v for col, v in zip(cols, values)})
     # Object dtype retains genuine integer horizons when nullable values occur.

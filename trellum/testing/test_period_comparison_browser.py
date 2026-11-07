@@ -299,3 +299,36 @@ def test_native_scope_reentry_has_one_owned_projection(tmp_path):
             assert len(set(counts))==1
         finally:
             browser.close()
+
+
+def test_chart_only_unresolved_period_blocks_whole_report_export(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    from trellum.components import DataSource, LineChart
+    from trellum.report import ReportContext
+    _, module = example_context(tmp_path / 'definitions')
+    projection = module.projection()
+    ctx = ReportContext({'name': 'Period chart', 'studio': 'test', 'category': 'Test'},
+                        'period-chart', str(tmp_path))
+    ctx.add_section('Daily period values', [DataSource(module.SOURCE, module.facts()), projection,
+        LineChart(projection.empty_frame(daily=True), 'day', 'cost_A', 'Period A cost',
+                  dataset_id=module.RESULT + '_daily')])
+    render_report(ctx, str(tmp_path), auto_refresh=False)
+    copy_vendor_tree(tmp_path)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page()
+            downloads = []
+            page.on('download', lambda download: downloads.append(download))
+            _route(page, tmp_path)
+            page.goto('http://period-chart.test/index.html', wait_until='networkidle')
+            ready_charts(page)
+            page.evaluate('source=>fw.filterEngine.init(source,[{date:"bad",cost:1,installs:1,revenue:1,clicks:1}])', module.SOURCE)
+            page.wait_for_function('ds=>!_fwPeriodComparison.status(ds).ready', arg=module.RESULT + '_daily')
+            page.evaluate('fw.exportPNG()')
+            page.wait_for_selector('.fw-analysis-error')
+            assert page.locator('.fw-analysis-error').inner_text()
+            assert downloads == []
+        finally:
+            browser.close()

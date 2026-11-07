@@ -444,3 +444,48 @@ def test_supplied_population_eligibility_and_legacy_wrapper(tmp_path):
             host.replaceWith(...host.childNodes);window._fwRenderers.treemap(id,window._reportData.components[id]);}""", cid)
         assert page.evaluate("id=>!!window._chartInstances[id]", cid)
         browser.close()
+
+
+@pytest.mark.heavy
+@pytest.mark.parametrize('width', [1280, 390])
+def test_large_detail_population_is_bounded_and_all_leaves_reachable(tmp_path, width):
+    from playwright.sync_api import sync_playwright
+
+    from trellum.testing.test_chart_header_summaries_browser import _route
+    frame = pd.DataFrame({'group': [f'Group {i}' for i in range(250)], 'value': list(range(1, 251))})
+    ctx = ReportContext({'name': 'Large hierarchy', 'studio': 'test', 'category': 'Test'},
+                        'large-tree', str(tmp_path))
+    ctx.add_section('Hierarchy', [TreemapChart(frame, ['group'], 'value', 'All leaves', static=True)])
+    render_report(ctx, str(tmp_path), auto_refresh=False)
+    copy_vendor_tree(tmp_path)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page(viewport={'width': width, 'height': 900})
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            _route(page, tmp_path)
+            page.goto('http://large-tree.test/index.html', wait_until='networkidle')
+            root = page.locator('.fw-treemap')
+            root.locator('summary').click()
+            assert root.locator('.fw-treemap-key li').count() == 200
+            assert root.locator('tbody tr').count() == 200
+            assert 'first 200 of 250 groups' in root.inner_text()
+            first = root.locator('tbody tr').evaluate_all('rows=>rows.map(r=>Number(r.dataset.value))')
+            root.get_by_role('button', name='Next', exact=True).click()
+            assert root.locator('tbody tr').count() == 50
+            last = root.locator('tbody tr').evaluate_all('rows=>rows.map(r=>Number(r.dataset.value))')
+            assert sorted(first + last) == list(range(1, 251))
+            assert root.get_by_role('button', name='Previous', exact=True).evaluate('e=>e===document.activeElement')
+            page.add_style_tag(content='.fw-treemap-details-scroll table { min-width: 1500px; }')
+            root.locator('.fw-treemap-details-scroll').evaluate('el=>el.scrollLeft=120')
+            page.evaluate("switchTheme('dark')")
+            assert root.locator('details').evaluate('e=>e.open && e.dataset.page === "1"')
+            assert root.locator('.fw-treemap-details-scroll').evaluate('el=>el.scrollLeft') == 120
+            assert root.locator('tbody tr').evaluate_all('rows=>rows.map(r=>Number(r.dataset.value))') == last
+            root.screenshot(path=str(tmp_path / f'treemap-paged-{width}.png'))
+            root.get_by_role('button', name='Previous', exact=True).click()
+            assert root.locator('tbody tr').count() == 200
+            assert errors == []
+        finally:
+            browser.close()

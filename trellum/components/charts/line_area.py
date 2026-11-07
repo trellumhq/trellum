@@ -47,6 +47,9 @@ def _line_series_labels(chart: "LineChart") -> list[str]:
         return [str(r.get("label", "")) for r in chart.ratios]
     y_cols = chart.y if isinstance(chart.y, list) else [chart.y]
     labels = chart.y_labels or y_cols
+    if chart.dataset_id:
+        return [str(labels[i] if i < len(labels) and labels[i] else col)
+                for i, col in enumerate(y_cols)]
     return [str(lb) for lb, _ in zip(labels, y_cols)]
 
 

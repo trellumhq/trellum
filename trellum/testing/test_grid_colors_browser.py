@@ -262,7 +262,8 @@ def test_omitted_pixels_and_source_csv_match_actual_baseline(reports, browser, w
                 new, b.get_attribute("id"), reports / f"omitted-{width}-{i}.csv")
         a = section(old, "Fixed snapshot · default colors").screenshot()
         b = section(new, "Fixed snapshot · default colors").screenshot()
-        assert ImageChops.difference(Image.open(io.BytesIO(a)), Image.open(io.BytesIO(b))).getbbox() is None
+        assert ImageChops.difference(Image.open(io.BytesIO(a)).convert('RGB'),
+                                     Image.open(io.BytesIO(b)).convert('RGB')).getbbox() is None
         assert not old_errors + new_errors
     finally:
         old.close()

@@ -411,3 +411,31 @@ def test_runtime_source_bound_before_graph_creation(tmp_path):
             assert page.evaluate('id=>!window._chartInstances[id]',cid)
         finally:
             browser.close()
+
+
+def test_bound_sankey_without_summary_tracks_source_replacement(tmp_path):
+    from playwright.sync_api import sync_playwright
+    _build(tmp_path)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page()
+            _route(page, tmp_path)
+            page.goto('http://sankey-lifecycle.test/index.html', wait_until='networkidle')
+            root = _root(page, 'Weekly supplied player paths')
+            _ready(root)
+            cid = root.locator('canvas').get_attribute('id')
+            assert page.evaluate('id=>!_reportData.components[id].header_summary', cid)
+            page.evaluate('''id=>{
+                const cfg=_reportData.components[id];
+                window.savedSankeyRows=_fwFilterEngine.getFiltered(cfg.dataset_id);
+                _fwFilterEngine.init(cfg.dataset_id,savedSankeyRows.map(r=>({...r,players:0})));
+            }''', cid)
+            _ready(root, 'zero')
+            page.evaluate('id=>_fwFilterEngine.removeDataset(_reportData.components[id].dataset_id)', cid)
+            _ready(root, 'invalid')
+            page.evaluate('id=>_fwFilterEngine.init(_reportData.components[id].dataset_id,savedSankeyRows)', cid)
+            _ready(root)
+            assert page.evaluate('id=>_fwFilterEngine._subscribers[_reportData.components[id].dataset_id].filter(s=>s.id===id).length', cid) == 1
+        finally:
+            browser.close()

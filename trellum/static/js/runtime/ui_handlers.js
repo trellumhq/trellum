@@ -161,7 +161,12 @@
         // opting them into new presentation metadata or changing their search.
         if (typeof SlimSelect !== 'undefined') {
             document.querySelectorAll('select.fw-tab-dropdown:not([data-fw-choice])').forEach(function(select) {
-                if (!select.slim) new SlimSelect({select: select, settings: {showSearch: false, allowDeselect: false}});
+                if (!select.slim) new SlimSelect({select: select,
+                    settings: {showSearch: false, allowDeselect: false},
+                    events: {afterChange: function() {
+                        select.dispatchEvent(new Event('change', {bubbles: true}));
+                    }}
+                });
             });
         }
         if (typeof ResizeObserver === 'undefined') return;

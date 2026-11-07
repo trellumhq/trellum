@@ -205,6 +205,7 @@
             var oldFocus = el.contains(document.activeElement), oldButton = oldFocus && document.activeElement.closest('[data-path]');
             var focusPath = oldButton ? JSON.parse(oldButton.dataset.path) : null;
             var oldScroll = el.querySelector('.fw-hierarchy-scroll'), scroll = oldScroll ? oldScroll.scrollLeft : 0;
+            var scrollFocused = oldScroll && document.activeElement === oldScroll;
             var missing = lastFacts.filter(function(f) { return f.input === null; }).length;
             var out = '<div class="fw-hierarchy-actions"><button type="button" class="fw-csv-btn fw-hierarchy-csv" data-leaf-csv>CSV · leaf facts</button></div>';
             if (!lastFacts.length) out += '<p class="fw-hierarchy-empty">No leaf facts match this selection.</p>';
@@ -239,7 +240,7 @@
                     target = Array.from(el.querySelectorAll('[data-path]')).find(function(b) { return b.dataset.path === key; });
                     focusPath.pop();
                 }
-                (target || el.querySelector('[data-leaf-csv]') || el).focus({preventScroll:true});
+                (target || (scrollFocused && scroller) || el.querySelector('[data-leaf-csv]') || el).focus({preventScroll:true});
             }
         }
         function redraw() {

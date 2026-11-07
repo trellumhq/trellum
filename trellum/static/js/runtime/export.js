@@ -512,7 +512,7 @@
             if (cfg.type === 'metric_view') derived[cfg.dataset_id] = 'metric';
             if (cfg.type === 'period_comparison') (cfg.outputs || []).forEach(function(ds) { derived[ds] = 'period'; });
         });
-        var roots = [target].concat(Array.from(target.querySelectorAll('[data-fw-kind]')));
+        var roots = [target].concat(Array.from(target.querySelectorAll('[data-fw-kind], canvas')));
         for (var i = 0; i < roots.length; i++) {
             var cfg = components[roots[i].id];
             if (!cfg || !derived[cfg.dataset_id] || !_analysisVisible(roots[i])) continue;

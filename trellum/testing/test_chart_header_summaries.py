@@ -167,3 +167,11 @@ def test_native_examples_have_zero_diagnostic_warnings_and_failures(tmp_path):
     issues = [(check.id, check.level, check.message) for check in result.checks
               if check.level in {"warn", "fail"}]
     assert issues == []
+
+
+@pytest.mark.parametrize('cls', [BarChart, AreaChart])
+@pytest.mark.parametrize('value_format', ['percent', 'ratio'])
+def test_summary_format_override_does_not_make_rates_additive(cls, value_format):
+    with pytest.raises(ValueError, match='sum is undefined'):
+        cls(frame(), 'category', 'value', 'Rate', y_format=value_format,
+            header_summary={**SUMMARY, 'format': 'number'})

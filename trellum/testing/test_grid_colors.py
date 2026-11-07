@@ -14,7 +14,7 @@ from trellum.report import ReportContext
 from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
 
-BASELINE = "ab68c7bf0ba101008019508a08a7ce146b1528be"
+BASELINE = "557d61e"
 ROOT = Path(__file__).resolve().parents[2]
 
 

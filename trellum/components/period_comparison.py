@@ -200,6 +200,8 @@ class PeriodComparison(Component):
         if any(c.get('live_dataset') and {self.parent, parent['dataset_id']} & set(c.get('propagate_to', {})) for c in configs):
             raise ValueError('PeriodComparison propagated-live parents are unsupported')
         raw = ctx.raw_data_blocks.get('_ds_' + parent['dataset_id'], {})
+        if len(raw.get('_data', [])) > 10000:
+            raise ValueError('PeriodComparison exceeds 10,000 source rows')
         cols, dictionaries = raw.get('_cols', []), raw.get('_dict', {})
         if len(set(cols)) != len(cols):
             raise ValueError('PeriodComparison source columns must be unique')

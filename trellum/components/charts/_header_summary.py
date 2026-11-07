@@ -64,7 +64,7 @@ def header_summary_config(chart: Any) -> dict:
             bad(f"series={series} is outside the {len(labels)} plotted series.")
     elif labels.count(series) != 1:
         bad(f"series={series!r} must match one unique plotted label; labels are {labels}.")
-    if stat == "sum" and (fmt in ("percent", "ratio") or (
+    if stat == "sum" and (chart.y_format in ("percent", "ratio") or fmt in ("percent", "ratio") or (
             hasattr(chart, "ratios") and chart.dataset_id and chart.ratios)):
         bad("sum is undefined for declared ratio series or percent/ratio formats; "
             "choose mean (unweighted), last, min or max.")

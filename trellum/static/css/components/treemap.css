@@ -16,6 +16,10 @@
 .fw-treemap-context td:not(:first-child) { font-variant-numeric: tabular-nums; }
 .fw-treemap-context .fw-treemap-raw { display: block; color: var(--text-secondary); font-size: var(--font-size-label, 12px); }
 .fw-treemap-path { display: inline; }
+.fw-treemap-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.fw-treemap-pages button { color: var(--text-main); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+.fw-treemap-pages button:disabled { opacity: .5; cursor: default; }
+.fw-treemap-pages button:focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
 @media (max-width: 640px) { .fw-treemap-context summary { min-height: 44px; box-sizing: border-box; } }
 .fw-treemap-summary .fw-treemap-summary-scope,
 .fw-treemap-summary .fw-treemap-summary-reason {

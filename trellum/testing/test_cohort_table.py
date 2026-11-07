@@ -288,3 +288,31 @@ def test_month_can_also_be_the_cohort_identity():
     table = CohortTable(frame, cohort='month', cohort_month='month', horizon='day',
                         observed='observed', observed_state='state', population=examples.POPULATION)
     assert len(table.snapshot(frame)['data']) == 30
+
+
+def test_column_admission_precedes_row_expansion(monkeypatch):
+    table = make()
+    wide = pd.DataFrame(columns=[f'c{i}' for i in range(129)])
+    def unexpected(*args, **kwargs):
+        pytest.fail('Oversized source must be rejected before rows are expanded')
+    monkeypatch.setattr(wide, 'itertuples', unexpected)
+    with pytest.raises(ValueError, match='128 source columns'):
+        table.snapshot(wide)
+
+
+def test_byte_admission_stops_before_expanding_remaining_rows(monkeypatch):
+    import trellum.components.cohort_table as module
+    table = make()
+    frame = table.df.copy()
+    frame['context'] = 'x' * 2048
+    consumed = []
+    original = frame.itertuples
+    def rows(*args, **kwargs):
+        for row in original(*args, **kwargs):
+            consumed.append(True)
+            yield row
+    monkeypatch.setattr(module, 'MAX_BYTES', 4096)
+    monkeypatch.setattr(frame, 'itertuples', rows)
+    with pytest.raises(ValueError, match='4 MiB'):
+        table.snapshot(frame)
+    assert 0 < len(consumed) < len(frame)

@@ -220,3 +220,18 @@ def test_owned_validation_leaves_unrelated_optional_control_ids_alone(tmp_path):
     result=ValidationResult('ordinary-controls')
     check_period_comparison(ctx,result)
     assert not result.checks
+
+
+def test_oversized_serialized_source_rejected_before_decoding(tmp_path):
+    from trellum.components import DataSource, RenderContext
+    from trellum.themes import DEFAULT_THEME
+    _, module = example_context(tmp_path)
+    ctx = RenderContext(DEFAULT_THEME)
+    source = DataSource(module.SOURCE, module.facts())
+    source.render_html(ctx)
+    class UnreadRows(list):
+        def __iter__(self):
+            pytest.fail('Oversized source must fail before decoding')
+    ctx.raw_data_blocks['_ds_' + module.SOURCE]['_data'] = UnreadRows([None] * 10001)
+    with pytest.raises(ValueError, match='10,000'):
+        module.projection().render_html(ctx)

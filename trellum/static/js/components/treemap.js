@@ -367,6 +367,12 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
         var previous = context.querySelector('details');
         var wasOpen = previous && previous.open;
         var hadFocus = previous && previous.contains(document.activeElement);
+        var oldScroll = previous && previous.querySelector('.fw-treemap-details-scroll');
+        var scrollLeft = oldScroll ? oldScroll.scrollLeft : 0;
+        var scrollTop = oldScroll ? oldScroll.scrollTop : 0;
+        var pageSize = 200;
+        var page = Math.min(Math.max(0, Math.floor((leaves.length - 1) / pageSize)),
+            previous ? Number(previous.dataset.page || 0) : 0);
         context.replaceChildren();
         function text(tag, value, parent, className) {
             var el = document.createElement(tag); el.textContent = value;
@@ -392,6 +398,7 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
                 var path = [row[groupCols[0]]], identity = JSON.stringify(path);
                 if (seenGroups.has(identity)) return;
                 seenGroups.add(identity);
+                if (seenGroups.size > pageSize) return;
                 var item = text('li', '', key);
                 item.dataset.path = identity;
                 var swatch = text('span', '', item, 'fw-treemap-swatch');
@@ -400,6 +407,8 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
                 var name = text('span', '', item, 'fw-treemap-name');
                 pathText(path, name);
             });
+            if (seenGroups.size > pageSize) text('p', 'Color key shows the first ' + pageSize +
+                ' of ' + seenGroups.size + ' groups. Every hierarchy path is available in the paged details.', context);
         }
         text('p', reason || 'Shares include every value in the current ' + (cfg.dataset_id ? 'filtered' : 'supplied') + ' result, including tiny and zero categories; values must be additive.', context);
         var details = text('details', '', context);
@@ -412,7 +421,7 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
             text('th', label, head).scope = 'col';
         });
         var body = text('tbody', '', table);
-        leaves.forEach(function(raw) {
+        function appendLeaf(raw) {
             var path = _path(raw), tr = text('tr', '', body);
             tr.dataset.path = JSON.stringify(path);
             tr.dataset.value = String(raw.v);
@@ -422,7 +431,32 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
             var cell = text('td', complete ? valFmt(raw.v) : 'Unavailable', tr);
             text('span', (complete ? 'Exact: ' + String(raw.v) : 'Supplied: ' + source.map(function(s) { return s ? s.text : 'unknown'; }).join(', ') + '; legacy size value: ' + String(raw.v)), cell, 'fw-treemap-raw');
             text('td', _share(raw.v), tr).title = reason || String(raw.v / total * 100) + '%';
-        });
+        }
+        var previousButton, nextButton, pageStatus;
+        if (leaves.length > pageSize) {
+            var pages = text('div', '', details, 'fw-treemap-pages');
+            previousButton = text('button', 'Previous', pages); previousButton.type = 'button';
+            pageStatus = text('span', '', pages); pageStatus.setAttribute('aria-live', 'polite');
+            nextButton = text('button', 'Next', pages); nextButton.type = 'button';
+            previousButton.addEventListener('click', function() { page--; renderPage(); });
+            nextButton.addEventListener('click', function() { page++; renderPage(); });
+        }
+        function renderPage() {
+            details.dataset.page = String(page);
+            body.replaceChildren();
+            leaves.slice(page * pageSize, (page + 1) * pageSize).forEach(appendLeaf);
+            if (pageStatus) {
+                var pageFocus = document.activeElement;
+                pageStatus.textContent = 'Showing ' + (page * pageSize + 1) + '–' +
+                    Math.min((page + 1) * pageSize, leaves.length) + ' of ' + leaves.length + ' leaves';
+                previousButton.disabled = page === 0;
+                nextButton.disabled = (page + 1) * pageSize >= leaves.length;
+                if (pageFocus === previousButton && previousButton.disabled) nextButton.focus({preventScroll: true});
+                else if (pageFocus === nextButton && nextButton.disabled) previousButton.focus({preventScroll: true});
+            }
+        }
+        renderPage();
+        scroll.scrollLeft = scrollLeft; scroll.scrollTop = scrollTop;
         if (!leaves.length) text('p', 'No hierarchy leaves are available in this result.', details);
         text('p', 'Legacy sizing is unsupported for signed or all-zero values; blank parents can suppress leaves. CSV does not export populated hierarchy leaves.', details);
         if (hadFocus) details.querySelector('summary').focus({preventScroll: true});

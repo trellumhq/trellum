@@ -156,6 +156,10 @@ def test_focus_instances_theme_reentry_replacement_removal_and_runtime_refusal(n
     page.evaluate("""id=>{_fwFilterEngine.setFilter('hierarchy_collapsed','direct','Source','equals','Partners');}""",cid)
     assert page.locator(f'#{cid} [data-leaf-csv]').evaluate('e=>e===document.activeElement')
     page.evaluate("_fwFilterEngine.clearFilter('hierarchy_collapsed','direct')")
+    region = page.locator(f'#{cid} .fw-hierarchy-scroll')
+    region.focus()
+    page.evaluate("window.dispatchEvent(new Event('fw-theme-change'))")
+    assert region.evaluate('el=>el===document.activeElement')
     scoped = ids[6]
     assert footer(page,scoped)[-1] == '0.30'
     page.evaluate("_fwFilterEngine.setFilter('hierarchy_root','parent','platform','equals','iOS')")
