@@ -989,6 +989,15 @@ Optional chart annotations from a centralized `events.yaml` at the project root.
 4. An **annotation toggle bar** appears below the header with clickable pills per event type.
 5. Toggle state persists in `localStorage`.
 
+Ordinary `LineChart`s show adaptive dated labels above the plot. Tap or click a
+label for exact names and dates; overlapping labels show an event count, with
+every event available in local details. Phone charts also show a readable name
+key. This changes the space around the plot, while its height and values stay
+the same. Use `event_labels="grouped"` for numbered markers or
+`event_labels="full"` for in-plot labels. Other chart families retain their
+existing presentation. See [dated event labels](docs/report-line-events.md)
+for date mapping, compatibility and image-export scope.
+
 ### Visibility Priority (highest wins)
 
 1. **`report.yaml`** `annotations.default_visible: [event, release]` -- per-report override

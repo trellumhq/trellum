@@ -166,7 +166,7 @@ def _trends():
         ]),
         TabGroup([
             tab("Line", note("A daily trend with a summary that follows the selection.",
-                "Select iOS, narrow the dates, then open the event list below the plot.",
+                "Select iOS, narrow the dates, then tap a dated event label for its exact details.",
                 "Header summary, units, month labels and dated events; 220px plot."),
                 LineChart(frame, "Day", "Revenue", "Daily revenue", dataset_id=dataset, y_format="currency",
                           header_context="USD · selected platform and dates",

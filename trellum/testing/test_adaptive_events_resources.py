@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from trellum.testing.test_adaptive_events import build, ids, assert_layout
-from trellum.testing.test_line_chart_events import _open, _canvas
+from trellum.testing.test_adaptive_events import assert_layout, build, ids
+from trellum.testing.test_line_chart_events import _canvas, _open
 
 
 @pytest.mark.heavy
 def test_adaptive_dense_population_and_capture_bound(tmp_path):
     from playwright.sync_api import sync_playwright
 
-    build(tmp_path, capture_hook=True)
+    build(tmp_path)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 390, "height": 900}, has_touch=True)

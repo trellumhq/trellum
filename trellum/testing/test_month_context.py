@@ -34,6 +34,7 @@ from trellum.reporting.diagnostics import compute_details
 from trellum.runner.events import local_annotation_events
 from trellum.themes import THEME_REGISTRY
 from trellum.validation import validate_report
+from trellum.validation.walk import _all_components
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = "42ececa30d424131b0096cecd44c74cea92d550c"
@@ -193,6 +194,12 @@ def _build(output, baseline=False, regressions=False):
             module.ComboChart(rows, "day", ["value"], ["users"], "Bound combo months", **opts),
             module.BarChart(rows, "variant", "value", "Horizontal legacy default", dataset_id=source, horizontal=True),
         ])
+    # This fixture isolates month context against its historical dependency.
+    # Keep the same explicit event mode on both sides; adaptive labels have
+    # their own geometry and compatibility coverage.
+    for component, _ in _all_components(ctx):
+        if type(component).__name__ == "LineChart":
+            component.event_labels = "grouped"
     if not baseline:
         details = compute_details(ctx)
         validation = validate_report(ctx, details=details)

@@ -314,7 +314,7 @@ report template. Select options only when they answer the question:
 | Dates need calendar context | Opt into `month_context` only for daily dates; `monthly_average` separately requires an additive daily quantity and explicit coverage contract. Neither computes regression. |
 
 Ordinary LineChart defaults already include straight segments, adaptive dots,
-grouped dated-event labels and result messages. Do not recreate those in custom
+adaptive dated-event controls and result messages. Do not recreate those in custom
 JavaScript. Curves (`tension`), supplied forecast styling (`forecast_series`),
 comparison registrars, maturity and coverage declarations are separate opt-ins;
 none infers a forecast or regression. See the decision guide before adding them.

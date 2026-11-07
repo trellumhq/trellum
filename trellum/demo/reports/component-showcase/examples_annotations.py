@@ -31,7 +31,7 @@ def add_sections(ctx):
     ctx.add_section("Annotations — synthetic daily comparison", [
         RawHTML(html="<p>Synthetic August observations, identical in both charts. Full labels keep the legacy presentation; grouped markers keep every eligible event in a collapsed list. Expand before report export to include event names.</p>"),
         LineChart(daily, "day", "observations", "Synthetic daily · full labels", static=True, event_labels="full", colors=["#2563eb"]),
-        LineChart(daily, "day", "observations", "Synthetic daily · grouped events", static=True, colors=["#2563eb"], header_context="Synthetic observations · original event dates appear in details"),
+        LineChart(daily, "day", "observations", "Synthetic daily · grouped events", static=True, event_labels="grouped", colors=["#2563eb"], header_context="Synthetic observations · original event dates appear in details"),
     ])
     filtered = pd.DataFrame([
         {"day": day, "channel": channel, "observations": offset + (i * factor) % 19}

@@ -12,8 +12,15 @@ from trellum.components import LineChart
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.reporting.diagnostics import compute_details
+from trellum.testing.test_line_chart_events import (
+    _STATE,
+    _canvas,
+    _context,
+    _extras,
+    _geometry,
+    _open,
+)
 from trellum.validation import validate_report
-from trellum.testing.test_line_chart_events import _context, _extras, _open, _canvas, _STATE, _geometry
 
 
 def example():
@@ -24,7 +31,7 @@ def example():
     return module
 
 
-def build(output, mode="adaptive", *, capture_hook=False):
+def build(output, mode="adaptive"):
     output.mkdir(parents=True, exist_ok=True)
     module = example()
     ctx = _context(output, module.ANNOTATIONS)
@@ -40,17 +47,6 @@ def build(output, mode="adaptive", *, capture_hook=False):
     render_report(ctx, str(output), data=_extras(ctx.config), auto_refresh=False, validation=result, details=details)
     result.write(str(output))
     copy_vendor_tree(output)
-    if capture_hook:
-        # Exercise the annotation clone hook in a generated-only fixture,
-        # independently of shared export assembly.
-        html_path = output / "index.html"
-        html = html_path.read_text()
-        hook = "if (window._fwPrepareEventCapture) window._fwPrepareEventCapture(doc, root, options.scale);"
-        if hook not in html:
-            anchor = "if (originalOnclone) await originalOnclone.call(this, doc, root);"
-            assert html.count(anchor) == 1
-            html = html.replace(anchor, anchor + "\n            " + hook)
-            html_path.write_text(html)
     return ctx
 
 
@@ -90,7 +86,8 @@ def browser_check(tmp_path, width):
     artifacts = Path(".data-test/adaptive-events")
     artifacts.mkdir(parents=True, exist_ok=True)
     current, grouped = tmp_path / "adaptive", tmp_path / "grouped"
-    build(current, capture_hook=True); build(grouped, "grouped")
+    build(current)
+    build(grouped, "grouped")
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": width, "height": 900}, has_touch=width < 600)

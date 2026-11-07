@@ -3,7 +3,6 @@ import pandas as pd
 
 from trellum.components import DataSource, FilterBar, LineChart
 
-
 ANNOTATIONS = {
     "events": [
         {"date": "2026-09-01", "label": "Autumn campaign launch", "type": "campaign"},

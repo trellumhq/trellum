@@ -129,6 +129,7 @@
             // Caller changes (such as full event disclosures) must precede
             // computed-paint conversion and retain their rejection/cleanup path.
             if (originalOnclone) await originalOnclone.call(this, doc, root);
+            if (window._fwPrepareEventCapture) window._fwPrepareEventCapture(doc, root, options.scale);
             hoveredRows.forEach(function(row) {
                 var host = doc.getElementById(row.id);
                 var cloned = host && host.querySelectorAll('tbody tr')[row.index];
@@ -598,6 +599,7 @@
         var title = target.querySelector('.fw-chart-title');
         if (!title && target.classList.contains('fw-chart-container')) {
             var previous = target.previousElementSibling;
+            if (previous && previous.classList.contains('fw-event-rail')) previous = previous.previousElementSibling;
             if (previous && previous.classList.contains('fw-chart-title')) title = previous;
             else if (previous && previous.classList.contains('fw-chart-head')) {
                 title = previous.querySelector('.fw-chart-title');

@@ -13,6 +13,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Ordinary LineCharts now use readable adaptive event controls with local exact
+  details and collision grouping. Explicit grouped/full modes remain available;
+  native captures include clustered event identities without changing screen state.
+
 - A curated component tour with six purpose-based navigation cards and distinct
   table/chart views. Detailed developer fixtures remain available in source.
 - A native visual upgrade report with actual v0.9.5 comparisons and clear
@@ -122,13 +126,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Add optional daily calendar-month labels and plot dividers to LineChart,
   AreaChart, vertical BarChart, StackedBar and ComboChart; preserve default
   output and supplied observations. Include native synthetic examples.
-
-- Ordinary report LineChart defaults to grouped dated-event markers with a
-  collapsed list of original event names, exact dates/ranges and types.
-  Keyword-only `event_labels="full"` retains full in-plot labels; payloads with
-  no flag and other chart families keep existing labels. Native annotation
-  marks, weekday lines, plotted data and heights stay unchanged. Added native
-  synthetic examples, API guidance and geometry/interaction/export checks.
 
 - Optional keyword-only LineChart `forecast_series` styling for explicitly
   supplied static, bound wide-series and bound ratio datasets. Selected lines
