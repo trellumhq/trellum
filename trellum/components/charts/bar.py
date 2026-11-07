@@ -175,8 +175,8 @@ class BarChart(_ChartBase):
                 cfg["y_max"] = self.y_max
             if self.show_labels:
                 cfg["show_labels"] = True
-            if ctx.grid_color(self):
-                cfg["grid_color"] = ctx.grid_color(self)
+            if ctx.grid_color_slot(self) is not None:
+                cfg["grid_color_slot"] = ctx.grid_color_slot(self)
             ctx.register(cid, cfg)
         else:
             theme = ctx.theme
@@ -193,6 +193,8 @@ class BarChart(_ChartBase):
                     "borderColor": color,
                     "borderWidth": 1,
                     "_themeManaged": True,
+                    **({"_fwPaletteSlot": ctx.grid_color_slot(self)}
+                       if ctx.grid_color_slot(self) is not None else {}),
                 })
             ctx.register(cid, {
                 "type": "chart",

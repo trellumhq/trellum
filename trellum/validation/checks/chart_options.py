@@ -26,8 +26,12 @@ def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult)
     from trellum.components.charts._treemap_summary import treemap_summary_option_problems
     from trellum.components.charts.bar import stack_option_problems
     from trellum.components.charts.line_area import line_option_problems
+    from trellum.components.layout import Grid, grid_color_option_problems
 
     for comp, sec in comps:
+        if isinstance(comp, Grid):
+            for check_id, message in grid_color_option_problems(comp):
+                result.fail(check_id, message, component="Grid", section=sec)
         if _comp_name(comp) == "ComboChart":
             for check_id, message in combo_summary_option_problems(comp):
                 result.fail(check_id, message, component="ComboChart", section=sec)

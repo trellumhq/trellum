@@ -801,6 +801,9 @@ function _fwLineResultView(chart) {
 }
 
 function _createChart(id, canvas, spec) {
+    spec.datasets.forEach(function(ds) {
+        window._fwApplyPaletteSlot(ds, spec.type || 'bar', window.getThemeColors());
+    });
     var previous = window._chartInstances[id];
     if (spec.stackedControlView) {
         if (previous && previous._fwStackControlView) _fwRememberStackControlView(previous);
@@ -1180,7 +1183,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     // Modern ordinary lines/bars may gain/remove declarations during renderAll.
     // Keep one scoped binding before opt-in so adoption cannot retain an old
     // anonymous theme handler or a second subscription.
-    var scopedLive = cfg.combo_axes || cfg.stack_labels || cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
+    var scopedLive = cfg.combo_axes || cfg.stack_labels || cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned || cfg.grid_color_slot !== undefined;
     // Tagged StackedBars own local/shared controls from the first draw, so
     // adding/removing summaries cannot strand anonymous legacy handlers.
     // Legacy untagged payloads and workspace leasing keep their existing path.
@@ -1270,6 +1273,14 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }, barListener);
 
         function _mkSpec(spec) {
+            if (Number.isInteger(cfg.grid_color_slot)) {
+                spec.datasets.forEach(function(ds, i) {
+                    if (cfg.colors && cfg.colors[i]) return;
+                    ds._themeManaged = true;
+                    ds._fwPaletteSlot = cfg.grid_color_slot;
+                    window._fwApplyPaletteSlot(ds, spec.type || 'bar', window.getThemeColors());
+                });
+            }
             // Preserve the existing shared-only legend retention contract.
             if (stackOwner && cfg.stacked_bar_controls === true) spec.stackedControlView = [cfg.dataset_id, activeStackBy];
             if (cfg.month_context === true) spec.monthContext = true;
@@ -1800,7 +1811,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
-            var observer = (chartOwner || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
+            var observer = (chartOwner || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average || cfg.grid_color_slot !== undefined) ? new MutationObserver(function() {
                 if (document.getElementById(id) !== canvas || stackRetired()) dispose();
             }) : null;
             function dispose() {

@@ -456,6 +456,8 @@ class LineChart(_ChartBase):
                 cfg_r["show_labels"] = True
             if self.colors:
                 cfg_r["colors"] = list(self.colors)
+            elif ctx.grid_color_slot(self) is not None:
+                cfg_r["grid_color_slot"] = ctx.grid_color_slot(self)
             cfg_r.update(self._summary_config())
             cfg_r.update(self._style_config())
             cfg_r.update(category_config)
@@ -504,8 +506,8 @@ class LineChart(_ChartBase):
                 cfg["show_labels"] = True
             if self.colors:
                 cfg["colors"] = list(self.colors)
-            elif ctx.grid_color(self):
-                cfg["grid_color"] = ctx.grid_color(self)
+            elif ctx.grid_color_slot(self) is not None:
+                cfg["grid_color_slot"] = ctx.grid_color_slot(self)
             cfg.update(self._summary_config())
             cfg.update(self._style_config())
             cfg.update(category_config)
@@ -542,6 +544,8 @@ class LineChart(_ChartBase):
                     "tension": self.tension,
                     "spanGaps": False,
                     "_themeManaged": not has_custom_color,
+                    **({"_fwPaletteSlot": ctx.grid_color_slot(self)}
+                       if not has_custom_color and ctx.grid_color_slot(self) is not None else {}),
                     **({"_fwForecast": True} if i in forecast_indices else {}),
                     **({"borderDash": [7, 4]} if i in forecast_indices else {}),
                 })
@@ -620,8 +624,8 @@ class AreaChart(_ChartBase):
                 cfg["y_format"] = self.y_format
             if self.show_labels:
                 cfg["show_labels"] = True
-            if ctx.grid_color(self):
-                cfg["grid_color"] = ctx.grid_color(self)
+            if ctx.grid_color_slot(self) is not None:
+                cfg["grid_color_slot"] = ctx.grid_color_slot(self)
             ctx.register(cid, cfg)
         else:
             theme = ctx.theme
@@ -641,6 +645,8 @@ class AreaChart(_ChartBase):
                     "_themeManaged": True,
                     "_fillOpacity": "a6" if self.stacked else "1f",
                     "_areaFill": True,
+                    **({"_fwPaletteSlot": ctx.grid_color_slot(self)}
+                       if ctx.grid_color_slot(self) is not None else {}),
                 })
             ctx.register(cid, {
                 "type": "chart",

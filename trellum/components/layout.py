@@ -11,6 +11,14 @@ from trellum.assets import load_css
 from trellum.components.base import Component, RenderContext
 
 
+def grid_color_option_problems(grid: Any) -> list[tuple[str, str]]:
+    """Shared constructor, render and report-validation contract."""
+    value = grid.color_cycle
+    if value is not None and (not isinstance(value, str) or value != "theme"):
+        return [("grid-color-cycle-invalid", "Grid color_cycle must be None or 'theme'")]
+    return []
+
+
 @dataclass
 class Section(Component):
     """Titled content block that groups child components.
@@ -98,6 +106,9 @@ class Grid(Component):
     arguments. Titles and local chart breakdown/normalization controls stay visible.
     Keyword-only ``show_titles=False`` or ``show_controls=False`` omits redundant
     chart context within this grid, stopping at each nested Grid boundary.
+    Keyword-only ``color_cycle="theme"`` assigns stable authored palette slots
+    to direct single-metric Line/Area/ordinary Bar tiles as a color fallback.
+    The default ``None`` preserves existing colors; nested Grids own their option.
     Chart heights and explicit author sizing are unchanged by this layout.
     """
     children: List[Any]
@@ -111,22 +122,23 @@ class Grid(Component):
     _component_type: str = field(default="grid", init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.color_cycle not in (None, "theme"):
-            raise ValueError("Grid color_cycle must be None or 'theme'")
+        problems = grid_color_option_problems(self)
+        if problems:
+            raise ValueError(problems[0][1])
 
     def render_html(self, ctx: RenderContext) -> str:
+        problems = grid_color_option_problems(self)
+        if problems:
+            raise ValueError(problems[0][1])
         cls = "fw-grid-card" if self.card else "fw-grid-item"
         items = []
-        eligible_types = {"line_chart", "area_chart", "bar_chart"}
-        slot = 0
-        for child in self.children:
-            # Slots follow authored children, including ineligible/overridden
-            # tiles, so filters and responsive wrapping cannot shift colors.
-            if self.color_cycle == "theme" and getattr(child, "_component_type", None) in eligible_types:
-                if self._eligible_color_cycle_child(child):
-                    ctx.grid_color_slots[id(child)] = slot
-                slot += 1
-            child_html = ctx.render_child(child)
+        for index, child in enumerate(self.children):
+            # Every authored tile keeps its position, even an override or a
+            # nested Grid. Descendant charts never inherit an outer assignment.
+            slot = (index if self.color_cycle == "theme"
+                    and self._eligible_color_cycle_child(child) else None)
+            with ctx.grid_color_scope(child, slot):
+                child_html = ctx.render_child(child)
             items.append(f'<div class="{cls}">{child_html}</div>')
         inner = "\n".join(items)
         grid_cls = "fw-grid fw-grid-auto" if self.min_width else "fw-grid"
@@ -145,6 +157,8 @@ class Grid(Component):
 
     @staticmethod
     def _eligible_color_cycle_child(child: Any) -> bool:
+        if getattr(child, "_component_type", None) not in {"line_chart", "area_chart", "bar_chart"}:
+            return False
         if getattr(child, "category_colors", None):
             return False
         if getattr(child, "dataset_id", None):
@@ -152,6 +166,9 @@ class Grid(Component):
             # current filters happen to leave only one visible series.
             if getattr(child, "stack_by", None) or getattr(child, "stack_by_options", None):
                 return False
+            if getattr(child, "ratios", None):
+                return (len(child.ratios) == 1 and not getattr(child, "stacked", False)
+                        and not getattr(child, "net_color", False))
         if getattr(child, "_component_type", None) == "bar_chart":
             return (not getattr(child, "stacked", False)
                     and not getattr(child, "ratios", None)

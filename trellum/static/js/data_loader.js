@@ -218,6 +218,7 @@
             } else if (!isDoughnut) {
                 chart.data.datasets.forEach(function(ds, i) {
                     if (!ds._themeManaged) return;
+                    if (window._fwApplyPaletteSlot && window._fwApplyPaletteSlot(ds, chart.config.type, tc)) return;
                     var newColor = tc.chart_colors[i % tc.chart_colors.length];
                     ds.borderColor = newColor;
                     if (ds._areaFill && '_fillOpacity' in ds) {
@@ -237,7 +238,10 @@
                     }
                 });
             }
-            chart.update('none');
+            // Refresh Chart.js shared area/bar mark options on Grid re-entry.
+            chart.update(chart.data.datasets.some(function(ds) {
+                return Number.isInteger(ds._fwPaletteSlot);
+            }) ? undefined : 'none');
         });
     }
 
