@@ -40,7 +40,7 @@ family's contract rather than treating them as interchangeable.
 | What is the composition of one population? | `DoughnutChart` | Supply compatible parts. Opt into `center_total`, units and precision when a total is meaningful. Name its surrounding Panel/section: its title is not an internal heading. [Population and display](report-doughnuts.md) |
 | How are two differently scaled measures related over time? | `ComboChart` | Declare bar and line units separately; a shared date does not make two axes comparable. [Combo choices](report-combos.md) |
 | Where are concentrations across two dimensions? | `HeatmapChart` | Cells aggregate supplied coordinates. Missing coordinates are not evidence of zero. Explicit linear/log/row-normalized scales answer different questions. [Scale and labels](report-heatmaps.md) |
-| How do supplied observations relate? | `ScatterChart` | Points/bubbles describe delivered observations; no regression or correlation statistic is calculated automatically. |
+| How do supplied observations relate? | `ScatterChart` | Points/bubbles describe delivered observations. Optional `trend_line` fits each selected series; bubble sizes do not weight the fit. [Native trends](report-chart-trends.md) |
 | How large are supplied stages? | `FunnelChart` | Stage totals do not establish distinct-person conversion or complete journeys. |
 | How do additive leaf amounts divide hierarchically? | `TreemapChart` | Parent rectangles and labels are not additional facts. [Leaf population](report-treemaps.md) |
 | Which paths or adjacent transitions were supplied? | `SankeyChart` | Choose `paths` or `edges`; adjacent edges cannot establish complete journeys. [Input and population](report-sankey-charts.md) |
@@ -123,12 +123,22 @@ legend hiding and zoom generally do not narrow these summary populations.
 
 ## Trend, smoothing and forecast are separate claims
 
-LineChart connects supplied observations; the framework has no native fitted
-linear/regression trend-line engine. ScatterChart also provides no automatic
-fitted regression. An author-computed fitted series may be supplied as ordinary
-data with its method, fit period and scope explained, but it does not refit
-itself after report filters change. Do not present a fixed fitted series as a
-calculation over the current selection.
+To describe a linear direction, opt into `trend_line={"method": "linear",
+"series": "each"}` on ordinary LineChart or numeric ScatterChart. Native fits
+recompute after report filters and existing aggregation, independently per
+selected source series. Line dates must form a regular daily UTC grid; Scatter
+uses finite coordinate pairs. Daily ratios and bubble points are unweighted.
+Use exact series identities when only specific measures should be fitted.
+The overlay stops at the observed range, retains source colors, and can be
+hidden without changing the plotted observations, summaries or CSV.
+
+Read [native trend eligibility](report-chart-trends.md) before enabling it:
+fits need at least three eligible observations and two distinct x values;
+forecast and unavailable inputs are excluded. Live, chunked and derived sources
+are unsupported. Per chart, limits are eight selected series, 50,000 candidate
+pairs and 50,000 raw contributors; an unavailable reason replaces the fit
+instead of silently sampling. A high R² does not establish causation or predict
+future performance. Existing charts keep `trend_line=None`.
 
 The straight default (`tension=0.0`) and opt-in cubic curves (`0..1`) change
 connections between observations. Curves can overshoot; they are not a moving

@@ -312,12 +312,14 @@ report template. Select options only when they answer the question:
 | The same categories appear in several charts | Opt into shared `category_colors` on supported LineChart, StackedBar and DoughnutChart paths. For distinct single-metric tiles, use optional `Grid(..., color_cycle="theme")`; explicit LineChart `colors` still wins. Existing grids do not cycle colors automatically. |
 | Missing observations must stay unknown | Opt into LineChart `series_availability` and KPI `availability` declarations where supported. Legacy bound sums can otherwise turn missing inputs into zeros/subtotals. |
 | Dates need calendar context | Opt into `month_context` only for daily dates; `monthly_average` separately requires an additive daily quantity and explicit coverage contract. Neither computes regression. |
+| Describe a linear direction in observations | Opt into LineChart/ScatterChart `trend_line={"method": "linear", "series": "each"}`. Fits follow filters; daily ratios and bubble points are unweighted. Check daily-grid, snapshot and resource eligibility in [native trends](docs/report-chart-trends.md). No extrapolation. |
 
 Ordinary LineChart defaults already include straight segments, adaptive dots,
 adaptive dated-event controls and result messages. Do not recreate those in custom
 JavaScript. Curves (`tension`), supplied forecast styling (`forecast_series`),
 comparison registrars, maturity and coverage declarations are separate opt-ins;
-none infers a forecast or regression. See the decision guide before adding them.
+none infers a forecast. Regression requires explicit `trend_line`; see the
+decision guide before adding context or a fit.
 
 1. Subclass `BaseReport` and implement `generate(self, ctx)`.
 2. Load a DataFrame using the reader for your source. For configured files, use `ctx.read_source("name")`; for databases, use `conn = ctx.get_connection("name")` and `query_df(conn, queries.X, params={...})`. Source names come from `data-sources/config.yaml`.
@@ -373,7 +375,7 @@ take the same argument names or summary declarations.
 | Heatmap / day×hour / cohort grid | `HeatmapChart` |
 | Funnel | `FunnelChart` |
 | Treemap | `TreemapChart` |
-| Relationship between supplied observations / bubble | `ScatterChart` — no automatic correlation coefficient or fitted regression |
+| Relationship between supplied observations / bubble | `ScatterChart`; opt-in `trend_line` supplies an unweighted linear fit and descriptive R² |
 | Supplied complete paths / adjacent transitions | `SankeyChart` (`docs/report-sankey-charts.md`); never infer complete journeys from adjacent edges |
 | Dual-axis bar + line | `ComboChart` |
 | Ratio metrics (ARPDAU, ARPPU, retention, conversion) | `LineChart(ratios=[{numerator, denominator, label}])` — never hand-roll the division in JS |

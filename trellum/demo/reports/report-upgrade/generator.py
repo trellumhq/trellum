@@ -59,6 +59,7 @@ class ReportUpgradeReport(BaseReport):
             '<p>Jump to <a style="color:var(--accent-blue)" href="#sec-automatic-and-authored">the upgrade matrix</a>, '
             '<a style="color:var(--accent-blue)" href="#sec-tables">tables</a>, <a style="color:var(--accent-blue)" href="#sec-doughnuts">doughnuts</a>, '
             '<a style="color:var(--accent-blue)" href="#sec-line-charts">line charts</a>, '
+            '<a style="color:var(--accent-blue)" href="#sec-native-linear-trends">optional fitted trends</a>, '
             '<a style="color:var(--accent-blue)" href="#sec-dated-events">dated events</a> or '
             '<a style="color:var(--accent-blue)" href="#sec-layouts-and-views">layouts and views</a>. '
             'Return to the <a style="color:var(--accent-blue)" href="../component-showcase/">component showcase</a> '
@@ -72,7 +73,7 @@ class ReportUpgradeReport(BaseReport):
             ("DoughnutChart", "170px ring; readable category values and shares",
              "Center total, explicit units and precision"),
             ("LineChart", "220px plot; adaptive dots and dated event labels; explicit unsplit dataset colors honored",
-             "160px compact / 320px roomy, summaries, curves, forecasts"),
+             "160px compact / 320px roomy, summaries, curves, forecasts, native linear fits"),
             ("Grid / SplitPane", "Panel-width layout; chart titles/controls stay visible",
              "Theme color cycle, column maximum, pane minimums, intentional title/control omission"),
             ("Dropdown / TabGroup", "Searchable choices and wrapping underlined tabs",
@@ -160,6 +161,27 @@ class ReportUpgradeReport(BaseReport):
             ], columns=2, min_width=280)]}
             for label, width in (("Wide comparison", 900), ("Phone comparison", 390))
         ], id="upgrade-events", label="Dated event capture size")])
+
+        ctx.add_section("Native linear trends", [RawHTML(
+            '<p>Upgrading does not add fitted lines automatically. Enable trend_line '
+            'on an eligible daily LineChart or numeric ScatterChart to show a '
+            'descriptive linear fit. The same observations and 220px plot appear '
+            'below with the option omitted and enabled. The dash-dot overlay stops '
+            'at the observed range; it does not create a forecast.</p>'
+            '<p>In a filtered report the fit recalculates after aggregation. Readers '
+            'can hide it or open details for observation counts, slope and R². '
+            'Daily ratio fits and bubble points are unweighted. Only complete '
+            'snapshot sources are supported; unavailable or oversized populations '
+            'show a reason instead of a sampled fit.</p>'
+        ), TabGroup([
+            {"label": label, "content": [Grid([
+                Panel([_capture("current", "trends", width)], title="Current · fit omitted"),
+                Panel([_capture("opt-in", "trends", width)], title="Current · linear fit enabled"),
+            ], columns=2, min_width=280)]}
+            for label, width in (("Wide capture", 900), ("Phone capture", 390))
+        ], id="upgrade-trends", label="Fitted trend capture size"),
+            _code('LineChart(daily, "day", "revenue", dataset_id="daily",\n'
+                  '    trend_line={"method": "linear", "series": "each"})')])
 
         ctx.add_section("Layouts and views", [RawHTML(
             '<p>Automatic grids retain chart titles and each chart family’s height. '

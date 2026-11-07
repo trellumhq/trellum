@@ -24,6 +24,7 @@ def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult)
     from trellum.components.charts._scatter_summary import scatter_option_problems
     from trellum.components.charts._stacked_summary import stacked_summary_option_problems
     from trellum.components.charts._treemap_summary import treemap_summary_option_problems
+    from trellum.components.charts._trends import trend_option_problems
     from trellum.components.charts.bar import stack_option_problems
     from trellum.components.charts.line_area import line_option_problems
     from trellum.components.layout import Grid, grid_color_option_problems
@@ -43,6 +44,8 @@ def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult)
                 result.fail(check_id, message, component="HeatmapChart", section=sec)
         if _comp_name(comp) == "ScatterChart":
             for check_id, message in scatter_option_problems(comp):
+                result.fail(check_id, message, component="ScatterChart", section=sec)
+            for check_id, message in trend_option_problems(comp):
                 result.fail(check_id, message, component="ScatterChart", section=sec)
         if _comp_name(comp) == "StackedBar":
             for check_id, message in stacked_summary_option_problems(comp):

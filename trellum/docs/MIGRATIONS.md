@@ -5,6 +5,18 @@ For an illustrated overview of this report update, start with the
 received after rebuilding from features authors explicitly enable. The
 [authoring guide](report-authoring.md) maps reporting questions to components.
 
+## Unreleased: optional native linear trends
+
+No change is required for existing charts. Add
+`trend_line={"method": "linear", "series": "each"}` to a supported LineChart
+or ScatterChart when a fitted direction answers the report's question. Fits
+recompute after filters; zoom only crops the existing fit. Use a complete
+snapshot, a regular daily UTC grid for lines, and explicit source identities
+for selective fits. Live, chunked and derived sources remain unsupported.
+Remove an old author-computed fit series if it would duplicate this overlay;
+the framework never removes or reinterprets supplied data automatically.
+See [native trends](report-chart-trends.md).
+
 ## Unreleased: optional Grid theme colors
 
 Existing reports require no change. Add `color_cycle="theme"` to a Grid to

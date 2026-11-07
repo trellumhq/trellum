@@ -13,6 +13,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add optional native linear trend fits to LineChart and ScatterChart, with
+  filter-reactive populations, descriptive fit details, bounded input handling
+  and source-colored overlays. Existing charts keep trends disabled.
 - Optional `Grid(color_cycle="theme")` assigns stable theme palette positions
   to direct single-metric Line/Area/Bar tiles across filtering and theme changes.
   Existing Grid colors and explicit/category colors remain unchanged. The

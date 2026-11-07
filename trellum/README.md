@@ -473,6 +473,16 @@ must be dataset-bound category splits; static/live doughnuts use their label
 column. See [declared category colors](docs/report-category-colors.md) for the
 validated API, theme behavior and retained fallback/grouping limitations.
 
+#### Optional native linear trends
+
+Ordinary LineChart and numeric ScatterChart accept
+`trend_line={"method": "linear", "series": "each"}`. Fits follow the selected
+data after aggregation, retain source colors, and expose observations, slope,
+equation and descriptive R². Existing charts default to no fit. Daily ratio
+fits and bubble points are unweighted; fitted values never extrapolate or
+alter source measurements, summaries or CSV. See [native trend eligibility
+and limits](docs/report-chart-trends.md) before choosing this option.
+
 #### LineChart markers and interpolation
 
 Ordinary LineCharts adapt their 2px persistent dots to current plot spacing:

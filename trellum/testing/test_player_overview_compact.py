@@ -133,6 +133,11 @@ def _same_component(before, after):
     assert type(before) is type(after)
     for field in dataclasses.fields(before):
         left, right = getattr(before, field.name), getattr(after, field.name)
+        if (field.name == "trend_line" and isinstance(after, LineChart)
+                and after.title.startswith("ARPDAU by Platform")):
+            assert left is None
+            assert right == {"method": "linear", "series": "each"}
+            continue
         if isinstance(left, pd.DataFrame):
             pd.testing.assert_frame_equal(left, right)
         else:

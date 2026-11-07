@@ -35,8 +35,8 @@ Static and filter-bound charts resolve slots against `getThemeColors()` on
 entry, redraw and theme changes. Area/bar alpha, adaptive points, explicit
 colors and source values remain intact. After the palette ends, slots cycle;
 six distinct tile colors require six distinct entries in the active palette.
-Native report PNG/PDF captures use the displayed active colors. Derived trends
-should use the resolved source dataset color, not a second palette index.
+Native report PNG/PDF captures use the displayed active colors. Optional native
+linear trends use the resolved source dataset color, not a second palette index.
 
 `demo/reports/component-showcase/examples_grid_colors.py` exposes
 `add_sections(ctx)` for an unwired comparison of six static and six filter-bound

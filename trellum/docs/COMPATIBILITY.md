@@ -5,6 +5,16 @@ For an illustrated overview of this report update, start with the
 received after rebuilding from features authors explicitly enable. The
 [authoring guide](report-authoring.md) maps reporting questions to components.
 
+## Unreleased: optional native linear trends
+
+LineChart and ScatterChart accept keyword-only `trend_line=None`. Existing
+reports retain their source plots, legends, CSV and summary calculations.
+Explicit `{"method": "linear", "series": "each"}` adds filter-reactive,
+bounded OLS fits for eligible daily lines or numeric pairs. Unsupported sources
+or insufficient data show an unavailable reason; no sampling or extrapolation
+is performed. Source colors, including optional Grid slots, also color the fit.
+See [native trends](report-chart-trends.md) for population and resource limits.
+
 ## Unreleased: optional Grid theme colors
 
 Keyword-only `Grid(color_cycle="theme")` is opt-in; omitted/`None` keeps

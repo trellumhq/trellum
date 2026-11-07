@@ -239,10 +239,16 @@ def test_candidate_contributor_and_series_budgets_are_explicit():
 
 def test_dispatch_hook_reports_mutated_scatter_trend_declarations():
     from trellum.components.charts._trends import trend_option_problems
+    from trellum.validation.checks.chart_options import _check_chart_options
+    from trellum.validation.result import ValidationResult
     chart = ScatterChart(frame(), 'x', 'y', trend_line=TREND)
     assert trend_option_problems(chart) == []
     chart.trend_line = {**TREND, 'method': 'auto'}
     assert trend_option_problems(chart)[0][0] == 'chart-trend-invalid'
+    result = ValidationResult('trend-options')
+    _check_chart_options([(chart, 'Trend example')], result)
+    assert result.summary['fail'] == 1
+    assert 'chart-trend-invalid' in str(result.to_dict())
 
 
 def test_split_sum_identity_and_complete_multi_column_contributors():

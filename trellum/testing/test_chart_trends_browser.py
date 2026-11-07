@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from trellum.components import Grid
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.reporting.diagnostics import compute_details
@@ -21,6 +22,10 @@ EVIDENCE = Path(os.environ.get('TRELLUM_TREND_EVIDENCE', '/tmp/trellum-native-tr
 
 def build(output):
     ctx = example_context(output)
+    for report_section in ctx.sections:
+        for component in report_section['components']:
+            if isinstance(component, Grid):
+                component.color_cycle = 'theme'
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
     assert [(c.id, c.message) for c in result.checks if c.level in ('warn', 'fail')] == []
@@ -141,6 +146,16 @@ def test_native_trends_filters_source_lifecycle_and_exports(tmp_path, width):
                 _ready(page)
                 _settle(page)
                 assert trend(page, line)['series'][0]['fit'] == fit
+                paint = page.evaluate('''id=>{const c=_chartInstances[id], context=c.ctx,
+                    strokes=[], original=context.stroke;
+                    context.stroke=function(...args){
+                        if(this.getLineDash().join(',')==='6,3,1,3') strokes.push(this.strokeStyle);
+                        return original.apply(this,args)};
+                    try {c.draw()} finally {context.stroke=original}
+                    return {strokes,source:c.data.datasets[0].borderColor,
+                        expected:getThemeColors().chart_colors[1]}}''', ratio)
+                assert paint['source'] == paint['expected']
+                assert paint['strokes'] == [paint['source']]
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                 report_section.screenshot(path=str(EVIDENCE / f'{width}-{theme.split()[-1]}-filtered.png'))
                 section(page, static).screenshot(path=str(EVIDENCE / f'{width}-{theme.split()[-1]}-static.png'))

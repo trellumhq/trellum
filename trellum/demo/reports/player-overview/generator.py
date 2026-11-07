@@ -191,7 +191,8 @@ class PlayerOverviewReport(BaseReport):
                       stack_by="platform",
                       title="ARPDAU by Platform · demo: live ratios -- the "
                             "division happens after your filters",
-                      dataset_id="main", y_format="currency"),
+                      dataset_id="main", y_format="currency",
+                      trend_line={"method": "linear", "series": "each"}),
         ], collapsible=True, default_collapsed=True)
 
         # ── Where ────────────────────────────────────────────────────

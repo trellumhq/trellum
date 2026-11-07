@@ -13,7 +13,14 @@ Filtering does not shift colors; changing theme repaints them. This replaces the
 demo's fixed six-color list. Existing reports keep their Grid colors unless they
 opt in; see [Grid theme colors](report-grid-colors.md).
 
-Each trend opts into `height="compact"` (a 160px plot) and
+The collapsed Revenue section also opts into a native linear fit for ARPDAU
+by Platform. It fits the eligible daily ratio observations after filtering;
+each day has equal weight. This describes daily direction, not the overall
+population-weighted ARPDAU KPI, and does not forecast future revenue. Readers
+can hide the overlay or inspect the native fit details. See
+[native trends](report-chart-trends.md).
+
+Each compact trend opts into `height="compact"` (a 160px plot) and
 `header_summary={"stat": "mean", "series": 0, "label": "Daily avg", ...}`.
 Number formats apply to activity counts; currency formats apply to revenue.
 These options are local to the six new charts. Existing detailed chart

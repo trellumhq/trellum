@@ -9,10 +9,27 @@ These captures compare the real **v0.9.5 tag** (`aed34969658d`) with the local
 implementation at **`6250e6830b95`**, using the same deterministic data and native
 components. The dated-event comparison was added at **`36d1d34`** after adaptive
 labels became the current default. Optional Grid colors were captured with the
-runtime at **`5653b8f`**. “Current, opt-in” uses explicit options;
+runtime at **`5653b8f`**. Native fit comparisons use the runtime at **`3be22ea`**.
+“Current, opt-in” uses explicit options;
 it is not another release. Current changes are unreleased.
 
 ## What happens after rebuilding?
+
+Native linear trends are an additional opt-in for ordinary LineChart and
+numeric ScatterChart. Existing charts keep no fitted overlay; add
+`trend_line={"method": "linear", "series": "each"}` when a descriptive fit
+helps answer the reporting question. The fit follows filters, keeps source
+colors, and stops at the observed range. It does not produce a forecast.
+
+| Current · option omitted | Current · linear fit enabled |
+| --- | --- |
+| ![Daily revenue without a fit](images/report-upgrade/current-trends-900.png) | ![Identical daily revenue with a native linear fit](images/report-upgrade/opt-in-trends-900.png) |
+| ![Phone without a fit](images/report-upgrade/current-trends-390.png) | ![Phone with a native linear fit](images/report-upgrade/opt-in-trends-390.png) |
+
+The fit control adds space below the unchanged plot. Its details expose
+population, exclusions, slope, equation and descriptive R². Daily ratios and
+bubble points are unweighted; live, chunked and derived sources are unsupported.
+See [native trends](report-chart-trends.md) for numerical and resource limits.
 
 | Component | Automatic with existing authoring code | Requires an explicit report change | Preserved |
 | --- | --- | --- | --- |

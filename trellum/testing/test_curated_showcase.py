@@ -64,6 +64,10 @@ def test_curated_tour_navigation_filters_and_views(tmp_path, width):
             line_id = line.get_attribute('id')
             page.wait_for_function('id => window._chartInstances[id]?.data.datasets[0].data[0] === 441', arg=line_id)
             assert round(line.bounding_box()['height']) == 220
+            fit = page.evaluate('id => _chartInstances[id]._fwTrends', line_id)
+            assert fit['reason'] == '' and fit['series'][0]['fit']['n'] == 31
+            assert trends.locator('.fw-event-rail').count() >= 1
+            expect(trends.get_by_role('button', name='Hide trend', exact=True)).to_be_visible()
             expect(metrics.locator('.fw-kpi-value').first).to_have_text('$18.4k')
 
             tables = page.locator('#sec-tables')

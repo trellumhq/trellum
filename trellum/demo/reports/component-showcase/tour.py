@@ -165,12 +165,13 @@ def _trends():
             {"column": "Day", "label": "Trend dates", "type": "date_range"},
         ]),
         TabGroup([
-            tab("Line", note("A daily trend with a summary that follows the selection.",
-                "Select iOS, narrow the dates, then tap a dated event label for its exact details.",
-                "Header summary, units, month labels and dated events; 220px plot."),
+            tab("Line", note("Daily revenue with an optional fitted linear trend.",
+                "Select iOS or narrow the dates: the fit updates. Hide the trend to compare; tap dated labels for event details.",
+                "The dash-dot fit describes selected observations; it is not a forecast. 220px plot."),
                 LineChart(frame, "Day", "Revenue", "Daily revenue", dataset_id=dataset, y_format="currency",
                           header_context="USD · selected platform and dates",
-                          header_summary={"stat": "mean", "label": "Daily avg", "format": "currency"}, month_context=True),
+                          header_summary={"stat": "mean", "label": "Daily avg", "format": "currency"}, month_context=True,
+                          trend_line={"method": "linear", "series": "each"}),
                 Section("Optional monthly guides", [
                     note("Monthly guides summarize observed daily values; they are not fitted trend lines.",
                          "Change the date range and compare observed-day counts and averages."),
@@ -323,9 +324,11 @@ def _patterns():
             "Compare stage counts and the previous-stage conversion percentages."),
             FunnelChart(funnel, "Stage", "Players", "From visit to purchase", static=True)),
         tab("Scatter", note("Explore the relationship between campaign spend and return.",
-            "Hover the points. Spend is x, revenue is y, and bubble size represents installs."),
+            "Hover points or open fit details. Each channel has its own linear fit; bubble sizes do not weight it.",
+            "Spend is x, revenue is y, and bubble size represents installs. Association does not establish causation."),
             ScatterChart(scatter, "Spend", "Revenue", size="Installs", color_by="Channel", title="Campaign spend and revenue",
-                         x_format="currency", y_format="currency", static=True)),
+                         x_format="currency", y_format="currency", static=True,
+                         trend_line={"method": "linear", "series": "each"})),
     ], id="tour_pattern_views", label="Pattern example")]
 
 
