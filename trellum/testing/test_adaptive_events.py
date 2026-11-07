@@ -197,6 +197,8 @@ def browser_check(tmp_path, width):
         page.mouse.move(box['x'] + point['x'], box['y'] + point['y'])
         page.wait_for_function("id=>_chartInstances[id].tooltip.dataPoints?.length===1", arg=did)
         page.mouse.click(box['x'] + point['x'], box['y'] + point['y'])
+        # Chart.js dispatches native chart events on the next animation frame.
+        page.wait_for_function('eventCrossFilters.length === 1', timeout=5000)
         assert page.evaluate('eventCrossFilters.length') == 1
         page.mouse.move(box['x'] + 70, box['y'] + 100)
         page.mouse.down()
