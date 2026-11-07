@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Branding
+
+- Add reusable lattice wordmarks, favicon formats and a shared login/setup lockup.
+
 ### Added
 
 - A curated component tour with six purpose-based navigation cards and distinct
@@ -224,6 +228,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   min or max of one plotted series, recomputed from the filtered, aggregated
   series on every update, with an em dash when nothing is plottable. New
   validator checks `line-chart-height-invalid` and `line-chart-summary-invalid`.
+- Seed editable source/metric context and investigation guidance during project
+  setup and demo installation, preserving existing notes and ignoring local
+  analysis result exports by default. Removal tracks files actually created by
+  setup and deletes only unchanged owned scaffolds; edited notes and ignore
+  protection for retained results stay in place. Unchanged guidance generated
+  before context scaffolding is still recognized during removal. Windows setup
+  and removal reject reparse points and pin scaffold directories against
+  replacement while preserving edited notes and exports.
+
 - Administrators can include hidden, expired and disabled reports on the regular
   Reports page with a default-off option. Cards and lists identify repository
   hiding, disabled builds, availability expiry and expired retained output.
@@ -299,6 +312,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Add a standalone runner-host Compose preset with required shared storage,
+  paired release images, pool configuration and multi-host verification guidance.
+
 - Run the opt-in heavy portal CI suite on a native runner with Docker, Compose
   and database drivers so live database and restore checks execute alongside
   browser tests.
@@ -322,6 +338,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   images, plus grouped weekly dependency updates.
 
 ### Documentation
+
+- Add a customer GitHub Actions recipe for validating report changes before merge.
 
 - Default local human report previews to review mode, with scoped feedback
   polling and rebuild-before-reply guidance. Setup refreshes the managed
@@ -353,6 +371,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Clarify the Live Ops demo's embedded snapshot, 300-event result scope and
   separate top-15 actor ranking in its report introduction and gallery description.
 - Document both fixed-evidence analysis examples in the demo guide.
+- Populate audit action choices with ordered, organization-scoped probes instead
+  of transferring duplicate history rows. Add a concurrent composite index for
+  large histories with uneven action usage across organizations; preserve all labels.
+
 - Keep nested and adjacent report tab panels independent when switching tabs or restoring tab selections from a URL.
 - Keep Reports and Analyses mounted while switching catalogs, and retain page
   content during Metrics and native navigation. Loading feedback appears only

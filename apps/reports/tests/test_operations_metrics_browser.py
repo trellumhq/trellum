@@ -172,3 +172,69 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
             )
     finally:
         context.close()
+
+
+@pytest.mark.parametrize("mobile_browser", ["chromium"], indirect=True)
+def test_run_log_toggle_rebuild_does_not_block_registry_refresh(mobile_browser):
+    """A log toggle can leave the previous log visible until its reads finish."""
+    from playwright.sync_api import expect
+
+    status = {"running": {}, "queue": []}
+    posts = []
+
+    def extra(route, path, query, reply):
+        if path.endswith("/api/system/registry/refresh"):
+            posts.append(route.request.method)
+            reply({"operation_id": "refresh-1", "state": "accepted",
+                   "status_url": "/refresh-status"}, code=202)
+        elif path == "/refresh-status":
+            reply({"state": "succeeded", "terminal": True, "message": "Registry refreshed"})
+        else:
+            return False
+        return True
+
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    page.route("**/*", _ops_respond(
+        lambda: [REPORT], lambda: status, extra=extra,
+        run=lambda reply: reply({"ok": True, "status": "queued"}),
+        log=lambda: _ops_log("success", stdout="Published to LocalBackend"),
+    ))
+    try:
+        page.goto("http://portal.test/s/acme/analytics/operations")
+        row = page.locator('[data-ops-row="revenue-overview"]')
+        row.locator('.ops-run-dropdown .ops-row-btn').click()
+        page.locator('#opsRunMenu_revenue-overview .ops-run-menu-item', has_text='Generate').click()
+        log = page.locator('#opsTermBody_revenue-overview')
+        # Accepted runs already open their own log; Log is a toggle, not Open.
+        expect(log).to_contain_text("Published to LocalBackend")
+        page.evaluate("""() => {
+            window.__refreshBeforeToggle = document.querySelector('[data-ops-action=refresh]');
+            const fetch = window.fetch.bind(window);
+            window.fetch = (input, init) => {
+                if (String(input).includes('/api/operations/catalog')) {
+                    window.fetch = fetch;
+                    return new Promise(resolve => {
+                        window.__finishToggleRead = () => fetch(input, init).then(resolve);
+                    });
+                }
+                return fetch(input, init);
+            };
+        }""")
+        row.locator('details.ops-secondary summary').click()
+        row.get_by_role('button', name='Log', exact=True).click()
+        page.wait_for_function("typeof window.__finishToggleRead === 'function'")
+        # An assertion on body text here would read the old, closing log.
+        expect(log).to_contain_text("Published to LocalBackend")
+        assert page.evaluate("!_opsExpandedSlugs['revenue-overview']")
+        page.evaluate("() => { window.__finishToggleRead(); }")
+        # Click owns scrolling and re-resolves the locator across the rebuild.
+        with page.expect_response(lambda r: r.url.endswith('/api/system/registry/refresh')) as accepted:
+            page.locator('[data-ops-action=refresh]').click()
+        assert accepted.value.status == 202
+        expect(log).to_have_count(0)
+        assert page.evaluate("!window.__refreshBeforeToggle.isConnected")
+        expect(page.locator('body')).to_contain_text("Registry refreshed")
+        assert posts == ['POST']
+    finally:
+        context.close()

@@ -1,0 +1,50 @@
+# Standalone runner host: do not merge with docker-compose.yml.
+# Requires the control host's release, PostgreSQL, keys and shared filesystem.
+# See docs/customer/install/multiple-servers.md before starting.
+name: trellum-runner
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  runner:
+    image: ghcr.io/trellumhq/trellum:${TRELLUM_VERSION:?set TRELLUM_VERSION to the control host's exact release tag}
+    command: ["runner"]
+    logging: *logging
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to the shared PostgreSQL database}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY to the control host's signing key}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY to the control host's encryption key}
+      TRELLUM_DATA_DIR: /data
+      TRELLUM_DATA_VOLUME: ""
+      TRELLUM_RUNNER_ROLE: runner
+      TRELLUM_RUNNER_POOLS: ${TRELLUM_RUNNER_POOLS:-}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_CONTEXT: ""
+      TRELLUM_SANDBOX: docker
+      TRELLUM_SANDBOX_IMAGE: ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION:?set TRELLUM_VERSION to the control host's exact release tag}
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID to the local Docker socket group id}"
+    volumes:
+      - type: bind
+        source: ${TRELLUM_DATA_HOST_PATH:?set TRELLUM_DATA_HOST_PATH to the existing shared filesystem directory}
+        target: /data
+        bind:
+          create_host_path: false
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      sandbox-image:
+        condition: service_completed_successfully
+    stop_grace_period: 10m
+    restart: unless-stopped
+
+  # Pull the matching sandbox image onto this host's daemon before claiming work.
+  sandbox-image:
+    image: ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION:?set TRELLUM_VERSION to the control host's exact release tag}
+    logging: *logging
+    entrypoint: ["/bin/true"]
+    restart: "no"

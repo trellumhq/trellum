@@ -118,6 +118,7 @@ class FrameworkAggregateTests(unittest.TestCase):
         return {"changes": {"result": "success", "outputs": {"code": code, "data": data, "benchmark": benchmark}},
                 "lint": {"result": "success"},
                 "tests": {"result": "success" if code == "yes" else "skipped"},
+                "windows-context": {"result": "success" if code == "yes" else "skipped"},
                 "package": {"result": "success" if code == "yes" else "skipped"},
                 "integration": {"result": "success" if data == "yes" else "skipped"},
                 "benchmarks": {"result": "success" if benchmark == "yes" else "skipped"}}
@@ -128,7 +129,7 @@ class FrameworkAggregateTests(unittest.TestCase):
             self.assertEqual(framework_failures(self.needs(code, data, benchmark)), [])
 
     def test_failures_cancellations_and_missing_outputs_fail_closed(self):
-        for job in ("changes", "lint", "tests", "package", "integration", "benchmarks"):
+        for job in ("changes", "lint", "tests", "windows-context", "package", "integration", "benchmarks"):
             for result in ("failure", "cancelled", "skipped", "missing"):
                 needs = self.needs()
                 if result == "missing":

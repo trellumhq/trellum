@@ -5,6 +5,29 @@ assistant needs to know to write them. This page covers what {{BRAND}} actually
 requires — which is very little — and then what we would recommend putting
 alongside it.
 
+## Set up the project
+
+Run `python -m trellum.init` in your project to create source/report folders,
+agent guidance, editable `context/` notes and an `analysis/` investigation area.
+For an existing project, `python -m trellum setup project` adds the guidance and
+context without replacing your notes. Both commands preserve authored context
+on subsequent runs. `python -m trellum.demo --dest my-project` also installs
+this guidance alongside the offline demo.
+
+Start with source discovery and named queries (`python -m trellum data` and
+`python -m trellum guide answer`). Keep reproducible queries and sanitized
+findings in `analysis/`; save CSV exports under `analysis/results/`, which is
+ignored by Git by default. Record source, query, parameters, data dates and
+limitations beside each investigation. Promote verified facts into `context/`
+and approved metric definitions into the existing registry. These are editable
+project notes, not an automatic portal assistant memory or data-ingestion job.
+
+`python -m trellum setup project --remove` removes only unchanged context files
+that setup recorded as its own in `.trellum/project-context.json`. Keep that
+ownership record with the project for safe removal. Existing files, edited notes,
+queries and exports remain untouched. The results ignore file stays while any
+local results remain; malformed ownership metadata is retained and reported.
+
 ## What {{BRAND}} requires
 
 All of it:
@@ -136,3 +159,8 @@ otherwise surfaces *after* a dashboard ships, when it is expensive.
 
 - [Ad-hoc analysis](/docs/latest/workflow/ad-hoc-analysis/)
 - [Working with AI agents](/docs/latest/workflow/working-with-ai-agents/)
+
+## Validate changes before merging
+
+Use the [CI validation recipe](/docs/latest/workflow/validate-in-ci/) to build
+your reports on pull requests and fail the check on validation errors.

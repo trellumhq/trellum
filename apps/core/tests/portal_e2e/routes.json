@@ -16512,7 +16512,7 @@
       "verified_node_ids": [],
       "source_sha256": "229620cc533c69db374daf2ecc08b08982ff16d3976b475aae3f37155fa2df36",
       "request_conditions": [],
-      "adapter_sha256": "b021668363d67b05e1abae5591a222877f86fef9b32bd8fa9e28ae5e97afa530",
+      "adapter_sha256": "e08279ed4bd3251a6f019d365c220c1c90483218758f57ba77693ec1adcad6fb",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"

@@ -6,7 +6,9 @@ surface. Report documents resolve their named theme independently.{% endcomment 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}trellum{% endblock %}</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='8' fill='white'/><g stroke='%23c7cbe0' stroke-width='3'><line x1='8' y1='8' x2='8' y2='32'/><line x1='20' y1='8' x2='20' y2='32'/><line x1='32' y1='8' x2='32' y2='32'/></g><circle cx='8' cy='32' r='5' fill='%230D9488'/><circle cx='20' cy='20' r='5' fill='%237C6FE0'/><circle cx='32' cy='8' r='5' fill='%230D9488'/></svg>">
+<link rel="icon" href="{% static 'brand/favicon.ico' %}" sizes="any">
+<link rel="icon" href="{% static 'brand/favicon.svg' %}" type="image/svg+xml">
+<link rel="icon" href="{% static 'brand/favicon-32.png' %}" type="image/png" sizes="32x32">
 <meta name="theme-color" content="#0D9488">
 {% include "_theme_boot_mgmt.html" %}
 <link href="/_vendor/inter.css" rel="stylesheet">
