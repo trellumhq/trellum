@@ -304,10 +304,11 @@ def test_native_business_report_desktop_filters_and_presentation(tmp_path, monke
                 assert "_flow_coral_quest" not in json.loads((tmp_path / "data.json").read_text())
             else:
                 grid = next(c for s in ctx.sections if s["title"] == "Daily Trends" for c in s["components"] if isinstance(c, Grid))
-                colors = [c.colors[0] for c in grid.children]
+                assert grid.color_cycle == "theme"
+                colors = page.evaluate("getThemeColors().chart_colors.slice(0,6)")
                 assert len(set(colors)) == 6
                 assert all(c.height == "compact" and c.header_summary["stat"] == "mean" for c in grid.children)
-                for title, color in [(c.title, c.colors[0]) for c in grid.children]:
+                for title, color in zip([c.title for c in grid.children], colors):
                     heading = page.get_by_text(title, exact=True).first
                     heading.scroll_into_view_if_needed()
                     expect(heading).to_be_visible()

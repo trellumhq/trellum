@@ -44,11 +44,12 @@ def test_installed_guide_embeds_genuine_evidence_and_declares_package_assets(upg
     html = (upgrade_demo / "index.html").read_text()
     sources = re.findall(r'<img src="data:image/png;base64,([^"]+)"', html)
     expected = list((PACKAGE / "docs/images/report-upgrade").glob("*.png"))
-    assert len(sources) == len(expected) == 17
+    assert len(sources) == len(expected) == 23
     assert {base64.b64decode(source) for source in sources} == {path.read_bytes() for path in expected}
     assert "Real v0.9.5" in html and "Current defaults after rebuild" in html
     assert "Explicit additions" in html and "until you rebuild" in html
     assert "unsplit" in html and "category mapping precedence" in html
+    assert 'theme cycle enabled' in html and 'readable events' in html
     assert "/home/" not in html
     # Catch the silent wheel failure: a source checkout has images even when
     # package-data would omit them from a fresh installation.

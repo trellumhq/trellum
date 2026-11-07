@@ -116,6 +116,11 @@ def test_curated_tour_navigation_filters_and_views(tmp_path, width):
                 assert round(canvas.bounding_box()['height']) == 160
                 colors.append(page.evaluate('id => window._chartInstances[id].data.datasets[0].borderColor', cid))
             assert len(colors) == len(set(colors)) == 6
+            assert colors == page.evaluate('getThemeColors().chart_colors.slice(0,6)')
+            page.evaluate("switchTheme('trellum dark')")
+            assert grid.locator('canvas').evaluate_all('''els => els.map(el =>
+                window._chartInstances[el.id].data.datasets[0].borderColor)''') == page.evaluate(
+                    'getThemeColors().chart_colors.slice(0,6)')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             # Default route is a guided tour, not loading/error fixture content.
             assert 'No matching data' not in page.locator('body').inner_text()

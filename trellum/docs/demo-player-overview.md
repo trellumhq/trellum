@@ -3,10 +3,15 @@
 The business demo at `demo/reports/player-overview/generator.py` adds a
 **Daily Trends** section directly after its eight headline Overview cards.
 It uses the existing `main` DataSource for six native `LineChart` components
-in a `Grid(columns=3, min_width=280)`: Daily Active Users, New Users,
+in a `Grid(columns=3, min_width=280, color_cycle="theme")`: Daily Active Users, New Users,
 Sessions, Transactions, IAP Revenue and Ad Revenue. The grid fits fewer
 columns in narrower containers and stacks on a phone. Native chart titles,
 legends and CSV controls remain available.
+
+The optional Grid setting gives each metric a stable active-theme palette slot.
+Filtering does not shift colors; changing theme repaints them. This replaces the
+demo's fixed six-color list. Existing reports keep their Grid colors unless they
+opt in; see [Grid theme colors](report-grid-colors.md).
 
 Each trend opts into `height="compact"` (a 160px plot) and
 `header_summary={"stat": "mean", "series": 0, "label": "Daily avg", ...}`.

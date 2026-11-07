@@ -333,18 +333,17 @@ def _layouts():
     frame = daily_frame().groupby("Day", as_index=False)[["Revenue", "Spend", "Installs", "Orders"]].sum()
     frame["Margin"] = frame.Revenue - frame.Spend
     frame["Sessions"] = frame.Installs * 3
-    # Explicit per-chart palette overrides distinguish different metrics. Shared
-    # category mappings above serve the separate purpose of consistent identity.
-    colors = ["#4e79a7", "#f28e2b", "#59a14f", "#b07aa1", "#e15759", "#76b7b2"]
-    charts = [LineChart(frame, "Day", name, name, static=True, height="compact", colors=[color],
+    # Grid colors distinguish metric tiles; category mappings preserve identity
+    # across related breakdowns instead.
+    charts = [LineChart(frame, "Day", name, name, static=True, height="compact",
                         header_summary={"stat": "mean", "label": "Daily avg", "format": fmt}, y_format=fmt)
-              for name, color, fmt in zip(["Revenue", "Spend", "Installs", "Orders", "Margin", "Sessions"], colors,
-                                         ["currency", "currency", "number", "number", "currency", "number"])]
+              for name, fmt in zip(["Revenue", "Spend", "Installs", "Orders", "Margin", "Sessions"],
+                                   ["currency", "currency", "number", "number", "currency", "number"])]
     return [
         note("Fit related small multiples to the available panel width.",
-             "Resize the page: six 160px charts move from three columns to one while keeping titles and summaries.",
-             "Distinct metric colors, compact height and optional summaries."),
-        Grid(charts, columns=3, min_width=260, card=True),
+             "Resize the page or change theme: six 160px charts retain their metric colors while wrapping to fit.",
+             'Optional Grid color_cycle="theme", compact height and summaries. Existing grids keep their colors by default.'),
+        Grid(charts, columns=3, min_width=260, card=True, color_cycle="theme"),
         Section("Split panes and alternate navigation", [
             note("Keep unequal panels together until they need to stack.",
                  "Switch the searchable view selector, then compare the side list on desktop and phone."),

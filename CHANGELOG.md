@@ -13,6 +13,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional `Grid(color_cycle="theme")` assigns stable theme palette positions
+  to direct single-metric Line/Area/Bar tiles across filtering and theme changes.
+  Existing Grid colors and explicit/category colors remain unchanged. The
+  showcase and Player Overview opt into the setting for their six-chart grids.
+
 - Ordinary LineCharts now use readable adaptive event controls with local exact
   details and collision grouping. Explicit grouped/full modes remain available;
   native captures include clustered event identities without changing screen state.

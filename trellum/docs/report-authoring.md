@@ -72,9 +72,15 @@ LineChart/StackedBar splits and static or bound doughnuts, declare one
 `category_colors` domain with the same explicit category-to-slot mapping on
 each chart. Unknown categories retain fallback colors; finite palettes repeat.
 This option does not assign different colors to unrelated metric tiles, and
-static wide line series reject it. For distinct metric tiles, give LineChart an
-explicit `colors` list. Unsplit bound value/ratio series use matching list
-positions; omitted or empty lists and missing entries retain theme fallback.
+static wide line series reject it. For distinct single-metric Line/Area/ordinary
+Bar tiles, opt into `Grid(..., color_cycle="theme")`. Authored tile order fixes
+each palette position across filtering, wrapping and theme changes. Existing
+grids keep their colors by default; nested grids choose independently and only
+direct eligible chart children receive a slot. Category splits, multi-series,
+stacked and outcome colors keep their own meaning. See [Grid colors](report-grid-colors.md).
+For an intentional fixed LineChart color, use its explicit `colors` list.
+Unsplit bound value/ratio series use matching list positions; omitted or empty
+lists and missing entries retain theme fallback.
 Explicit colors persist through filtering and theme redraws. An active category
 split keeps its category color rules and ignores the series list. Do not use
 different category domains to disguise metrics as categories.

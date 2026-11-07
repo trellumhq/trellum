@@ -490,8 +490,8 @@ compatibility details.
 `LineChart` plots in a 220px area at every viewport width. Pass
 `height="compact"` for 160px, or `height="roomy"` for the former 320px. Other
 chart types keep their existing sizes. The title stays visible at every size,
-including inside tile grids (`Grid(min_width=...)`), which hide other charts'
-titles. In any `Grid` it keeps its height rather than stretching to fill a
+including inside tile grids (`Grid(min_width=...)`). Grids retain titles and
+controls unless explicitly omitted. A LineChart keeps its height rather than stretching to fill a
 taller neighbour.
 
 `header_summary` shows one statistic right-aligned in the chart header:
@@ -623,9 +623,14 @@ trends with its existing daily data and collapsible detailed charts.
 |---|---|---|
 | `Section` | `(title, children, collapsible)` | Titled content block. `collapsible=True` for expand/collapse. |
 | `Panel` | `(children, title)` | Card container. |
-| `Grid` | `(children, columns, card)` | Multi-column CSS grid. `card=True` for card-panel styling. |
+| `Grid` | `(children, columns, card)` | Panel-width grid. `card=True` for card panels; optional `color_cycle="theme"` gives direct single-metric charts successive theme colors. |
 | `SplitPane` | `(left, right, ratio)` | Side-by-side panels. `ratio="1:1"`. |
 | `Visible` | `(children, toggle_target, toggle_value)` | Toggle-driven visibility. Shows `children` when the specified toggle matches `toggle_value`. |
+
+Grid color cycling is off by default. It distinguishes metric tiles; shared
+`category_colors` serves category identity across related charts. Explicit chart
+colors win, and nested grids choose their own settings. See
+[Grid theme colors](docs/report-grid-colors.md) for eligible families and scope.
 
 ### Advanced
 

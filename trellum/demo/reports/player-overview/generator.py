@@ -113,20 +113,20 @@ class PlayerOverviewReport(BaseReport):
             RawHTML(html="<p>Daily totals for the current selection. Daily avg "
                     "averages the displayed days; active-user totals are not "
                     "unique players across the full period.</p>"),
-            Grid(columns=3, min_width=280, children=[
+            Grid(columns=3, min_width=280, color_cycle="theme", children=[
                 LineChart(df, x="event_date", y=column, title=title,
                           dataset_id="main", y_format=value_format,
-                          height="compact", colors=[color], header_summary={
+                          height="compact", header_summary={
                               "stat": "mean", "series": 0,
                               "label": "Daily avg", "format": value_format,
                           })
-                for column, title, value_format, color in [
-                    ("dau", "Daily Active Users", "number", "#4e79a7"),
-                    ("new_users", "New Users", "number", "#59a14f"),
-                    ("sessions", "Sessions", "number", "#af7aa1"),
-                    ("transactions", "Transactions", "number", "#f28e2b"),
-                    ("iap_revenue", "IAP Revenue", "currency", "#e15759"),
-                    ("ad_revenue", "Ad Revenue", "currency", "#76b7b2"),
+                for column, title, value_format in [
+                    ("dau", "Daily Active Users", "number"),
+                    ("new_users", "New Users", "number"),
+                    ("sessions", "Sessions", "number"),
+                    ("transactions", "Transactions", "number"),
+                    ("iap_revenue", "IAP Revenue", "currency"),
+                    ("ad_revenue", "Ad Revenue", "currency"),
                 ]
             ]),
         ])

@@ -138,7 +138,7 @@ def test_omitted_and_none_match_baseline_html_and_payload():
     import trellum.components.layout as layout
     namespace = dict(vars(layout))
     source = subprocess.check_output(["git", "show", f"{BASELINE}:trellum/components/layout.py"], cwd=ROOT, text=True)
-    exec(compile(source, "baseline-layout.py", "exec"), namespace)
+    exec(compile(source, "baseline-layout.py", "exec"), namespace)  # noqa: S102 - Trusted local Git source for historical compatibility.
     charts = [kind(frame(), "day", "value", "Metric") for kind in (LineChart, AreaChart, BarChart)]
     reference = RenderContext(DEFAULT_THEME)
     before = reference.render_child(namespace["Grid"](charts))

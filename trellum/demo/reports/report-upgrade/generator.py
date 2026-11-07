@@ -58,7 +58,8 @@ class ReportUpgradeReport(BaseReport):
             '390px in Trellum Light. The screenshots keep their captured theme.</p>'
             '<p>Jump to <a style="color:var(--accent-blue)" href="#sec-automatic-and-authored">the upgrade matrix</a>, '
             '<a style="color:var(--accent-blue)" href="#sec-tables">tables</a>, <a style="color:var(--accent-blue)" href="#sec-doughnuts">doughnuts</a>, '
-            '<a style="color:var(--accent-blue)" href="#sec-line-charts">line charts</a> or '
+            '<a style="color:var(--accent-blue)" href="#sec-line-charts">line charts</a>, '
+            '<a style="color:var(--accent-blue)" href="#sec-dated-events">dated events</a> or '
             '<a style="color:var(--accent-blue)" href="#sec-layouts-and-views">layouts and views</a>. '
             'Return to the <a style="color:var(--accent-blue)" href="../component-showcase/">component showcase</a> '
             'for live examples, or the <a style="color:var(--accent-blue)" href="../">demo gallery</a>.</p>'
@@ -70,10 +71,10 @@ class ReportUpgradeReport(BaseReport):
              "Column formats, targets, totals, row limit, pinning"),
             ("DoughnutChart", "170px ring; readable category values and shares",
              "Center total, explicit units and precision"),
-            ("LineChart", "220px plot; adaptive dots; explicit unsplit dataset colors honored",
+            ("LineChart", "220px plot; adaptive dots and dated event labels; explicit unsplit dataset colors honored",
              "160px compact / 320px roomy, summaries, curves, forecasts"),
             ("Grid / SplitPane", "Panel-width layout; chart titles/controls stay visible",
-             "Column maximum, pane minimums, intentional title/control omission"),
+             "Theme color cycle, column maximum, pane minimums, intentional title/control omission"),
             ("Dropdown / TabGroup", "Searchable choices and wrapping underlined tabs",
              "Meaningful labels and sidebar mode"),
         ], columns=["Component", "Automatic after rebuild", "Explicit report options"])
@@ -141,6 +142,25 @@ class ReportUpgradeReport(BaseReport):
     header_summary={"stat": "mean", "series": 0,
                     "label": "Daily avg", "format": "number"})''')])
 
+        ctx.add_section("Dated events", [RawHTML(
+            '<p>On rebuild, ordinary LineCharts put dated event labels above the '
+            'plot. Tap a label for its exact name, original dates and type. '
+            'Overlapping labels become an event count with local details. Phones '
+            'also show event names beneath the plot. This adds context around '
+            'the current 220px plot; measured values and event dates stay the same.</p>'
+            '<p>The comparison uses two identical supplied events. The old phone '
+            'labels overlap; the current name key keeps both readable. '
+            'Use event_labels="full" for in-plot labels or '
+            'event_labels="grouped" for the earlier numbered-marker presentation. '
+            'Other chart families keep their existing labels.</p>'
+        ), TabGroup([
+            {"label": label, "content": [Grid([
+                Panel([_capture("v0.9.5", "events", width)], title="Real v0.9.5 · events"),
+                Panel([_capture("current", "events", width)], title="Current default · readable events"),
+            ], columns=2, min_width=280)]}
+            for label, width in (("Wide comparison", 900), ("Phone comparison", 390))
+        ], id="upgrade-events", label="Dated event capture size")])
+
         ctx.add_section("Layouts and views", [RawHTML(
             '<p>Automatic grids retain chart titles and each chart family’s height. '
             'Grid columns is now a maximum even when min_width is supplied; '
@@ -154,6 +174,17 @@ class ReportUpgradeReport(BaseReport):
                 Panel([_capture("v0.9.5", "layout")], title="Real v0.9.5 grid"),
                 Panel([_capture("current", "layout")], title="Current grid after rebuild"),
             ], columns=2, min_width=320), _code("Grid(children, columns=2, min_width=320)")]},
+            {"label": "Optional tile colors", "content": [RawHTML(
+                '<p>Color cycling is off by default. Enable it on a Grid to give '
+                'direct single-metric charts successive active-theme colors. '
+                'Filtering and wrapping keep each tile’s slot. Explicit chart '
+                'colors win; category splits and multi-series charts keep their '
+                'own colors. The same six metric series and plot sizes appear below.</p>'
+            ), Grid([
+                Panel([_capture("current", "grid-colors")], title="Current · cycle omitted"),
+                Panel([_capture("opt-in", "grid-colors")], title="Current · theme cycle enabled"),
+            ], columns=2, min_width=320),
+                _code('Grid(charts, columns=3, min_width=260, color_cycle="theme")')]},
             {"label": "Tabs and sidebar", "content": [Grid([
                 Panel([_capture("v0.9.5", "views")], title="Real v0.9.5 tabs"),
                 Panel([_capture("current", "views")], title="Current tabs after rebuild"),

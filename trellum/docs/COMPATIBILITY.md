@@ -5,6 +5,15 @@ For an illustrated overview of this report update, start with the
 received after rebuilding from features authors explicitly enable. The
 [authoring guide](report-authoring.md) maps reporting questions to components.
 
+## Unreleased: optional Grid theme colors
+
+Keyword-only `Grid(color_cycle="theme")` is opt-in; omitted/`None` keeps
+existing rendering. Direct single-metric Line/Area/ordinary Bar tiles receive
+stable authored palette positions. Explicit colors, category splits and nested
+Grid ownership remain intact. Filtering and active-theme changes preserve
+positions without changing data, CSV, heights or column layout. See
+[Grid theme colors](report-grid-colors.md) for exclusions and examples.
+
 ## Unreleased: explicit filtered LineChart colors
 
 Existing `LineChart.colors` lists now apply to unsplit dataset-bound value and

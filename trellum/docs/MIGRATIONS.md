@@ -5,6 +5,15 @@ For an illustrated overview of this report update, start with the
 received after rebuilding from features authors explicitly enable. The
 [authoring guide](report-authoring.md) maps reporting questions to components.
 
+## Unreleased: optional Grid theme colors
+
+Existing reports require no change. Add `color_cycle="theme"` to a Grid to
+give its direct single-metric Line/Area/ordinary Bar charts successive active
+theme colors. Remove fixed chart colors only when those charts should use this
+fallback. Nested Grids choose independently; category splits, multiple series,
+stacked charts and outcome colors retain their meaning. The showcase and Player
+Overview explicitly enable it. See [Grid colors](report-grid-colors.md).
+
 ## Unreleased: explicit filtered LineChart colors
 
 Existing `LineChart.colors` lists now apply to unsplit dataset-bound value and

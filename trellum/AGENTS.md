@@ -309,7 +309,7 @@ report template. Select options only when they answer the question:
 | Several comparable daily trends | Opt into `height="compact"`; default LineChart height is `"balanced"`. Grid keeps titles and local controls visible by default. |
 | Units, denominator or fixed snapshot scope need explanation | Opt into `header_context`; it is authored text and never updates its dates after filtering. |
 | One displayed statistic helps reading the plot | Opt into the chart family's `header_summary` contract. A mean of plotted ratios is unweighted; use a ratio of sums KPI for an overall rate. |
-| The same categories appear in several charts | Opt into shared `category_colors` on supported LineChart, StackedBar and DoughnutChart paths. For distinct metric tiles, use LineChart `colors` by series position; bound charts apply them only without an active category split. |
+| The same categories appear in several charts | Opt into shared `category_colors` on supported LineChart, StackedBar and DoughnutChart paths. For distinct single-metric tiles, use optional `Grid(..., color_cycle="theme")`; explicit LineChart `colors` still wins. Existing grids do not cycle colors automatically. |
 | Missing observations must stay unknown | Opt into LineChart `series_availability` and KPI `availability` declarations where supported. Legacy bound sums can otherwise turn missing inputs into zeros/subtotals. |
 | Dates need calendar context | Opt into `month_context` only for daily dates; `monthly_average` separately requires an additive daily quantity and explicit coverage contract. Neither computes regression. |
 
