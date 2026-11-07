@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ BRAND }}{% endblock %}</title>
 <meta name="description" content="{% block description %}{{ BRAND }} builds interactive reports from your data, with definitions reviewed in Git and optional self-hosted scheduling and access control.{% endblock %}">
-<link rel="icon" href="{% static 'trellum-lattice.svg' %}" type="image/svg+xml">
+<link rel="icon" href="{% static 'brand/favicon.ico' %}" sizes="any">
+<link rel="icon" href="{% static 'brand/favicon.svg' %}" type="image/svg+xml">
+<link rel="icon" href="{% static 'brand/favicon-32.png' %}" type="image/png" sizes="32x32">
 <link rel="canonical" href="{{ SITE_BASE_URL }}{{ request.path }}">
 <meta property="og:site_name" content="{{ BRAND }}">
 <meta property="og:title" content="{% block og_title %}{{ BRAND }} — {{ TAGLINE }}{% endblock %}">
