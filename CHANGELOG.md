@@ -19,6 +19,8 @@ paired upgrade and follow the 0.10.0 upgrade notes.
 - Resolve release image digests from the explicit GHCR repository before signing
   and attesting portal and runner images. Local Docker aliases are never used as
   publication references; failed or malformed registry lookups stop the workflow.
+- Resolve website documentation links outside the customer guide to the matching
+  repository snapshot, preserving release-specific destinations and anchors.
 
 ## [0.10.0] — 2026-11-08
 
