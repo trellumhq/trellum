@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-11-08
+
+This recovery release includes all changes listed under 0.10.0 below. The 0.10.0
+pipeline pushed only the portal image before signing failed; no complete GitHub
+release, runner image or PyPI package was published. Use 0.10.1 for the complete
+paired upgrade and follow the 0.10.0 upgrade notes.
+
+### Fixed
+
+- Resolve release image digests from the explicit GHCR repository before signing
+  and attesting portal and runner images. Local Docker aliases are never used as
+  publication references; failed or malformed registry lookups stop the workflow.
+
 ## [0.10.0] — 2026-11-08
 
 ### Branding
