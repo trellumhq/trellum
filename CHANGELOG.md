@@ -7,18 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Fixed
-
-- Run previous-release restore and live-source compatibility tests on a Docker
-  host while retaining the pinned browser environment for the remaining suite.
-  Both required lanes test the previous code against the upgraded schema.
-
 ## [0.10.1] — 2026-11-08
 
-This recovery release includes all changes listed under 0.10.0 below. The 0.10.0
-pipeline pushed only the portal image before signing failed; no complete GitHub
-release, runner image or PyPI package was published. Use 0.10.1 for the complete
-paired upgrade and follow the 0.10.0 upgrade notes.
+This recovery release includes the [report components, visual improvements and
+other changes prepared for 0.10.0](https://github.com/trellumhq/trellum/blob/v0.10.1/CHANGELOG.md#0100--2026-11-08).
+The 0.10.0 pipeline pushed only the portal image before signing failed; no complete
+GitHub release, runner image or PyPI package was published. Use 0.10.1 for the
+complete paired upgrade.
 
 ### Fixed
 
@@ -27,6 +22,18 @@ paired upgrade and follow the 0.10.0 upgrade notes.
   publication references; failed or malformed registry lookups stop the workflow.
 - Resolve website documentation links outside the customer guide to the matching
   repository snapshot, preserving release-specific destinations and anchors.
+- Run previous-release restore and live-source compatibility tests on a Docker
+  host while retaining the pinned browser environment for the remaining suite.
+  Both required lanes test the previous code against the upgraded schema.
+
+### Upgrade notes
+
+- Follow the [0.10.0 upgrade notes](https://github.com/trellumhq/trellum/blob/v0.10.1/CHANGELOG.md#upgrade-notes-1)
+  for the combined upgrade from 0.9.5. The [visual upgrade guide](https://github.com/trellumhq/trellum/blob/v0.10.1/trellum/docs/report-visual-upgrade.md)
+  distinguishes changes applied when reports are rebuilt from optional features
+  authors enable explicitly.
+- Vertica integration verification is deferred for this release because the
+  required image-registry credentials were unavailable; no Vertica tests ran.
 
 ## [0.10.0] — 2026-11-08
 

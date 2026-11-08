@@ -12,7 +12,8 @@ at **`a2d221c`**, preserving the historical capture’s exact 31 observations
 and two supplied events. Optional Grid colors were captured with the
 runtime at **`5653b8f`**. Native fit comparisons use the runtime at **`3be22ea`**.
 “Current, opt-in” uses explicit options;
-it is not another release. Current changes are unreleased.
+it is not another release. These features are included in the 0.10 release line;
+use 0.10.1 for the complete paired upgrade after the partial 0.10.0 publication.
 
 ## What happens after rebuilding?
 
