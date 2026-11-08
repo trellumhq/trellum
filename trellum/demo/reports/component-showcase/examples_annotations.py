@@ -29,7 +29,7 @@ def add_sections(ctx):
     days = pd.date_range("2026-08-01", periods=31).strftime("%Y-%m-%d")
     daily = pd.DataFrame({"day": days, "observations": [36 + (i * 7) % 23 for i in range(31)]})
     ctx.add_section("Annotations — synthetic daily comparison", [
-        RawHTML(html="<p>Synthetic August observations, identical in both charts. Full labels keep the legacy presentation; grouped markers keep every eligible event in a collapsed list. Expand before report export to include event names.</p>"),
+        RawHTML(html="<p>Synthetic August observations, identical in both charts. Full labels keep the legacy presentation; grouped markers keep every eligible event in a collapsed list. Expand before report export to include event names. The default adaptive presentation is shown in the next section.</p>"),
         LineChart(daily, "day", "observations", "Synthetic daily · full labels", static=True, event_labels="full", colors=["#2563eb"]),
         LineChart(daily, "day", "observations", "Synthetic daily · grouped events", static=True, event_labels="grouped", colors=["#2563eb"], header_context="Synthetic observations · original event dates appear in details"),
     ])
@@ -44,7 +44,7 @@ def add_sections(ctx):
             {"column": "day", "type": "date_range", "label": "Event window"},
             {"column": "channel", "type": "toggle", "label": "Observation channel"},
         ]),
-        RawHTML(html="<p>Change or clear the date window to change event membership. Channel changes observations, not event names. These controls affect only this source; the comparison above stays fixed. Drag a plot to zoom; double-click a bound plot to reset.</p>"),
+        RawHTML(html="<p>Every event keeps a small marker and its native line or range. A name appears beside its marker only where the whole name fits the plot; crowded names collapse to the markers. Select a marker, or open <em>All events</em>, for the exact name and original dates. Narrow the date window, or widen the page, and names return. Change or clear the window to change event membership. Channel changes observations, not event names. These controls affect only this source; the comparison above stays fixed. Drag a plot to zoom; double-click a bound plot to reset.</p>"),
         LineChart(filtered, "day", "observations", "Synthetic selected window", dataset_id="showcase_annotations_daily"),
     ])
     weekly = pd.DataFrame({"day": ["2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24"], "observations": [270, 315, 292, 338]})

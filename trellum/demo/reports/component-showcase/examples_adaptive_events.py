@@ -1,12 +1,16 @@
-"""Deterministic native adaptive event examples; reusable without navigation wiring."""
+"""Deterministic native adaptive event examples; reusable without navigation wiring.
+
+Sparse events keep their short names beside the markers, even on a phone. The
+dense October fixture collapses names to small markers where they would overlap,
+and its date filter returns to names when the window narrows."""
 import pandas as pd
 
 from trellum.components import DataSource, FilterBar, LineChart
 
 ANNOTATIONS = {
     "events": [
-        {"date": "2026-09-01", "label": "Autumn campaign launch", "type": "campaign"},
-        {"date": "2026-09-08", "label": "Store update", "type": "release"},
+        {"date": "2026-08-27", "label": "Launch", "type": "campaign"},
+        {"date": "2026-09-07", "label": "Store update", "type": "release"},
         {"date": "2026-09-28", "end_date": "2026-10-04", "label": "Carry-in campaign", "type": "campaign"},
         *[{"date": f"2026-10-{i + 1:02}", "label": f"October release {i + 1}", "type": "release"} for i in range(12)],
         {"date": "2026-10-06", "label": "Same-day incident", "type": "incident"},
@@ -27,7 +31,12 @@ def observations(start="2026-08-20"):
 
 
 def add_sections(ctx):
-    """Register four compact native cases; caller supplies ANNOTATIONS config."""
+    """Register compact native cases; caller supplies ANNOTATIONS config.
+
+    Resize the page, or narrow the Event dates filter, to move the dense chart
+    between markers only and readable names. Exact names and original dates are
+    always available from the marker or the chart's All events control.
+    """
     sparse = observations().groupby("day", as_index=False).value.sum()
     ctx.add_section("Readable events", [
         LineChart(sparse, "day", "value", "Sparse events", static=True),

@@ -82,9 +82,11 @@ class LineChart(_ChartBase):
     chart plots after filters and aggregation, so it always matches the line.
     See the LineChart section of the README.
 
-    ``event_labels``: keyword-only ``"adaptive"`` (default) shows dated buttons
-    above the plot, with local exact event details. ``"grouped"`` retains
-    numbered markers; ``"full"`` retains legacy in-plot labels.
+    ``event_labels``: keyword-only ``"adaptive"`` (default) draws a small
+    marker per event in the plot and shows each name beside its marker where it
+    fits, with exact names and original dates on selection and in an "All N
+    events" list. ``"grouped"`` retains numbered markers; ``"full"`` retains
+    legacy in-plot labels.
 
     ``monthly_average=None`` optionally declares one additive daily quantity,
     its inclusive reporting interval and observed-day monthly guides/coverage.

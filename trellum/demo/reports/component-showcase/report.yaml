@@ -28,6 +28,43 @@ annotations:
   - date: '2026-09-08'
     label: Store update
     type: release
+  - date: '2026-11-01'
+    label: Store release 4.1
+    type: release
+  - date: '2026-11-02'
+    label: Creative refresh
+    type: campaign
+  - date: '2026-11-03'
+    label: Checkout fix
+    type: release
+  - date: '2026-11-04'
+    label: Onboarding test
+    type: event
+  - date: '2026-11-05'
+    label: Regional launch
+    type: campaign
+  - date: '2026-11-06'
+    label: Store release 4.2
+    type: release
+  - date: '2026-11-07'
+    label: Welcome offer
+    type: campaign
+  - date: '2026-11-08'
+    label: Pricing test
+    type: event
+  - date: '2026-11-09'
+    label: Checkout incident
+    type: incident
+  - date: '2026-11-10'
+    label: Recovery update
+    type: release
+  - date: '2026-11-10'
+    label: Creative rotation
+    type: campaign
+  - date: '2026-11-22'
+    end_date: '2026-11-25'
+    label: Holiday campaign
+    type: campaign
   weekday_highlight:
     days:
     - 0

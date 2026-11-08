@@ -7,8 +7,9 @@ alone does not update an old artifact. Deploy the rebuilt output together.
 
 These captures compare the real **v0.9.5 tag** (`aed34969658d`) with the local
 implementation at **`6250e6830b95`**, using the same deterministic data and native
-components. The dated-event comparison was added at **`36d1d34`** after adaptive
-labels became the current default. Optional Grid colors were captured with the
+components. The dated-event comparison was refreshed with the compact annotation runtime
+at **`a2d221c`**, preserving the historical capture’s exact 31 observations
+and two supplied events. Optional Grid colors were captured with the
 runtime at **`5653b8f`**. Native fit comparisons use the runtime at **`3be22ea`**.
 “Current, opt-in” uses explicit options;
 it is not another release. Current changes are unreleased.
@@ -35,7 +36,7 @@ See [native trends](report-chart-trends.md) for numerical and resource limits.
 | --- | --- | --- | --- |
 | `DataTable` | Compact striped rows, right-aligned numeric columns, matching/export counts. Search/sort run before the display limit; static CSV retains raw numbers and all matches. | Currency/percent column formats, threshold shading, totals, Rows selector, pinned headers/footer, drill-down. | Source values; text IDs stay text. Existing `max_rows` still limits displayed rows, not the population. |
 | `DoughnutChart` | 170px ring and wrapping category/value/share HTML legend. Narrow panels place the ring above the legend. | Labeled center total, explicit units/precision; optional summaries. | Static source-row grain, including duplicate labels; dataset category aggregation; CSV population. |
-| `LineChart` | 220px plot at every viewport width; persistent dots adapt to actual point spacing. Adaptive event labels show dates/names or a collision count, with exact local details. Existing explicit `colors` lists are now honored for unsplit dataset-bound value/ratio series. | 160px compact / 320px roomy plots, header summaries, curves, forecast styling, declared observation availability/month context. Explicit `event_labels="grouped"` or `"full"` preserves older event presentations. | Measurements, null gaps and straight lines by default. Curves require `tension`. |
+| `LineChart` | 220px plot at every viewport width; persistent dots adapt to actual point spacing. Adaptive events draw an in-plot marker per event and name it where the name fits, with exact local details. Existing explicit `colors` lists are now honored for unsplit dataset-bound value/ratio series. | 160px compact / 320px roomy plots, header summaries, curves, forecast styling, declared observation availability/month context. Explicit `event_labels="grouped"` or `"full"` preserves older event presentations. | Measurements, null gaps and straight lines by default. Curves require `tension`. |
 | `Grid` / `SplitPane` | Layout responds to its own panel width. Automatic grids retain chart titles, controls and each chart family's height. `columns` is a maximum, including when `min_width` is set. | Enable `color_cycle="theme"` for distinct single-metric tile colors; raise `columns` for more tiles, tune pane minimum widths or intentionally hide redundant grid titles/controls. | Existing colors unless opted in, dataset/filter ownership and child component content. |
 | Standalone `Dropdown` / `TabGroup` | Searchable labeled choices; wrapping underlined tabs. Existing selector mode remains a selector. | Meaningful `label` text; `mode="sidebar"` for side navigation that becomes a selector in narrow panels. | Native values/change events, existing state and URL keys. Report FilterBar dropdowns keep their presentation. |
 | KPI and other charts | KPI comparison backgrounds and MiniKpi presentation; revised AreaChart fills; richer BarChart, ComparisonTable, HeatmapChart, PivotTable and TreemapChart presentation. | KPI precision/alignment and declared comparisons, chart summaries, table freezing and other author-declared context. | Existing metric derivations. New components and business meaning are never inferred from names. |
@@ -97,22 +98,23 @@ stacked legend can make the component taller even though its ring is smaller:
 
 ## Dated events stay readable
 
-Ordinary LineCharts now show dates and event names above the plot. Overlapping
-labels become an event count; tap or click to inspect every exact name, original
-date/range and type locally. Phone charts also show a wrapping name key. The rail
-adds 40px on desktop or 48px on phones; the phone name key adds further height.
-The current 220px plot height stays unchanged. Both captures use the same two
-supplied events and 31 daily revenue observations.
+Ordinary LineCharts now mark each event with a small in-plot marker and show its
+name beside the marker wherever the whole name fits. Crowded names collapse to
+the markers, which always remain; tap or click a marker, or open the compact
+"All N events" list, to inspect every exact name and original date/range. Nothing
+is added above the plot and no name key wraps beneath it. The current 220px plot
+height stays unchanged. Both captures use the same two supplied events and 31
+daily revenue observations.
 
 | View | Real v0.9.5 | Current default |
 | --- | --- | --- |
-| Wide | ![Old in-plot event labels](images/report-upgrade/v0.9.5-events-900.png) | ![Dated event controls above the plot](images/report-upgrade/current-events-900.png) |
-| Phone | ![Old phone event labels overlap](images/report-upgrade/v0.9.5-events-390.png) | ![Readable phone event dates and names](images/report-upgrade/current-events-390.png) |
+| Wide | ![Old in-plot event labels](images/report-upgrade/v0.9.5-events-900.png) | ![In-plot event markers with fitting names](images/report-upgrade/current-events-900.png) |
+| Phone | ![Old phone event labels overlap](images/report-upgrade/v0.9.5-events-390.png) | ![Phone event markers with fitting names](images/report-upgrade/current-events-390.png) |
 
 Use `event_labels="full"` for in-plot labels with collision protection or
 `event_labels="grouped"` for numbered compatibility markers. Other chart families
 keep their existing presentation. Native report/section images include an exact
-key for clustered events; canvas-only images keep their narrower scope. See
+key when names are collapsed; canvas-only images keep their narrower scope. See
 [dated event labels](report-line-events.md) for mapping and capture bounds.
 
 ## Small, explicit additions

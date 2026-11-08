@@ -305,10 +305,12 @@ no host migration or export runtime update is required. See
 ## LineChart event-label presentation
 
 Rebuilt ordinary LineCharts now default to `event_labels="adaptive"` (keyword-only).
-Existing event lines/range fills stay in place. Dated buttons above the plot open
-local exact details; sparse names are visible in labels or a wrapping phone key.
-The rail adds 40px (48px on phones) only when eligible events exist; the phone
-key adds wrapping height. Use `event_labels="grouped"` for numbered markers and
+Existing event lines/range fills stay in place, with event lines drawn as quiet
+dotted strokes, and each event gets a small marker inside the plot. A name shows
+beside its marker only where the whole name fits the actual chart area; crowded
+names collapse to the markers. Select a marker, or use the compact "All N events"
+list, for exact names and original dates. Nothing is added above or beside the
+plot, and no wrapping key appears. Use `event_labels="grouped"` for numbered markers and
 their disclosure, or `event_labels="full"` for in-plot names with crowding protection.
 Rebuild with matching runtime assets; old payloads without the flag stay full.
 There is no artifact schema change, data reduction or plot-height change.
@@ -318,8 +320,8 @@ The existing eligibility path is retained, including weekly preceding-label
 snapping, snapped/collapsed weekly ranges, final weekly bucket exclusion, global
 90-day start cutoff, local/global loader differences and date parsing. No
 calendar/timezone repair is implied. CSV is unchanged. Adaptive report/section
-exports include an exact key for clusters and expand open details in the capture
-clone; on-screen state stays unchanged. Oversized event captures fail clearly
+exports include an exact key when names are collapsed and expand an open list in
+the capture clone; on-screen state stays unchanged. Oversized event captures fail clearly
 at the documented image bounds. Canvas-only output excludes off-canvas details.
 Explicit grouped exports retain disclosure state; expand that list before
 export when its names are needed. See
