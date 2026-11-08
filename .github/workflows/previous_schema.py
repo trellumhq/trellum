@@ -20,18 +20,43 @@ FROZEN_RELEASE_FLAKES = {
 }
 
 
+# These frozen tests predate a separate Docker-host lane. Keep them in the
+# schema gate, but run them where disposable containers and loopback ports work.
+# Match the test function, including every parametrization, not a whole module.
+DOCKER_HOST_TESTS = frozenset({
+    "apps/core/tests/test_deployment_helpers.py::test_real_postgres_restore_and_failed_swap",
+    "apps/datasources/tests/test_materialize_live.py::test_materialized_source_queries_itest_database",
+})
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--previous-schema-lane", choices=("all", "browser", "docker"), default="all",
+        help="Partition frozen-release tests between the pinned browser container and Docker host",
+    )
+
+
 def pytest_collection_modifyitems(config, items):
+    lane = config.getoption("--previous-schema-lane")
     flakes = FROZEN_RELEASE_FLAKES.get(os.environ.get("TRELLUM_PREVIOUS_RELEASE", ""), {})
-    deselected = [item for item in items if item.nodeid in flakes]
+    deselected = []
+    selected = []
+    for item in items:
+        docker = item.nodeid.split("[", 1)[0] in DOCKER_HOST_TESTS
+        if item.nodeid in flakes or (lane == "browser" and docker) or (lane == "docker" and not docker):
+            deselected.append(item)
+        else:
+            selected.append(item)
     if not deselected:
         return
     config.hook.pytest_deselected(items=deselected)
-    items[:] = [item for item in items if item.nodeid not in flakes]
+    items[:] = selected
     reporter = config.pluginmanager.get_plugin("terminalreporter")
+    if reporter and lane != "all":
+        reporter.write_line(f"Previous-schema {lane} lane: {len(selected)} selected, {len(deselected)} routed out")
     for item in deselected:
-        message = f"deselected frozen-release flake {item.nodeid}: {flakes[item.nodeid]}"
-        if reporter:
-            reporter.write_line(message)
+        if reporter and item.nodeid in flakes:
+            reporter.write_line(f"deselected frozen-release flake {item.nodeid}: {flakes[item.nodeid]}")
 
 
 @pytest.fixture(scope="session", autouse=True)

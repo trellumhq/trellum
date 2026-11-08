@@ -1,9 +1,8 @@
 """Safety checks for the explicitly loaded previous-schema CI plugin."""
 from types import SimpleNamespace
 
-import pytest
-
 import previous_schema
+import pytest
 
 
 @pytest.fixture
@@ -58,9 +57,10 @@ def test_cleanup_cascades_only_on_configured_database_and_restores(flush_connect
     assert connection.ops.sql_flush is original
 
 
-def _collection(nodeids):
+def _collection(nodeids, lane="all"):
     deselected = []
     config = SimpleNamespace(
+        getoption=lambda name: lane,
         hook=SimpleNamespace(pytest_deselected=lambda items: deselected.extend(items)),
         pluginmanager=SimpleNamespace(get_plugin=lambda name: None),
     )
@@ -84,3 +84,38 @@ def test_frozen_flakes_are_deselected_only_for_their_release(monkeypatch):
         previous_schema.pytest_collection_modifyitems(config, items)
         assert [item.nodeid for item in items] == nodeids
         assert deselected == []
+
+
+def test_runtime_lanes_partition_every_case_without_dropping_heavy_or_schema_tests(monkeypatch):
+    monkeypatch.setenv("TRELLUM_PREVIOUS_RELEASE", "v0.10.0")
+    docker = [
+        "apps/core/tests/test_deployment_helpers.py::test_real_postgres_restore_and_failed_swap",
+        "apps/datasources/tests/test_materialize_live.py::test_materialized_source_queries_itest_database[postgres]",
+        "apps/datasources/tests/test_materialize_live.py::test_materialized_source_queries_itest_database[mysql]",
+    ]
+    browser = [
+        "apps/core/tests/test_deployment_helpers.py::test_upgrade_preflight",
+        "apps/datasources/tests/test_materialize_live.py::test_other_case",
+        "apps/reports/tests/test_metrics_detail_browser.py::test_retained_dates[webkit]",
+        "apps/reports/tests/test_large_query.py::test_heavy_query_bound",
+        "apps/core/tests/test_schema.py::test_previous_model_writes",
+    ]
+    nodeids = docker + browser
+    for lane, expected in (("all", nodeids), ("docker", docker), ("browser", browser)):
+        config, items, deselected = _collection(nodeids, lane)
+        previous_schema.pytest_collection_modifyitems(config, items)
+        assert [item.nodeid for item in items] == expected
+        assert {item.nodeid for item in deselected} == set(nodeids) - set(expected)
+
+
+@pytest.mark.parametrize("lane", ["browser", "docker"])
+def test_frozen_flakes_still_apply_with_runtime_routing(monkeypatch, lane):
+    docker = "apps/core/tests/test_deployment_helpers.py::test_real_postgres_restore_and_failed_swap"
+    flaky = "apps/test_x.py::test_flaky[webkit]"
+    healthy = "apps/test_x.py::test_flaky[chromium]"
+    monkeypatch.setitem(previous_schema.FROZEN_RELEASE_FLAKES, "v9.9.9", {flaky: "timing"})
+    monkeypatch.setenv("TRELLUM_PREVIOUS_RELEASE", "v9.9.9")
+    config, items, deselected = _collection([docker, flaky, healthy], lane)
+    previous_schema.pytest_collection_modifyitems(config, items)
+    assert [item.nodeid for item in items] == ([docker] if lane == "docker" else [healthy])
+    assert flaky in [item.nodeid for item in deselected]
