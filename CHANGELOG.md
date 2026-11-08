@@ -7,7 +7,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.10.0] — 2026-11-07
+## [0.10.0] — 2026-11-08
 
 ### Branding
 
@@ -494,6 +494,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - LineChart plots now default to 220px at every viewport width. Existing
   explicit colors are honored for unsplit dataset-bound series. Review custom
   sizing and color lists after rebuilding.
+- Ordinary LineChart event names now fit beside in-plot markers where space
+  permits; crowded names remain available on selection and in the compact event
+  list. Use `event_labels="full"` or `"grouped"` to retain those alternative
+  presentations. Rebuild complete report output to apply the new default.
 - Grid `columns` now sets the maximum number of columns. Set it explicitly when
   an existing automatic grid relied on the previous layout ignoring that count.
 - DataTable `max_rows` limits displayed rows; search and sort cover the matching
