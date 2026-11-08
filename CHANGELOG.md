@@ -18,6 +18,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   stage labels. Balance Insert Coin's headline metrics and keep the Checkout
   Findings conversion table readable on phones.
 - Give report A/B comparison confidence intervals more column width.
+- Start business demos with releases and incidents visible; campaigns and A/B
+  tests remain available in the annotation controls. The Insert Coin canvas
+  now follows those controls without resetting the game.
 - Make the visual upgrade guide's section links easier to scan and keep the
   live-result example's additional explanation collapsible. Omit unrelated
   project events from its synthetic observations.

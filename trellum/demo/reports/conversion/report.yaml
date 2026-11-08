@@ -29,3 +29,7 @@ display:
   icon: git-branch
   color: "#59a14f"
   priority: 5
+
+# Keep operational events visible; readers can enable the busier overlays.
+annotations:
+  default_visible: [release, incident]

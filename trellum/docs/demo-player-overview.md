@@ -15,6 +15,12 @@ The final Overview card uses the concise display label **Ad Revenue %** so it
 fits at the desktop card width. Its `ad_share` metric and percentage value are
 unchanged.
 
+The demo starts with release and incident annotations visible. Campaigns and
+A/B tests are off initially to reduce overlapping shaded ranges; readers can
+enable them in the annotation controls. This uses the existing
+`annotations.default_visible` report setting. Saved viewer choices and explicit
+`anno` URL selections retain their normal precedence.
+
 The optional Grid setting gives each metric a stable active-theme palette slot.
 Filtering does not shift colors; changing theme repaints them. This replaces the
 demo's fixed six-color list. Existing reports keep their Grid colors unless they
