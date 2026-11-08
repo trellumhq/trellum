@@ -1,12 +1,19 @@
 # Player Overview: compact daily trends
 
-The business demo at `demo/reports/player-overview/generator.py` adds a
-**Daily Trends** section directly after its eight headline Overview cards.
-It uses the existing `main` DataSource for six native `LineChart` components
-in a `Grid(columns=3, min_width=280, color_cycle="theme")`: Daily Active Users, New Users,
+The business demo at `demo/reports/player-overview/generator.py` keeps its eight
+headline Overview cards in one row on desktop by placing their native `KpiRow`
+inside `Grid(columns=1, min_width=280)`. At phone widths the existing two-column
+KPI layout remains. It then adds a **Daily Trends** section directly after
+those cards. The section uses the existing `main` DataSource for six native
+`LineChart` components in a `Grid(columns=3, min_width=280, card=True,
+color_cycle="theme")`: Daily Active Users, New Users,
 Sessions, Transactions, IAP Revenue and Ad Revenue. The grid fits fewer
 columns in narrower containers and stacks on a phone. Native chart titles,
 legends and CSV controls remain available.
+
+The final Overview card uses the concise display label **Ad Revenue %** so it
+fits at the desktop card width. Its `ad_share` metric and percentage value are
+unchanged.
 
 The optional Grid setting gives each metric a stable active-theme palette slot.
 Filtering does not shift colors; changing theme repaints them. This replaces the
@@ -38,8 +45,9 @@ The existing **Engagement** and **Revenue** sections use
 `ctx.add_section(..., collapsible=True, default_collapsed=True)`. Readers
 expand their headings to reach the original charts and controls. Efficiency,
 geography, behaviour overlap, cohort retention and Yesterday remain visible
-in their original relative order. The eight headline cards keep their
-existing sizes, row breakpoints, metric claims and defaults.
+in their original relative order. The eight headline cards keep their metric
+claims and defaults; their desktop layout uses panel-width KPI sizing already
+supported by native Grid.
 
 ## Filter and calculation scope
 

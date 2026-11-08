@@ -672,6 +672,11 @@ The framework supports two FilterBar placements; they compose.
 
 **Section-scoped FilterBar** (drill-downs). Place inside a titled section as `[DataSource(s), FilterBar, ...content]`. Sticks below the main FilterBar while its section is in view. Use for filters that only make sense inside that section (e.g. `chest_level`, `difficulty_tier` for a chest analysis section).
 
+On phone-width views (640px or less), bars taller than 96px scroll with the
+page so wrapped controls do not cover the report. Compact bars stay pinned;
+section bars reserve space only for a main bar that is still pinned. Resizing
+or changing the controls remeasures this layout without clearing selections.
+
 Constraints (validator-enforced):
 
 - At most one main FilterBar per report.

@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep long report filter bars in normal page flow on phones, while preserving
+  compact pinned bars and desktop behavior. Local filter offsets follow the
+  main bar's current pinned height, including after scope replacement.
+- Give Player Overview's compact trends individual chart cards and fit its
+  eight headline metrics to the available panel width without changing values
+  or plot heights. Improve Store Health card spacing and Cart Funnel phone
+  stage labels. Balance Insert Coin's headline metrics and keep the Checkout
+  Findings conversion table readable on phones.
+- Give report A/B comparison confidence intervals more column width.
+- Make the visual upgrade guide's section links easier to scan and keep the
+  live-result example's additional explanation collapsible. Omit unrelated
+  project events from its synthetic observations.
+
 ## [0.10.1] — 2026-11-08
 
 This recovery release includes the [report components, visual improvements and

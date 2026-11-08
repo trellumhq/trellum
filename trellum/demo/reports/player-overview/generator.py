@@ -93,7 +93,7 @@ class PlayerOverviewReport(BaseReport):
         # metric (v2 in metrics.yaml -- see its file header) claimed here and
         # by insert-coin.
         ctx.add_section("Overview", [
-            KpiRow([
+            Grid(columns=1, min_width=280, children=[KpiRow([
                 {"metric": "gross_revenue"},
                 {"metric": "iap_revenue"},
                 {"metric": "ad_revenue"},
@@ -103,8 +103,8 @@ class PlayerOverviewReport(BaseReport):
                 {"label": "Sessions", "agg": "sum", "column": "sessions",
                  "format": "number"},
                 {"metric": "payer_share"},
-                {"metric": "ad_share"},
-            ], dataset_id="main"),
+                {"metric": "ad_share", "label": "Ad Revenue %"},
+            ], dataset_id="main")]),
         ])
 
         # Daily totals use the same additive fact grain as the detailed
@@ -113,7 +113,7 @@ class PlayerOverviewReport(BaseReport):
             RawHTML(html="<p>Daily totals for the current selection. Daily avg "
                     "averages the displayed days; active-user totals are not "
                     "unique players across the full period.</p>"),
-            Grid(columns=3, min_width=280, color_cycle="theme", children=[
+            Grid(columns=3, min_width=280, card=True, color_cycle="theme", children=[
                 LineChart(df, x="event_date", y=column, title=title,
                           dataset_id="main", y_format=value_format,
                           height="compact", header_summary={

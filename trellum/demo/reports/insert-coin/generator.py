@@ -21,7 +21,7 @@ single selected spender tier changes the comet you ride as.
 from datetime import timedelta
 
 from trellum import BaseReport
-from trellum.components import DataSource, FilterBar, KpiRow, RawHTML
+from trellum.components import DataSource, FilterBar, Grid, KpiRow, RawHTML
 from trellum.data import query_df
 
 from . import custom_sections, queries
@@ -146,7 +146,7 @@ class InsertCoinReport(BaseReport):
         _dau_sum = df["dau"].sum()
         _arpdau = float(df["iap_revenue"].sum() / _dau_sum) if _dau_sum else 0.0
         ctx.add_section("The Season, Scored", [
-            KpiRow([
+            Grid(columns=1, min_width=280, children=[KpiRow([
                 {"label": "Player-days", "agg": "sum", "column": "dau",
                  "format": "number"},
                 {"metric": "gross_revenue"},
@@ -155,12 +155,12 @@ class InsertCoinReport(BaseReport):
                 # Not a `ratio` agg: that one is percent-scaled by design
                 # (built for conversion rates), so ARPDAU would render as
                 # dollars x100. avg_by_date is the honest per-day average.
-                {"label": "Avg Daily Players", "agg": "avg_by_date",
+                {"label": "Avg Daily DAU", "agg": "avg_by_date",
                  "column": "dau", "format": "number"},
                 {"metric": "payer_share"},
-                {"metric": "ad_share"},
+                {"metric": "ad_share", "label": "Ad Revenue %"},
                 {"metric": "arpdau", "value": round(_arpdau, 4)},
-            ], dataset_id="arcade"),
+            ], dataset_id="arcade")]),
             RawHTML(html="", js=_PLAYER_DAYS_VERDICT_JS),
         ])
 

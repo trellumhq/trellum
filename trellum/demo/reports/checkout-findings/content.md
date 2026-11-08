@@ -24,11 +24,17 @@ Mobile produced 1,782 purchases, compared with 2,358 from fewer than half as
 many desktop sessions. Overall conversion was **2.86%** (4,477 purchases
 divided by 156,707 sessions).
 
-| Device | Sessions | Purchases | Session-to-purchase conversion |
-| --- | ---: | ---: | ---: |
-| Mobile | 99,072 | 1,782 | 1.80% |
-| Desktop | 44,967 | 2,358 | 5.24% |
-| Tablet | 12,668 | 337 | 2.66% |
+| Device | Sessions | Purchases |
+| --- | ---: | ---: |
+| Mobile | 99,072 | 1,782 |
+| Desktop | 44,967 | 2,358 |
+| Tablet | 12,668 | 337 |
+
+| Device | Conversion |
+| --- | ---: |
+| Mobile | 1.80% |
+| Desktop | 5.24% |
+| Tablet | 2.66% |
 
 Conversion is **purchases / sessions**, using summed counts for the whole
 period. It is not an average of daily percentages or a unique-customer rate.

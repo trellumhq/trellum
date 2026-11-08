@@ -1,29 +1,49 @@
+// One layout observer owns the report's bars, including bars revealed in tabs
+// or replaced by a scope switch. Long phone bars stay in normal page flow.
+if (!window._fwWatchFilterBarLayout) {
+    (function() {
+        var bars = new Set(), pending = false;
+        var observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(queue);
+        function measure() {
+            pending = false;
+            var phone = window.matchMedia('(max-width: 640px)').matches;
+            bars.forEach(function(bar) {
+                if (!bar.isConnected) {
+                    if (observer) observer.unobserve(bar);
+                    bars.delete(bar);
+                    return;
+                }
+                var height = bar.getBoundingClientRect().height;
+                bar.classList.toggle('fw-filter-bar--flow', phone && height > 96);
+            });
+            // Reserve space only for a currently pinned main bar. Resolve it
+            // again after replacement rather than retaining a detached element.
+            var main = Array.from(document.querySelectorAll('.fw-filter-bar')).find(function(bar) {
+                return !bar.closest('.fw-section');
+            });
+            var height = main && getComputedStyle(main).position === 'sticky'
+                ? Math.ceil(main.getBoundingClientRect().height) : 0;
+            document.documentElement.style.setProperty('--fw-main-fb-height', height + 'px');
+        }
+        function queue() {
+            if (!pending) { pending = true; requestAnimationFrame(measure); }
+        }
+        window.addEventListener('resize', queue, {passive: true});
+        new MutationObserver(function(records) {
+            if (records.some(function(record) { return record.removedNodes.length; })) queue();
+        }).observe(document.body, {childList: true, subtree: true});
+        window._fwWatchFilterBarLayout = function(bar) {
+            if (!bars.has(bar)) {
+                bars.add(bar);
+                if (observer) observer.observe(bar);
+            }
+            queue();
+        };
+    })();
+}
 window._fwRenderers['filter_bar'] = function(id, cfg) {
     var el = document.getElementById(id);
     if (!el) return;
-    // Measure the MAIN FilterBar's height once and publish it as a
-    // CSS custom property so section-scoped FilterBars (.fw-section
-    // .fw-filter-bar) can stick BELOW it instead of overlapping. A
-    // FilterBar is "main" when it is NOT inside any .fw-section
-    // ancestor (i.e. it lives in an untitled top section). If there
-    // are several FilterBars rendered, the first one on the page
-    // wins — this is fine because the validator forbids more than one
-    // main FilterBar.
-    if (!el.closest('.fw-section') && !window._fwMainFbMeasured) {
-        var mainFb = el;
-        var setOffset = function() {
-            var h = Math.ceil(mainFb.getBoundingClientRect().height) || 0;
-            document.documentElement.style.setProperty(
-                '--fw-main-fb-height', h + 'px'
-            );
-        };
-        setOffset();
-        // Re-measure once after layout settles (filter dropdowns etc.).
-        requestAnimationFrame(setOffset);
-        // And on resize — wrapping changes the bar's row count.
-        window.addEventListener('resize', setOffset, {passive: true});
-        window._fwMainFbMeasured = true;
-    }
     // On scope switch the same DOM element is reused with a new dataset_id.
     // Clone to strip accumulated event listeners from the previous scope,
     // then fall through to full re-wiring for the current scope.
@@ -32,6 +52,7 @@ window._fwRenderers['filter_bar'] = function(id, cfg) {
         el.parentNode.replaceChild(fresh, el);
         el = fresh;
     }
+    window._fwWatchFilterBarLayout(el);
     if (el._fwWired) return;
     el._fwWired = true;
     el._fwWiredDsId = cfg.dataset_id;

@@ -45,6 +45,13 @@
     }
 }
 @media (max-width: 640px) {
+    /* Measured wrapped bars should not cover the chart while scrolling.
+       Compact bars retain their existing pinned position. */
+    .fw-filter-bar.fw-filter-bar--flow {
+        position: relative;
+        top: auto;
+        z-index: auto;
+    }
     .fw-filter-bar {
         margin-left: -12px; margin-right: -12px;
         padding-left: 12px; padding-right: 12px;

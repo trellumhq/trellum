@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from trellum.components import DataSource, Grid, LineChart
+from trellum.components import DataSource, Grid, KpiRow, LineChart
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
@@ -155,17 +155,30 @@ def test_native_generator_preserves_sources_queries_kpis_and_existing_components
     assert list(sections) == ["", "Overview", "Daily Trends", "Engagement", "Efficiency",
                               "Revenue", "Where the Money Comes From",
                               "Which Behaviours Overlap", "Do They Come Back", "Yesterday"]
-    assert len(sections["Overview"]["components"][0].kpis) == 8
+    overview = sections["Overview"]["components"][0]
+    assert isinstance(overview, Grid)
+    assert (overview.columns, overview.min_width, overview.card) == (1, 280, False)
+    assert len(overview.children) == 1 and isinstance(overview.children[0], KpiRow)
+    assert len(overview.children[0].kpis) == 8
+    original_kpis = before["ctx"].sections[1]["components"][0].kpis
+    expected_kpis = [dict(kpi) for kpi in original_kpis]
+    expected_kpis[-1]["label"] = "Ad Revenue %"
+    assert overview.children[0].kpis == expected_kpis
     for original in before["ctx"].sections:
         revised = sections[original["title"]]
         assert len(original["components"]) == len(revised["components"])
         for left, right in zip(original["components"], revised["components"]):
+            if original["title"] == "Overview":
+                assert isinstance(left, KpiRow)
+                _same_component(left, dataclasses.replace(right.children[0], kpis=left.kpis))
+                continue
             _same_component(left, right)
         collapsed = original["title"] in ("Engagement", "Revenue")
         assert revised["collapsible"] is collapsed
         assert revised["default_collapsed"] is collapsed
     grid = sections["Daily Trends"]["components"][1]
     assert isinstance(grid, Grid) and grid.columns == 3
+    assert grid.card is True
     assert grid.show_titles and grid.show_controls and len(grid.children) == 6
     for chart, (column, title, fmt) in zip(grid.children, TRENDS):
         assert isinstance(chart, LineChart)
