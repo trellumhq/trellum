@@ -11,6 +11,11 @@ Sessions, Transactions, IAP Revenue and Ad Revenue. The grid fits fewer
 columns in narrower containers and stacks on a phone. Native chart titles,
 legends and CSV controls remain available.
 
+These six summary tiles use `show_events=False`, so repeated event labels,
+bands and event-list buttons do not crowd the compact grid. Open Engagement
+or Revenue for the larger charts with event context. Their annotation controls
+and supplied events are unchanged.
+
 The final Overview card uses the concise display label **Ad Revenue %** so it
 fits at the desktop card width. Its `ad_share` metric and percentage value are
 unchanged.

@@ -41,11 +41,14 @@ def test_business_events_remain_available_and_custom_canvas_follows_controls(tmp
     ctx.add_section("Native and custom", [
         DataSource("arcade", frame),
         LineChart(frame, "event_date", "dau", "Native chart", dataset_id="arcade"),
+        LineChart(frame, "event_date", "dau", "Quiet bound", dataset_id="arcade", show_events=False),
+        LineChart(frame, "event_date", "dau", "Quiet static", static=True, show_events=False),
         RawHTML(html=custom.CABINET_HTML, js=custom.CABINET_JS, data_key="_arcade", data={
             "tiers": {"default": {"speed": 1, "pull": 22, "size": 14}}, "pit_fraction": 0.55,
         }),
     ])
-    render_report(ctx, str(tmp_path), data={"_events": loaded}, auto_refresh=False)
+    render_report(ctx, str(tmp_path), data={"_events": loaded,
+                  "_weekday_highlight": {"days": [0], "default_visible": True}}, auto_refresh=False)
     copy_vendor_tree(tmp_path)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -76,10 +79,26 @@ def test_business_events_remain_available_and_custom_canvas_follows_controls(tmp
         values = page.evaluate("Object.values(_chartInstances)[0].data.datasets[0].data")
         assert sorted(page.evaluate("paintedEvents")) == ["Audit incident", "Audit release"]
         assert page.evaluate("Object.values(_chartInstances)[0]._fwEventMarkers.length") == 2
+        def check_quiet():
+            for title in ("Quiet bound", "Quiet static"):
+                canvas = page.locator(f'canvas[data-fw-title="{title}"]')
+                canvas.scroll_into_view_if_needed()
+                page.wait_for_function("id=>!!_chartInstances[id]", arg=canvas.get_attribute("id"))
+                state = canvas.evaluate("""el=>{
+                    const chart=Chart.getChart(el), annos=chart.options.plugins.annotation.annotations;
+                    return {keys:Object.keys(annos), markers:chart._fwEventMarkers || [],
+                        controls:!!document.getElementById(el.id+'-adaptive-events'),
+                        data:chart.data.datasets[0].data};
+                }""")
+                assert state["keys"] and all(key.startswith("wd_") for key in state["keys"])
+                assert not state["markers"] and not state["controls"]
+            return state["data"]
+        assert check_quiet() == values
         for kind, count in [("campaign", 3), ("ab_test", 4)]:
             page.locator(f'[data-anno-type="{kind}"]').click()
             page.wait_for_function("count => paintedEvents.length === count", arg=count)
             assert page.evaluate("Object.values(_chartInstances)[0]._fwEventMarkers.length") == count
+            check_quiet()
         page.locator('[data-anno-type="campaign"]').click()
         page.wait_for_function("!paintedEvents.includes('Audit campaign')")
         assert page.evaluate("Object.values(_chartInstances)[0].data.datasets[0].data") == values
@@ -87,5 +106,12 @@ def test_business_events_remain_available_and_custom_canvas_follows_controls(tmp
         page.reload(wait_until="networkidle")
         page.wait_for_function("window.paintedEvents?.length === 3")
         assert page.locator('[data-anno-type="ab_test"]').evaluate("el=>el.classList.contains('active')")
+        check_quiet()
+        page.evaluate("fw.filterEngine.setFilter('arcade','short','event_date','range', {min:_reportData._events[0].date,max:_reportData._events[2].date})")
+        page.locator("#fwThemeSelect").select_option("trellum light")
+        check_quiet()
+        page.evaluate("window.renderAll()")
+        check_quiet()
+        assert page.evaluate("_reportData._events.length") == 4
         assert errors == []
         browser.close()

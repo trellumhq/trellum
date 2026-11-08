@@ -818,7 +818,7 @@ function _createChart(id, canvas, spec) {
     // view. A genuinely different result retains the existing reset behavior.
     var lineView = spec.lineResultPresentation ? (previous ? _fwLineResultView(previous) : canvas._fwLineResultView) : null;
     if (lineView && lineView.signature !== JSON.stringify([spec.labels, spec.datasets.map(function(ds) { return [ds.label, ds.data]; })])) lineView = null;
-    var ownedEvents = spec.eventLabels === 'grouped' || spec.eventLabels === 'adaptive';
+    var ownedEvents = spec.showEvents !== false && (spec.eventLabels === 'grouped' || spec.eventLabels === 'adaptive');
     var eventDetails = ownedEvents && previous && previous._fwTakeEventDetails
         ? previous._fwTakeEventDetails() : (ownedEvents && canvas._fwEventDetailsState);
     var comboFocus = spec.comboAxes && document.activeElement &&
@@ -841,7 +841,7 @@ function _createChart(id, canvas, spec) {
     var labelFont = window._fwFontPx('--font-size-label', 12);
     var events = window._reportData && window._reportData._events;
     var datedEvents = ownedEvents ? [] : null;
-    var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels, datedEvents) : {};
+    var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels, datedEvents, spec.showEvents) : {};
     var plugins = {
         legend: { display: false },
         fwLegend: { display: !!spec.showLegend },
@@ -997,6 +997,7 @@ function _createChart(id, canvas, spec) {
             spec.calendarCoverage ? [window._fwCalendarCoverage.plugin()] : []).concat(
             spec.trends ? [window._fwTrends.plugin(spec.trends)] : [])
     });
+    window._chartInstances[id]._fwShowEvents = spec.showEvents !== false;
     if (spec.stackedControlView) window._chartInstances[id]._fwStackControlView = spec.stackedControlView;
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
@@ -1296,6 +1297,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (stackOwner && cfg.stacked_bar_controls === true) spec.stackedControlView = [cfg.dataset_id, activeStackBy];
             if (cfg.month_context === true) spec.monthContext = true;
             if (cfg.event_labels) spec.eventLabels = cfg.event_labels;
+            if (cfg.show_events === false) spec.showEvents = false;
             if (cfg.bar_values) {
                 spec.barValues = cfg.bar_values;
                 spec.barConfiguredStacked = cfg.stacked;
@@ -1883,6 +1885,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         forecastSeries: cfg.forecast_series,
         monthContext: cfg.month_context === true,
         eventLabels: cfg.event_labels,
+        showEvents: cfg.show_events,
         headerSummary: cfg.header_summary,
         stackedSummary: cfg.stacked_summary,
         stackedSummaryInputReason: _fwStackSummaryInputReason(cfg, null),

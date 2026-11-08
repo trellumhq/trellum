@@ -186,6 +186,7 @@ def test_native_generator_preserves_sources_queries_kpis_and_existing_components
             "event_date", column, title, "main", "compact")
         assert chart.header_summary == dict(stat="mean", series=0, label="Daily avg", format=fmt)
         assert chart.stack_by is None and chart.y_format == fmt
+        assert chart.show_events is False
     # Source populations/grains and the chunked retention contract remain independent.
     sources = {c.id: c for s in after["ctx"].sections for c in s["components"]
                if isinstance(c, DataSource)}

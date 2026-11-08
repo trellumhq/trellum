@@ -116,7 +116,7 @@ class PlayerOverviewReport(BaseReport):
             Grid(columns=3, min_width=280, card=True, color_cycle="theme", children=[
                 LineChart(df, x="event_date", y=column, title=title,
                           dataset_id="main", y_format=value_format,
-                          height="compact", header_summary={
+                          height="compact", show_events=False, header_summary={
                               "stat": "mean", "series": 0,
                               "label": "Daily avg", "format": value_format,
                           })

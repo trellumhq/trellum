@@ -567,3 +567,31 @@ def test_grouped_events_chromium_desktop(tmp_path):
 @pytest.mark.heavy
 def test_grouped_events_chromium_phone(tmp_path):
     _browser_check(tmp_path, 390)
+
+
+@pytest.mark.parametrize("options", [{"static": True}, {"dataset_id": "d"},
+    {"dataset_id": "d", "stack_by": "channel"},
+    {"dataset_id": "d", "ratios": [{"numerator": "value", "denominator": "users", "label": "Rate"}]}])
+def test_show_events_opt_out_is_keyword_only_and_default_payload_unchanged(options):
+    assert inspect.signature(LineChart).parameters["show_events"].kind == inspect.Parameter.KEYWORD_ONLY
+    configs = []
+    for visible in (True, False):
+        ctx = RenderContext(theme=THEME_REGISTRY["trellum light"])
+        LineChart(_df(), "day", "value", show_events=visible, **options).render_html(ctx)
+        configs.append(next(iter(ctx.component_data.values())))
+    assert "show_events" not in configs[0]
+    assert configs[1].pop("show_events") is False
+    assert configs[0] == configs[1]
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", [], {}])
+def test_show_events_rejects_invalid_values_after_mutation(value):
+    from trellum.components.charts._line_options import line_option_problems
+
+    with pytest.raises(ValueError, match="show_events"):
+        LineChart(_df(), "day", "value", show_events=value)
+    chart = LineChart(_df(), "day", "value")
+    chart.show_events = value
+    assert ("line-chart-show-events-invalid", "LineChart show_events must be bool.") in line_option_problems(chart)
+    with pytest.raises(ValueError, match="show_events"):
+        chart.render_html(RenderContext(theme=THEME_REGISTRY["trellum light"]))
