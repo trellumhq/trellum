@@ -200,8 +200,15 @@ def browser_check(tmp_path, width):
         page.keyboard.press("Escape")
         # Dense: All 15 events, bounded local scroller, original dates.
         _canvas(page, "Dense events").scroll_into_view_if_needed()
-        dense.get_by_role("button", name="All 15 events").click()
+        all_events = dense.get_by_role("button", name="All 15 events")
+        all_events.evaluate("el=>scrollBy(0,el.getBoundingClientRect().top-280)")
+        all_events.click()
         assert dense.locator(".fw-event-panel li").count() == 15
+        # An open list remains usable where it crosses the sticky report header.
+        assert dense.get_by_role("button", name="Close event list").evaluate("""el=>{
+            const r=el.getBoundingClientRect();
+            return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
+        }""")
         scroller = dense.locator(".fw-adaptive-event-list")
         assert scroller.evaluate("el=>el.clientHeight<=168&&el.scrollHeight>el.clientHeight")
         last = dense.locator(".fw-event-panel li").last

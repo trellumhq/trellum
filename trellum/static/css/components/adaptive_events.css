@@ -14,7 +14,7 @@
 .fw-event-all:hover, .fw-event-close:hover, .fw-adaptive-event-list button:hover { background: var(--bg-hover, rgba(127, 127, 127, .14)); }
 .fw-event-all[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--text-main); color: var(--text-main); }
 .fw-adaptive-events :focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
-.fw-event-panel { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 6; box-sizing: border-box; width: min(340px, 100%); padding: 6px 8px 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .22); }
+.fw-event-panel { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 200; box-sizing: border-box; width: min(340px, 100%); padding: 6px 8px 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .22); }
 .fw-event-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fw-adaptive-event-list { max-height: 168px; overflow-y: auto; overscroll-behavior: contain; }
 .fw-adaptive-event-list ol, .fw-event-export-key ol { margin: 0; padding: 0; list-style: none; }
