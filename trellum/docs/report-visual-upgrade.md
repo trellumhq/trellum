@@ -7,8 +7,9 @@ alone does not update an old artifact. Deploy the rebuilt output together.
 
 These captures compare the real **v0.9.5 tag** (`aed34969658d`) with the local
 implementation at **`6250e6830b95`**, using the same deterministic data and native
-components. The dated-event comparison was added at **`36d1d34`** after adaptive
-labels became the current default. Optional Grid colors were captured with the
+components. The dated-event comparison was refreshed with the compact annotation runtime
+at **`a2d221c`**, preserving the historical capture’s exact 31 observations
+and two supplied events. Optional Grid colors were captured with the
 runtime at **`5653b8f`**. Native fit comparisons use the runtime at **`3be22ea`**.
 “Current, opt-in” uses explicit options;
 it is not another release. Current changes are unreleased.
