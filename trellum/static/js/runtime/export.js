@@ -599,7 +599,6 @@
         var title = target.querySelector('.fw-chart-title');
         if (!title && target.classList.contains('fw-chart-container')) {
             var previous = target.previousElementSibling;
-            if (previous && previous.classList.contains('fw-event-rail')) previous = previous.previousElementSibling;
             if (previous && previous.classList.contains('fw-chart-title')) title = previous;
             else if (previous && previous.classList.contains('fw-chart-head')) {
                 title = previous.querySelector('.fw-chart-title');

@@ -71,7 +71,7 @@ class ReportUpgradeReport(BaseReport):
              "Column formats, targets, totals, row limit, pinning"),
             ("DoughnutChart", "170px ring; readable category values and shares",
              "Center total, explicit units and precision"),
-            ("LineChart", "220px plot; adaptive dots and dated event labels; explicit unsplit dataset colors honored",
+            ("LineChart", "220px plot; adaptive dots and in-plot event markers; explicit unsplit dataset colors honored",
              "160px compact / 320px roomy, summaries, curves, forecasts, native linear fits"),
             ("Grid / SplitPane", "Panel-width layout; chart titles/controls stay visible",
              "Theme color cycle, column maximum, pane minimums, intentional title/control omission"),
@@ -143,13 +143,13 @@ class ReportUpgradeReport(BaseReport):
                     "label": "Daily avg", "format": "number"})''')])
 
         ctx.add_section("Dated events", [RawHTML(
-            '<p>On rebuild, ordinary LineCharts put dated event labels above the '
-            'plot. Tap a label for its exact name, original dates and type. '
-            'Overlapping labels become an event count with local details. Phones '
-            'also show event names beneath the plot. This adds context around '
-            'the current 220px plot; measured values and event dates stay the same.</p>'
+            '<p>On rebuild, ordinary LineCharts mark each dated event with a small '
+            'marker in the plot and name it beside the marker where the whole '
+            'name fits. Crowded names collapse to the markers. Tap a marker for '
+            'its exact name and original dates, or open All events. The current '
+            '220px plot, measured values and event dates stay the same.</p>'
             '<p>The comparison uses two identical supplied events. The old phone '
-            'labels overlap; the current name key keeps both readable. '
+            'labels overlap; the current markers keep both events visible. '
             'Use event_labels="full" for in-plot labels or '
             'event_labels="grouped" for the earlier numbered-marker presentation. '
             'Other chart families keep their existing labels.</p>'

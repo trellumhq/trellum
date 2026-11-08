@@ -17,9 +17,10 @@ def test_adaptive_dense_population_and_capture_bound(tmp_path):
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 390, "height": 900}, has_touch=True)
         _open(page, tmp_path)
-        cid, rail, root = ids(page, "Dense events")
-        # 1,200 eligible declarations remain reachable; do not silently sample
-        # the source population to satisfy a drawing or capture limit.
+        cid, root = ids(page, "Dense events")
+        # 1,200 eligible declarations keep a marker each and stay reachable; do
+        # not silently sample the source population to satisfy a drawing or
+        # capture limit.
         elapsed = page.evaluate("""() => {
             _reportData._events=Array.from({length:1200},(_,i)=>({date:'2026-10-'+String(i%31+1).padStart(2,'0'),
                 label:'Event '+i+' · <b>literal long name</b>', type:'release',studio:'shared'}));
@@ -27,16 +28,16 @@ def test_adaptive_dense_population_and_capture_bound(tmp_path):
         }""")
         assert elapsed < 3000
         assert_layout(page, "Dense events", 1200)
-        root.get_by_role("button", name="View all 1200 events").click()
+        root.get_by_role("button", name="All 1200 events").click()
         rows = root.locator(".fw-event-panel li")
         assert rows.count() == 1200
         assert root.locator(".fw-event-panel b").count() == 0
         rows.last.scroll_into_view_if_needed()
-        rows.last.focus()
-        identity = rows.last.get_attribute("data-event-focus")
+        rows.last.locator("button").focus()
+        identity = rows.last.locator("button").get_attribute("data-event-focus")
         page.evaluate("_reportData._events.reverse();_refreshAllAnnotations()")
         assert page.evaluate("document.activeElement.dataset.eventFocus") == identity
-        root.get_by_role("button", name="Close event details").click()
+        root.get_by_role("button", name="Close event list").click()
         # The actual native section capture rejects the expanded clone before
         # allocating an oversized bitmap; the screen keeps its bounded list.
         error = _canvas(page, "Dense events").evaluate("""async el => {
@@ -59,5 +60,5 @@ def test_adaptive_dense_population_and_capture_bound(tmp_path):
             removed_id = _canvas(page, name).get_attribute("id")
             _canvas(page, name).evaluate("el=>el.remove()")
             page.wait_for_function("id=>!window._chartInstances[id]", arg=removed_id)
-            assert page.locator(f"#{removed_id}-event-rail, #{removed_id}-adaptive-events").count() == 0
+            assert page.locator(f"#{removed_id}-adaptive-events").count() == 0
         browser.close()

@@ -1,26 +1,34 @@
 # LineChart dated events
 
 Newly built ordinary `LineChart`s use keyword-only `event_labels="adaptive"`.
-They retain native annotation lines and translucent range bands. Sparse labels
-show dates and names in a 40px rail above the unchanged plot (48px on phones).
-Narrow charts show date buttons plus a wrapping, visible name key beneath the
-plot. No eligible dated events means no rail, key or reserved space.
+They keep every eligible native annotation line and translucent range band, and
+add one small type-colored diamond per event inside the plot, at the top. Event
+lines are drawn as quiet dotted strokes; types still determine the existing
+colors and the report-wide annotation type controls still show or hide them.
+No eligible dated events means no markers, row or reserved space.
 
-Colliding controls merge into literal counts and original start-date spans, such
-as “3 events · 1 Sep–3 Sep”. These are counts, never lookup numbers or a claim
-that the separate events form one continuous duration. Each original mark and
-range band remains. A “View all N events” button opens every eligible event in
-chronological order in a local scroller bounded to 280px. Nothing is paginated
-or silently omitted.
+Names are shown only where they fit. Each name is measured against the actual
+chart area: it appears beside its own marker when the whole text fits without
+covering another marker or name, and otherwise only the marker remains. There is
+no phone breakpoint and no event-count threshold, so sparse short names stay
+readable on a narrow chart, and names return as the chart widens, the date window
+narrows, or an annotation type is hidden. Same-day and closely spaced events
+stack as separate markers in up to five rows. Beyond that the extra markers share the
+last row, and pressing there lists them. None is merged or dropped.
 
-Click, tap or keyboard-activate a native event button to open exact names,
-original dates, optional range end dates and types beside its chart. The
-associated marks are highlighted. Close or Escape returns focus to the owning
-control; a surviving source identity retains focus through redraws and
-regrouping. When all events disappear, owned focus returns to the named chart.
-Unrelated filter focus is preserved. Phone event buttons and Close have at
-least 44px touch targets. Event names are literal text and wrap in the key and
-details. Plot tooltips, zoom, controls and metric filters retain their behavior.
+Click, tap or press a marker, or its name, to see the exact name and the
+original date (and end date for a range) in a one-line detail below the plot;
+the matching line or band is emphasised. Markers sharing one spot open a short
+list of just those events. The single compact **All N events** control below the
+plot opens a bounded list of every eligible event in chronological order, so
+each event is reachable by keyboard. Nothing is paginated or silently omitted.
+Escape closes the list or the selected detail and returns focus to the control
+that owns it; a surviving source identity keeps focus across redraws. When all
+events disappear, owned focus returns to the named chart. Unrelated filter focus
+is preserved. Rows and details show names and dates only, never the type text,
+because the annotation type controls already name each type. Names are literal
+text. Pressing an event never starts metric filtering or drag zoom; plot
+tooltips, metric clicks and zoom keep their behavior.
 
 ```python
 LineChart(daily, "day", "orders", "Orders", static=True)
@@ -89,15 +97,15 @@ timezone, continuous coverage or calendar inference is made.
 ## Exports and rebuilding
 
 CSV and chart-only data downloads retain supplied values and existing names.
-Canvas-only PNG/PDF remains canvas-only; off-canvas rail and event details
-require native report/section capture. Adaptive labels do not add metric data
-or DOM details to a canvas image.
+Canvas-only PNG/PDF includes the in-plot markers and any names that fit; it
+excludes the DOM detail row and list, which require native report/section
+capture. Adaptive events do not add metric data to a canvas image.
 
-Native report/section captures preserve the rail and visible name key. Their
-export clone expands any open adaptive details to include all selected rows;
-clusters additionally include a compact exact event key with every eligible
-name, type and original date/range. The screen's open state, local scroll and
-focus stay unchanged. Captures exceeding 16,384 pixels in either dimension or
+Native report/section captures preserve the markers and visible names. Their
+export clone expands an open list to include every row; when names are collapsed
+on the plot, it also adds a compact exact event key with every eligible name and
+original date/range, unless the full list is already expanded. The screen's open
+state, local scroll and focus stay unchanged. Captures exceeding 16,384 pixels in either dimension or
 32 megapixels at capture scale fail with an explicit smaller-selection message,
 rather than cutting off event identities. Full-label collision disclosures keep
 their existing clone expansion. Explicit grouped captures retain their current

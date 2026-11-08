@@ -1,27 +1,30 @@
-.fw-event-rail { position: relative; height: 40px; box-sizing: border-box; }
-.fw-event-rail[hidden], .fw-adaptive-events[hidden], .fw-event-panel[hidden], .fw-event-export-key[hidden] { display: none; }
-.fw-event-rail button, .fw-event-key button, .fw-event-close {
-    font: inherit; font-size: var(--font-size-label, 12px); color: var(--text-main);
-    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 5px;
-    cursor: pointer; box-sizing: border-box;
+.fw-adaptive-events { position: relative; margin-top: 2px; color: var(--text-main); font-size: var(--font-size-label, 12px); }
+.fw-adaptive-events[hidden], .fw-event-panel[hidden], .fw-event-detail[hidden], .fw-event-export-key[hidden] { display: none; }
+.fw-event-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.fw-event-detail { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }
+.fw-event-selected { flex: 0 1 auto; min-width: 0; padding: 1px 0 1px 7px; border-left: 3px solid var(--event-color, var(--border-color)); display: flex; flex-wrap: wrap; gap: 0 8px; overflow-wrap: anywhere; }
+.fw-event-selected time, .fw-adaptive-event-list time, .fw-event-export-key time { color: var(--text-secondary); white-space: nowrap; }
+.fw-event-selected strong, .fw-adaptive-event-list span { font-weight: 600; }
+.fw-event-mapping { flex-basis: 100%; color: var(--text-secondary); font-size: 11px; }
+.fw-event-all, .fw-event-close, .fw-adaptive-event-list button {
+    font: inherit; color: var(--text-main); background: transparent; cursor: pointer; box-sizing: border-box;
 }
-.fw-event-rail button { position: absolute; top: 0; height: 36px; padding: 3px 8px; border-color: var(--event-color); white-space: normal; line-height: 1.15; overflow-wrap: anywhere; }
-.fw-event-key { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.fw-event-key:empty { display: none; }
-.fw-event-key button { min-height: 36px; padding: 5px 9px; text-align: left; border-left: 3px solid var(--event-color, var(--border-color)); max-width: 100%; overflow-wrap: anywhere; }
-.fw-event-panel { position: relative; margin-top: 10px; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-card); color: var(--text-main); font-size: var(--font-size-label, 12px); overflow-wrap: anywhere; }
-.fw-event-panel h4 { font-size: inherit; margin: 0 44px 8px 0; }
-.fw-event-close { position: absolute; right: 3px; top: 3px; min-width: 36px; min-height: 36px; }
-.fw-adaptive-event-list { max-height: 280px; overflow-y: auto; overscroll-behavior: contain; }
+.fw-event-all { flex: none; margin-left: auto; min-height: 26px; padding: 2px 9px; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); white-space: nowrap; }
+.fw-event-close { flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; font-size: 18px; line-height: 1; }
+.fw-event-all:hover, .fw-event-close:hover, .fw-adaptive-event-list button:hover { background: var(--bg-hover, rgba(127, 127, 127, .14)); }
+.fw-event-all[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--text-main); color: var(--text-main); }
+.fw-adaptive-events :focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
+.fw-event-panel { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 6; box-sizing: border-box; width: min(340px, 100%); padding: 6px 8px 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .22); }
+.fw-event-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fw-adaptive-event-list { max-height: 168px; overflow-y: auto; overscroll-behavior: contain; }
 .fw-adaptive-event-list ol, .fw-event-export-key ol { margin: 0; padding: 0; list-style: none; }
-.fw-adaptive-event-list li, .fw-event-export-key li { border-left: 3px solid var(--event-color); padding: 5px 8px; margin: 3px 0; white-space: normal; overflow-wrap: anywhere; }
-.fw-adaptive-event-list time, .fw-event-export-key time, .fw-event-mapping { display: block; color: var(--text-secondary); }
-.fw-event-rail :focus-visible, .fw-adaptive-events :focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
-.fw-event-rail [aria-expanded="true"], .fw-event-key [aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--text-main); }
-.fw-event-export-key { font-size: var(--font-size-label, 12px); color: var(--text-main); overflow-wrap: anywhere; }
+.fw-adaptive-event-list li { border-top: 1px solid var(--border-color); border-left: 3px solid var(--event-color, var(--border-color)); }
+.fw-adaptive-event-list button { display: flex; flex-wrap: wrap; gap: 0 8px; width: 100%; padding: 6px 4px; border: 0; text-align: left; overflow-wrap: anywhere; }
+.fw-event-export-key { margin-top: 4px; color: var(--text-main); overflow-wrap: anywhere; }
+.fw-event-export-key li { display: flex; flex-wrap: wrap; gap: 0 8px; border-left: 3px solid var(--event-color, var(--border-color)); padding: 2px 6px; margin: 2px 0; }
 @media (max-width: 600px) {
-    .fw-event-rail { height: 48px; }
-    .fw-event-rail button { height: 44px; min-width: 44px; padding: 3px 6px; }
-    .fw-event-key { display: grid; grid-template-columns: minmax(0, 1fr); }
-    .fw-event-key button, .fw-event-close { min-height: 44px; min-width: 44px; }
+    .fw-event-bar { min-height: 32px; }
+    .fw-event-all { min-height: 30px; }
+    .fw-event-close { width: 30px; height: 30px; }
+    .fw-adaptive-event-list button { padding: 9px 4px; }
 }

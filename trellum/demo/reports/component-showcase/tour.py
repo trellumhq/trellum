@@ -166,7 +166,7 @@ def _trends():
         ]),
         TabGroup([
             tab("Line", note("Daily revenue with an optional fitted linear trend.",
-                "Select iOS or narrow the dates: the fit updates. Hide the trend to compare; tap dated labels for event details.",
+                "Select iOS or narrow the dates: the fit updates. Hide the trend to compare; select event markers for details.",
                 "The dash-dot fit describes selected observations; it is not a forecast. 220px plot."),
                 LineChart(frame, "Day", "Revenue", "Daily revenue", dataset_id=dataset, y_format="currency",
                           header_context="USD · selected platform and dates",

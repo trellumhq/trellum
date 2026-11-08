@@ -66,7 +66,7 @@ def test_curated_tour_navigation_filters_and_views(tmp_path, width):
             assert round(line.bounding_box()['height']) == 220
             fit = page.evaluate('id => _chartInstances[id]._fwTrends', line_id)
             assert fit['reason'] == '' and fit['series'][0]['fit']['n'] == 31
-            assert trends.locator('.fw-event-rail').count() >= 1
+            assert trends.locator('.fw-adaptive-events').count() >= 1
             expect(trends.get_by_role('button', name='Hide trend', exact=True)).to_be_visible()
             expect(metrics.locator('.fw-kpi-value').first).to_have_text('$18.4k')
 
