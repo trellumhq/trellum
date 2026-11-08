@@ -56,6 +56,21 @@ def chart_state(page):
             tension:c.data.datasets.map(d=>d.tension), y:c.options.scales.y.type};})''')
 
 
+def chart_pixels(page):
+    from playwright.sync_api import expect
+
+    pixels = []
+    for canvas in page.locator('canvas:visible').all():
+        canvas.scroll_into_view_if_needed()
+        page.mouse.move(0, 0)
+        # A locator screenshot also captures overlapping DOM controls. Their
+        # hover fade can still be running even though the canvas is stable.
+        download = page.locator('[data-csv-chart="' + canvas.get_attribute('id') + '"]')
+        expect(download).to_have_css('opacity', '0')
+        pixels.append(canvas.screenshot())
+    return pixels
+
+
 def check_oracle(page, m, preset, platform):
     actual=rows(page,m.RESULT)
     expected={s:oracle(*m.PRESETS[preset][s],platform) for s in ('A','B')}
@@ -100,13 +115,11 @@ def test_native_periods_controls_csv_hover_theme_capture(tmp_path,width):
             before=chart_state(page)
             assert len(before)==4 and all(c['height']==220 for c in before)
             assert before[0]['values'][1][-1] is None and len(before[0]['labels'])==31
-            page.mouse.move(0,0)
-            off_pixels=[n.screenshot() for n in page.locator('canvas:visible').all()]
+            off_pixels=chart_pixels(page)
             page.get_by_role('tab',name='Original dates on',exact=True).click()
             ready_charts(page)
             assert chart_state(page)==before
-            page.mouse.move(0,0)
-            assert [n.screenshot() for n in page.locator('canvas:visible').all()]==off_pixels
+            assert chart_pixels(page)==off_pixels
             assert '2026-09-30' in section.get_by_text('B: 2026-09-01',exact=False).inner_text()
             # Real pointer hit on the original date for each series, same aligned x.
             canvas=page.locator('canvas:visible').first

@@ -276,12 +276,16 @@ jobs:
       - name: Push the proven image
         id: push
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           IMAGE="${REGISTRY}/${IMAGE_NAME}"
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
           docker tag trellum:candidate "${IMAGE}:${VERSION}"
           docker push "${IMAGE}:${VERSION}"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}")
+          # Local RepoDigests can begin with an unqualified build alias.
+          # Read the manifest at the explicit registry tag for signing instead.
+          DIGEST=$(timeout --kill-after=5s 60s docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
+            --format '{{json .Manifest}}' | python3 .github/workflows/release_image_ref.py "$IMAGE")
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
@@ -331,12 +335,14 @@ jobs:
       - name: Push the runner image
         id: push_runner
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           IMAGE="${REGISTRY}/${IMAGE_NAME}-runner"
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
           docker tag trellum-runner:candidate "${IMAGE}:${VERSION}"
           docker push "${IMAGE}:${VERSION}"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}")
+          DIGEST=$(timeout --kill-after=5s 60s docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
+            --format '{{json .Manifest}}' | python3 .github/workflows/release_image_ref.py "$IMAGE")
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 

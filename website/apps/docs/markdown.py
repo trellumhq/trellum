@@ -6,10 +6,12 @@ file is picked up without a restart while a warm page costs nothing.
 
 from __future__ import annotations
 
+import posixpath
 import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
 import markdown as md
 from django.conf import settings
@@ -73,10 +75,34 @@ def _substitute(text: str, figures_dir: Path | None = None) -> str:
     return FIGURE_RE.sub(_figure, text)
 
 
+def _repository_doc_link(source: Path, version_root: Path, target: str) -> str | None:
+    """Resolve links outside the copied docs against their repository snapshot."""
+    repository_path = posixpath.normpath(posixpath.join(
+        "docs/customer", source.relative_to(version_root).parent.as_posix(), target,
+    ))
+    if repository_path.startswith(("../", "/")) or repository_path == "..":
+        return None
+
+    marker = version_root / ".trellum-docs-version"
+    if marker.is_file():
+        fields = marker.read_text(encoding="utf-8").split()
+        if len(fields) != 3 or not re.fullmatch(r"[0-9a-f]{40}", fields[2]):
+            raise ValueError(f"Invalid documentation provenance: {marker}")
+        revision = fields[2]
+    else:
+        # Unsynchronized canonical-source previews have no release marker.
+        revision = "main" if version_root.name == "latest" else version_root.name
+    return (
+        f"{settings.FRAMEWORK_REPO_URL.rstrip('/')}/blob/{quote(revision, safe='')}/"
+        f"{quote(repository_path, safe='/')}"
+    )
+
+
 def _rewrite_relative_doc_links(text: str, source: Path) -> str:
     root = Path(settings.DOCS_ROOT).resolve()
     try:
-        version = source.resolve().relative_to(root).parts[0]
+        source = source.resolve()
+        version = source.relative_to(root).parts[0]
     except (ValueError, IndexError):
         return text
     version_root = root / version
@@ -88,7 +114,8 @@ def _rewrite_relative_doc_links(text: str, source: Path) -> str:
         try:
             slug = target.relative_to(version_root).with_suffix("").as_posix()
         except ValueError:
-            return match.group(0)
+            url = _repository_doc_link(source, version_root, match.group("target"))
+            return f"]({url}{match.group('fragment') or ''})" if url else match.group(0)
         return f"](/docs/{version}/{slug}/{match.group('fragment') or ''})"
 
     return RELATIVE_DOC_LINK_RE.sub(replace, text)

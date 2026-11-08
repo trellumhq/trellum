@@ -6,10 +6,9 @@ from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
 import pytest
-from django.conf import settings
-
 from apps.blog import posts as blog
 from apps.docs import markdown, nav
+from django.conf import settings
 
 
 @pytest.mark.parametrize(
@@ -147,7 +146,10 @@ def test_internal_doc_links_resolve():
             for match in markdown.DOC_LINK_RE.finditer(text):
                 assert (match.group("version"), match.group("slug")) in known
             rendered = markdown.render(nav.source_path(version, page.slug), nav.figures_dir(version))
-            assert not re.search(r'href="[^"]+\.md', rendered.html)
+            for href in re.findall(r'href="([^"]+)"', rendered.html):
+                target = urlparse(href)
+                if not target.scheme and not target.netloc:
+                    assert not target.path.endswith(".md"), (page.url, href)
             if version != "latest":
                 assert 'href="/docs/latest/' not in rendered.html
 
@@ -216,6 +218,65 @@ def test_relative_doc_link_keeps_the_current_version():
     source = nav.source_path("latest", "operations/data-retention")
     body = markdown.render(source, nav.figures_dir("latest")).html
     assert '/docs/latest/operations/logs-and-monitoring/#the-audit-log' in body
+
+
+@pytest.mark.parametrize("version", ["latest", "v0.10.0"])
+def test_repository_doc_links_use_the_snapshot_revision(tmp_path, settings, version):
+    settings.DOCS_ROOT = tmp_path
+    version_root = tmp_path / version
+    source = version_root / "portal" / "ai-assistant.md"
+    source.parent.mkdir(parents=True)
+    revision = "080c87aacdce37bf0173b34148fdb2a5972ab2be"
+    (version_root / ".trellum-docs-version").write_text(
+        f"release v0.10.0 {revision}\n", encoding="utf-8",
+    )
+    source.write_text(
+        "# Assistant\n"
+        "[Framework](../../../trellum/docs/COMPATIBILITY.md#optional-canonical-metric-execution)\n"
+        "[Portal](../../MIGRATIONS.md#upgrade)\n"
+        "[Internal](../install/try-it.md#start)\n"
+        "[External](https://github.com/example/docs/blob/main/README.md#readme)\n",
+        encoding="utf-8",
+    )
+    body = markdown.render(source).html
+    repository = f"{settings.FRAMEWORK_REPO_URL}/blob/{revision}"
+    assert f'href="{repository}/trellum/docs/COMPATIBILITY.md#optional-canonical-metric-execution"' in body
+    assert f'href="{repository}/docs/MIGRATIONS.md#upgrade"' in body
+    assert f'href="/docs/{version}/install/try-it/#start"' in body
+    assert 'href="https://github.com/example/docs/blob/main/README.md#readme"' in body
+
+
+def test_canonical_repository_doc_link_uses_main_without_a_snapshot(tmp_path, settings):
+    settings.DOCS_ROOT = tmp_path
+    source = tmp_path / "latest" / "portal" / "ai-assistant.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("[Guide](../../../trellum/docs/COMPATIBILITY.md)", encoding="utf-8")
+    assert (
+        f'href="{settings.FRAMEWORK_REPO_URL}/blob/main/trellum/docs/COMPATIBILITY.md"'
+        in markdown.render(source).html
+    )
+
+
+def test_doc_links_cannot_escape_the_repository(tmp_path, settings):
+    settings.DOCS_ROOT = tmp_path
+    source = tmp_path / "latest" / "portal" / "ai-assistant.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("[Invalid](../../../../outside.md)", encoding="utf-8")
+    # Leave invalid links unresolved so the static export gate rejects them.
+    assert 'href="../../../../outside.md"' in markdown.render(source).html
+
+
+def test_repository_doc_link_rejects_invalid_snapshot_provenance(tmp_path, settings):
+    settings.DOCS_ROOT = tmp_path
+    version_root = tmp_path / "latest"
+    version_root.mkdir()
+    (version_root / ".trellum-docs-version").write_text(
+        "release v0.10.0 invalid\n", encoding="utf-8",
+    )
+    source = version_root / "index.md"
+    source.write_text("[Guide](../../trellum/docs/COMPATIBILITY.md)", encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid documentation provenance"):
+        markdown.render(source)
 
 
 def test_search_index_covers_every_page(client):

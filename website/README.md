@@ -11,6 +11,11 @@ stable tag's documentation, not the working tree. Documentation corrections
 land in that published corpus with the next release; changing the website
 alone does not update existing release snapshots.
 
+Relative Markdown links within the customer guide stay in the viewed version.
+Links to other repository Markdown files use the snapshot's recorded commit on
+GitHub, including when viewing `latest`. Unsynchronized canonical-source previews
+fall back to `main`.
+
 ```sh
 ./scripts/sync-docs.sh
 cd website

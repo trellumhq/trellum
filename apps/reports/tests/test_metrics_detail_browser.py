@@ -267,9 +267,19 @@ def test_metric_page_retains_dates_and_split_and_overview_link(open_metric):
     assert "only" not in parse_qs(overview.query)
     assert overview.fragment == "metric-gross_revenue"
 
-    with page.expect_navigation():
+    # Visible canvases are HTML placeholders, not proof that the payload and
+    # saved filters have initialized. Hold the payload to exercise that gap.
+    pending = []
+    payload_pattern = re.compile(r"/_metrics-workspace-[0-9a-f]{32}-page-\d+\.json(?:\?.*)?$")
+    page.route(payload_pattern, lambda route: pending.append(route))
+    with page.expect_request(payload_pattern), page.expect_navigation():
         page.locator("#metModalFull").click()
     page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
+    assert pending
+    assert page.evaluate("!window._reportData")
+    pending.pop().continue_()
+    page.unroute(payload_pattern)
+    page.wait_for_function("window._fwWorkspaceState === 'ready'")
     assert page.locator("body.fw-only").count() == 1
     assert page.locator('#metric-gross_revenue .fw-kpi-grid').is_visible()
     assert page.locator("#metric-net_revenue").is_hidden()
@@ -280,12 +290,14 @@ def test_metric_page_retains_dates_and_split_and_overview_link(open_metric):
     assert page.evaluate("window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id].data.datasets.length") == 12
     page.reload()
     page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
+    page.wait_for_function("window._fwWorkspaceState === 'ready'")
     assert parse_qs(urlsplit(page.url).query) == current
     assert page.locator('#metric-gross_revenue [data-stack-toggle] .fw-toggle-btn.active').inner_text() == "Platform"
     page.go_back()
     page.locator(".met-open").wait_for()
     page.go_forward()
     page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
+    page.wait_for_function("window._fwWorkspaceState === 'ready'")
     assert parse_qs(urlsplit(page.url).query) == current
     assert errors == []
 

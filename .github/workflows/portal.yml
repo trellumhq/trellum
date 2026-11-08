@@ -460,23 +460,35 @@ jobs:
     # rather than a surprise on a customer's instance.
     #
     # See docs/MIGRATIONS.md for the expand/contract rule this enforces.
-    name: previous release survives the new schema
-    runs-on: ubuntu-latest
+    name: previous release survives the new schema (${{ matrix.lane }})
+    runs-on: ubuntu-24.04
     # The previous release's whole portal suite runs serially, because it has
     # to reuse the one database this upgrade migrated (parallel workers would
     # each build a fresh one). v0.8.0's suite alone takes about 30 minutes.
     timeout-minutes: 45
-    container:
-      # Match django-tests: frozen browser fixtures must see the same fonts
-      # and system libraries, not the changing GitHub runner's font fallback.
-      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
-      options: --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: browser
+            # Frozen browser fixtures keep the same fonts and system libraries.
+            container:
+              image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
+              options: --ipc=host
+            database-host: postgres
+          - lane: docker
+            # Restore and live-source cases need host paths and loopback ports.
+            container: ''
+            database-host: 127.0.0.1
+    container: ${{ matrix.container }}
     defaults:
       run:
         shell: bash
     services:
       postgres:
         image: postgres:16-alpine
+        ports:
+          - 5432:5432
         env:
           POSTGRES_USER: trellum
           POSTGRES_PASSWORD: trellum
@@ -491,6 +503,11 @@ jobs:
         with:
           fetch-depth: 0      # tags, so we can find the previous release
 
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: matrix.lane == 'docker'
+        with:
+          python-version: '3.12'
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
@@ -498,8 +515,7 @@ jobs:
       - name: Find the previous release
         id: prev
         run: |
-          # Checkout runs with a temporary HOME; persist trust only for this
-          # runner-owned checkout before Git runs as the container user.
+          # Persist trust only for this runner-owned checkout.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           # No releases yet: there is nothing to be backward-compatible WITH,
           # and the first tag has to be able to land. Skip rather than fail.
@@ -527,8 +543,17 @@ jobs:
             -r ../previous-release/requirements-django.txt \
             -r ../previous-release/requirements-test.txt
 
+      - name: Verify Docker and install the previous release's live-source drivers
+        if: steps.prev.outputs.tag != '' && matrix.lane == 'docker'
+        run: |
+          docker version
+          docker compose version
+          python -m pip --python /tmp/previous-venv install \
+            -c ../previous-release/constraints.txt psycopg2-binary pymysql
+          /tmp/previous-venv/bin/python -c "import psycopg2, pymysql"
+
       - name: Verify the previous release's browsers in the pinned environment
-        if: steps.prev.outputs.tag != ''
+        if: steps.prev.outputs.tag != '' && matrix.lane == 'browser'
         timeout-minutes: 8
         run: |
           # The previous release's Playwright pin selects its browser revisions.
@@ -553,7 +578,7 @@ jobs:
         if: steps.prev.outputs.tag != ''
         env:
           DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
-          DATABASE_URL: postgres://trellum:trellum@postgres:5432/test_trellum_portal
+          DATABASE_URL: postgres://trellum:trellum@${{ matrix.database-host }}:5432/test_trellum_portal
         run: |
           set -e
           /tmp/current-venv/bin/python - <<'PY'
@@ -570,7 +595,7 @@ jobs:
         if: steps.prev.outputs.tag != ''
         env:
           DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
-          DATABASE_URL: postgres://trellum:trellum@postgres:5432/trellum_portal
+          DATABASE_URL: postgres://trellum:trellum@${{ matrix.database-host }}:5432/trellum_portal
           # Reuse the migrated database rather than building a fresh one: the
           # point is the schema this upgrade produced, not a clean install.
           PYTEST_ADDOPTS: "--reuse-db"
@@ -586,9 +611,11 @@ jobs:
           cd ../previous-release
           SUITES=(apps)
           echo "running previous release: ${SUITES[*]}"
-          # As in django-tests, real-daemon bind mounts require host paths.
-          # Those cases run in the sandbox and Docker compatibility host jobs.
-          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q -ra -m "not docker_sandbox" || {
+          # Both lanes reuse their upgraded database. Route only the frozen
+          # live-source/restore cases to the host; keep all other heavy cases.
+          # The existing sandbox exclusion retains its dedicated host jobs.
+          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" \
+            -q -ra -m "not docker_sandbox" --previous-schema-lane "${{ matrix.lane }}" || {
             echo
             echo "The previous release's tests fail against this branch's schema."
             echo "Check the failure for environment or pre-existing test issues."
