@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-08
+
 ### Branding
 
 - Add reusable lattice wordmarks, favicon formats and a shared login/setup lockup.
@@ -482,6 +484,29 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   navigates rather than only the report frame. Permission-denied responses,
   server errors and network failures do not sign anyone out, and public share
   and embed pages are unchanged.
+
+### Upgrade notes
+
+- Rebuild and redeploy generated report artifacts with the matching framework
+  release. Installing the package does not update existing static HTML or
+  bundled assets. Review the [report visual upgrade guide](trellum/docs/report-visual-upgrade.md)
+  for representative desktop and mobile comparisons.
+- LineChart plots now default to 220px at every viewport width. Existing
+  explicit colors are honored for unsplit dataset-bound series. Review custom
+  sizing and color lists after rebuilding.
+- Ordinary LineChart event names now fit beside in-plot markers where space
+  permits; crowded names remain available on selection and in the compact event
+  list. Use `event_labels="full"` or `"grouped"` to retain those alternative
+  presentations. Rebuild complete report output to apply the new default.
+- Grid `columns` now sets the maximum number of columns. Set it explicitly when
+  an existing automatic grid relied on the previous layout ignoring that count.
+- DataTable `max_rows` limits displayed rows; search and sort cover the matching
+  population before the display limit, and CSV exports all matching supplied rows in the selected sort order.
+  Review reports that relied on the former truncation behavior.
+- Apply the five portal migrations: assistant 0008 and 0009, core 0016, and
+  reports 0028 and 0029. Back up first, upgrade portal and runner images as a
+  pair, run the normal migration procedure for your deployment topology, and
+  verify health and schema after startup.
 
 ## [0.9.5] — 2026-10-26
 
@@ -1635,7 +1660,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/trellumhq/trellum/compare/v0.9.5...v0.10.0
 [0.9.5]: https://github.com/trellumhq/trellum/compare/v0.9.3...v0.9.5
 [0.9.4]: https://github.com/trellumhq/trellum/compare/v0.9.3...v0.9.4
 [0.9.1]: https://github.com/trellumhq/trellum/compare/v0.9.0...v0.9.1
