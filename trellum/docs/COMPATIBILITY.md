@@ -326,13 +326,15 @@ no host migration or export runtime update is required. See
 
 ## LineChart dated-event labels
 
-New LineChart builds default to keyword-only `event_labels="adaptive"`: dated
-buttons above the unchanged plot with local exact event details. A 40px rail
-(48px on phones) appears only when eligible events exist; compact date labels
-also have a visible name key. Explicit `"grouped"` retains numbered markers and
-their disclosure; `"full"` retains in-plot labels with collision protection.
-Native report/section exports include an exact key for clustered events and
-expand open details in the capture clone, subject to documented image bounds.
+New LineChart builds default to keyword-only `event_labels="adaptive"`: a small
+marker per event inside the unchanged plot, with each name beside its marker only
+where the measured name fits, and exact names and original dates on selection or
+in a compact "All N events" list. Every native event line and range remains, and
+no rail or key reserves space around the plot. Explicit `"grouped"` retains
+numbered markers and their disclosure; `"full"` retains in-plot labels with
+collision protection. Native report/section exports include an exact key when
+names are collapsed and expand an open list in the capture clone, subject to
+documented image bounds.
 This is an intentional default appearance change. Payloads missing the flag, other chart families
 and the two-argument shared annotation helper retain full labels. Positional and
 subclass constructors, explicit dataset binding precedence, values, event marks,

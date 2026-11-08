@@ -27,9 +27,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Existing Grid colors and explicit/category colors remain unchanged. The
   showcase and Player Overview opt into the setting for their six-chart grids.
 
-- Ordinary LineCharts now use readable adaptive event controls with local exact
-  details and collision grouping. Explicit grouped/full modes remain available;
-  native captures include clustered event identities without changing screen state.
+- Ordinary LineCharts now mark each dated event with a small in-plot marker and
+  show its name beside the marker only where the whole name fits the actual chart
+  area, including on narrow charts. Crowded names collapse to markers, with exact
+  names and original dates on selection and in a compact "All N events" list; the
+  separate rail, name key and repeated type text are removed. Explicit
+  grouped/full modes remain available; native captures keep collapsed event
+  identities without changing screen state.
 
 - A curated component tour with six purpose-based navigation cards and distinct
   table/chart views. Detailed developer fixtures remain available in source.
