@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Dispose FilterBar dropdown widgets and their cascading-filter subscriptions
+  before switching report scopes, so visible choices match the active dataset
+  without duplicated SlimSelect controls. Rebuild existing reports to include
+  the corrected runtime; no report-side dropdown cleanup is needed.
+
 ## [0.10.1] — 2026-11-08
 
 This recovery release includes the [report components, visual improvements and
