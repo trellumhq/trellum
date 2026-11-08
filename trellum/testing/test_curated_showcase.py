@@ -70,6 +70,17 @@ def test_curated_tour_navigation_filters_and_views(tmp_path, width):
             expect(trends.get_by_role('button', name='Hide trend', exact=True)).to_be_visible()
             expect(metrics.locator('.fw-kpi-value').first).to_have_text('$18.4k')
 
+            trends.get_by_role('tab', name='Events', exact=True).click()
+            event_chart = trends.locator('canvas[data-fw-title="Revenue and dated events"]')
+            event_chart.scroll_into_view_if_needed()
+            event_id = event_chart.get_attribute('id')
+            page.wait_for_function('id => _chartInstances[id]?._fwEventMarkers?.length === 12', arg=event_id)
+            assert page.evaluate('id => _chartInstances[id]._fwEventMarkers.some(m => !m.named)', event_id)
+            trends.get_by_role('button', name='All 12 events').click()
+            expect(trends.locator('.fw-event-panel:visible li')).to_have_count(12)
+            trends.get_by_role('button', name='Close event list').click()
+            trends.get_by_role('tab', name='Line', exact=True).click()
+
             tables = page.locator('#sec-tables')
             tables.scroll_into_view_if_needed()
             table = tables.get_by_role('tabpanel').filter(visible=True)

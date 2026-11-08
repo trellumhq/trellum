@@ -360,7 +360,12 @@
             list.replaceChildren(ol);
             list.scrollTop = previousScroll;
         }
+        function clearMetricHover(chart) {
+            chart.setActiveElements([]);
+            if (chart.tooltip) chart.tooltip.setActiveElements([], {x: 0, y: 0});
+        }
         function refresh(chart) {
+            clearMetricHover(chart);
             renderSelection(); renderPanel(); highlight(chart); chart.draw();
         }
         function returnFocus(chart) {
@@ -600,6 +605,15 @@
                 dated.forEach(function(d) { Object.assign(d.annotation, styleFor(d, selectedSet.has(_eventIdentity(d)))); });
             },
             afterUpdate: function(chart) { layout(chart); reconcile(chart); },
+            beforeEvent: function(chart, args) {
+                // A marker is an event target, not a nearest metric point.
+                // Clear an already-painted tooltip before opening its details.
+                var e = args.event;
+                if (e.type === 'mousemove' && e.native && hits(chart, e.native).length) {
+                    clearMetricHover(chart); chart.draw();
+                    return false;
+                }
+            },
             afterDraw: function(chart) {
                 if (!items.length) return;
                 var ctx = chart.ctx, css = getComputedStyle(document.documentElement);

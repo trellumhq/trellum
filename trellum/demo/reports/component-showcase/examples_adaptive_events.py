@@ -9,7 +9,7 @@ from trellum.components import DataSource, FilterBar, LineChart
 
 ANNOTATIONS = {
     "events": [
-        {"date": "2026-08-27", "label": "Campaign", "type": "campaign"},
+        {"date": "2026-08-27", "label": "Launch", "type": "campaign"},
         {"date": "2026-09-07", "label": "Store update", "type": "release"},
         {"date": "2026-09-28", "end_date": "2026-10-04", "label": "Carry-in campaign", "type": "campaign"},
         *[{"date": f"2026-10-{i + 1:02}", "label": f"October release {i + 1}", "type": "release"} for i in range(12)],

@@ -161,7 +161,7 @@ def browser_check(tmp_path, width):
         # Sparse short names fit beside their markers at any width, with no
         # phone breakpoint hiding them.
         sparse_state = layout(page, "Sparse events")
-        assert sparse_state["text"] == ["Campaign", "Store update"], sparse_state
+        assert sparse_state["text"] == ["Launch", "Store update"], sparse_state
         # Dense charts keep every marker; only measured crowded names collapse.
         dense_state = layout(page, "Dense events")
         assert dense_state["named"] < dense_state["count"] == 15
@@ -177,7 +177,7 @@ def browser_check(tmp_path, width):
         sparse_marker = markers(page, "Sparse events")[0]
         press(page, "Sparse events", sparse_marker, phone)
         detail = sparse.locator(".fw-event-detail")
-        assert detail.is_visible() and "Campaign" in detail.inner_text() and "2026-08-27" in detail.inner_text()
+        assert detail.is_visible() and "Launch" in detail.inner_text() and "2026-08-27" in detail.inner_text()
         assert not _TYPE_TEXT.search(sparse.inner_text())
         assert page.evaluate("document.activeElement.dataset.eventFocus") == "details"
         selected = layout(page, "Sparse events")
@@ -273,7 +273,14 @@ def browser_check(tmp_path, width):
         page.evaluate("""id=>{const cfg=_reportData.components[id];cfg.crossFilter='channel';cfg.crossFilterMode='dataset';
             _fwRenderers.chart(id,cfg);window.eventCrossFilters=[];window._fwCrossFilter=(...args)=>eventCrossFilters.push(args);}""", did)
         _canvas(page, "Dense events").scroll_into_view_if_needed()
+        # An existing metric tooltip must not obscure event details or the list.
+        canvas = _canvas(page, 'Dense events')
+        box = canvas.bounding_box()
+        metric_point = page.evaluate("id=>{const p=_chartInstances[id].getDatasetMeta(0).data[15];return {x:p.x,y:p.y}}", did)
+        page.mouse.move(box['x'] + metric_point['x'], box['y'] + metric_point['y'])
+        page.wait_for_function("id=>_chartInstances[id].tooltip.opacity>0", arg=did)
         press(page, "Dense events", markers(page, "Dense events")[3], phone)
+        page.wait_for_function("id=>_chartInstances[id].tooltip.opacity===0", arg=did)
         page.wait_for_timeout(150)
         assert page.evaluate('eventCrossFilters.length') == 0
         dense.get_by_role("button", name="Clear selected event").or_(dense.get_by_role("button", name="Close event list")).first.click()
@@ -398,7 +405,7 @@ def test_adaptive_names_follow_measured_width_in_both_directions(tmp_path):
             assert narrow[title]["named"] <= wide[title]["named"]
             assert wide_again[title]["text"] == wide[title]["text"]
         # The actual width, not a breakpoint, moves names out and back in.
-        assert wide["Sparse events"]["text"] == narrow["Sparse events"]["text"] == ["Campaign", "Store update"]
+        assert wide["Sparse events"]["text"] == narrow["Sparse events"]["text"] == ["Launch", "Store update"]
         assert wide["Dense events"]["named"] > narrow["Dense events"]["named"]
         assert wide_again["Dense events"]["named"] > narrow["Dense events"]["named"]
         browser.close()

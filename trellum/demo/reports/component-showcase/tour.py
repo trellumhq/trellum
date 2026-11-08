@@ -154,12 +154,16 @@ def _metrics():
 def _trends():
     frame = daily_frame()
     dataset = "tour_trends"
+    event_frame = pd.DataFrame({
+        "Day": pd.date_range("2026-11-01", periods=30).strftime("%Y-%m-%d"),
+        "Revenue": [1400 + i * 33 + (i % 7) * 45 for i in range(30)],
+    })
     horizon = pd.DataFrame({"Day": pd.date_range("2026-10-01", periods=10).strftime("%Y-%m-%d"),
                             "Observed": [42, 45, 43, 48, 51, 49, 54, None, None, None],
                             "Forecast": [None] * 7 + [52, 55, 57]})
     return [
         note("Choose how to explain change over time.",
-             "Platform and dates affect Line, Area and Dual axis. Forecast is a separate fixed illustration."),
+             "Platform and dates affect Line, Area and Dual axis. Forecast and Events are separate fixed illustrations."),
         DataSource(dataset, frame), FilterBar(dataset, frame, filters=[
             {"column": "Platform", "label": "Trend platform", "type": "toggle"},
             {"column": "Day", "label": "Trend dates", "type": "date_range"},
@@ -191,6 +195,11 @@ def _trends():
                 "Dashed forecast with hollow dots. No forecast is calculated by the chart."),
                 LineChart(horizon, "Day", ["Observed", "Forecast"], "Observed and supplied forecast", static=True,
                           forecast_series=["Forecast"], header_context="Illustration supplied as of 7 October")),
+            tab("Events", note("Event names stay beside their markers wherever they fit.",
+                "Select a marker or open All events. Names return as more space becomes available.",
+                "Synthetic November events; the platform and trend dates above do not affect this fixed example."),
+                LineChart(event_frame, "Day", "Revenue", "Revenue and dated events",
+                          static=True, y_format="currency")),
         ], id="tour_trend_views", label="Time-series example"),
     ]
 
