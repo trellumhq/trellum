@@ -129,15 +129,12 @@
     // An optional collector is used by owned LineChart event modes. Associate the
     // original event with the annotation here, at the one eligibility/snap path;
     // never recover dates or identities from positioned category labels.
-    function _buildAnnotations(events, labels, dated, showEvents) {
+    function _buildAnnotations(events, labels, dated) {
         var _wh = window._reportData && window._reportData._weekday_highlight;
         if ((!events || !events.length) && !_wh) return {};
         if (!labels || !labels.length) return {};
         if (!/^\d{4}-\d{2}-\d{2}/.test(labels[0])) return {};
         if (!_annoStateLoaded) { _loadAnnoState(events); _annoStateLoaded = true; }
-        // A compact chart may omit dated overlays while retaining weekday guides
-        // and the report's shared event population and visibility selection.
-        if (showEvents === false) events = [];
         // Box-annotation labels DON'T render label.backgroundColor in the
         // plugin (the text sits on the translucent box fill over the chart
         // background), so their text must contrast with the chart bg. Use
@@ -1010,8 +1007,8 @@
             var labels = chart.data && chart.data.labels;
             if (chart._fwDatedEvents) {
                 chart._fwDatedEvents.length = 0;
-                chart.config.options.plugins.annotation.annotations = _buildAnnotations(events, labels, chart._fwDatedEvents, chart._fwShowEvents);
-            } else chart.options.plugins.annotation.annotations = _buildAnnotations(events, labels, null, chart._fwShowEvents);
+                chart.config.options.plugins.annotation.annotations = _buildAnnotations(events, labels, chart._fwDatedEvents);
+            } else chart.options.plugins.annotation.annotations = _buildAnnotations(events, labels);
             chart.update('none');
         });
     }

@@ -7,13 +7,6 @@ lines are drawn as quiet dotted strokes; types still determine the existing
 colors and the report-wide annotation type controls still show or hide them.
 No eligible dated events means no markers, row or reserved space.
 
-For compact summary tiles, use keyword-only `show_events=False` to omit dated
-event markers, names, lines, ranges and event controls on that chart. The
-default is `True`; existing charts and payloads retain their behavior. Other
-charts and report-wide annotation controls still have the full event data.
-Recurring weekday guides remain independent. Use larger detail charts for
-event context when the same dates would otherwise be repeated across a grid.
-
 Names are shown only where they fit. Each name is measured against the actual
 chart area: it appears beside its own marker when the whole text fits without
 covering another marker or name, and otherwise only the marker remains. There is

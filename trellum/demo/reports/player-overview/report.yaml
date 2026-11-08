@@ -41,6 +41,6 @@ display:
   color: "#4e79a7"
   priority: 1
 
-# Keep operational events visible; readers can enable the busier overlays.
+# Keep dated context visible; readers can add the broader A/B-test overlays.
 annotations:
-  default_visible: [release, incident]
+  default_visible: [release, incident, campaign]

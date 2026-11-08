@@ -11,18 +11,15 @@ Sessions, Transactions, IAP Revenue and Ad Revenue. The grid fits fewer
 columns in narrower containers and stacks on a phone. Native chart titles,
 legends and CSV controls remain available.
 
-These six summary tiles use `show_events=False`, so repeated event labels,
-bands and event-list buttons do not crowd the compact grid. Open Engagement
-or Revenue for the larger charts with event context. Their annotation controls
-and supplied events are unchanged.
-
 The final Overview card uses the concise display label **Ad Revenue %** so it
 fits at the desktop card width. Its `ad_share` metric and percentage value are
 unchanged.
 
-The demo starts with release and incident annotations visible. Campaigns and
-A/B tests are off initially to reduce overlapping shaded ranges; readers can
-enable them in the annotation controls. This uses the existing
+The demo starts with releases, incidents and campaigns visible, including on
+the six compact charts. A/B-test bands are off initially to reduce overlapping
+shading; readers can enable them in the annotation controls. Native adaptive
+markers retain every selected event, with names shown where they fit and exact
+details on selection. This uses the existing
 `annotations.default_visible` report setting. Saved viewer choices and explicit
 `anno` URL selections retain their normal precedence.
 

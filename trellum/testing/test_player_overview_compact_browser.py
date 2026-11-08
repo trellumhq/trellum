@@ -102,10 +102,16 @@ def _check_trends(page, selected):
                     boxHeight: canvas.closest('.fw-chart-container').getBoundingClientRect().height,
                     summary: summary.querySelector('.fw-chart-summary-value').textContent,
                     label: summary.querySelector('.fw-chart-summary-label').textContent,
+                    events: (chart._fwEventMarkers || []).flatMap(m => m.events.map(e => e.event.label)),
                     title: canvas.closest('.fw-grid-item, .fw-grid-card').querySelector('.fw-chart-title').textContent};
         }""", chart_id)
         assert state["labels"] == expected.index.tolist()
         assert state["data"] == pytest.approx(expected[column].tolist())
+        expected_events = [name for start, end, name in (
+            ("2026-10-14", "2026-10-14", "Release"),
+            ("2026-10-25", "2026-10-27", "Campaign"),
+        ) if start <= expected.index[-1] and end >= expected.index[0]]
+        assert sorted(state["events"]) == sorted(expected_events)
         assert state["height"] == state["boxHeight"] == 160
         assert state["label"] == "Daily avg" and state["title"] == title
         # Independently calculate the statistic; use the native formatter only

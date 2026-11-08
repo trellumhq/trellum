@@ -96,9 +96,6 @@ class LineChart(_ChartBase):
     supplied inputs per point. Invalid supplied observations become null gaps
     with selected-data context below the plot. See docs/report-line-availability.md.
 
-    ``show_events=False``: omit dated event overlays and event controls on this
-    chart; other charts and recurring weekday guides are unchanged. Default True.
-
     ``trend_line``: optional keyword-only linear OLS declaration. Fits eligible
     observed daily values without altering source data; see docs/report-chart-trends.md.
 
@@ -147,7 +144,6 @@ class LineChart(_ChartBase):
     category_colors: Optional[dict] = field(default=None, kw_only=True)
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
     event_labels: str = field(default="adaptive", kw_only=True)
-    show_events: bool = field(default=True, kw_only=True)
     series_availability: Optional[list[dict] | tuple[dict, ...]] = field(default=None, kw_only=True)
     result_presentation: bool = field(default=True, kw_only=True)
     point_context: Optional[list[dict]] = field(default=None, kw_only=True)
@@ -198,13 +194,10 @@ class LineChart(_ChartBase):
         return {"header_summary": out}
 
     def _style_config(self) -> dict[str, Any]:
-        if type(self.show_events) is not bool:
-            raise ValueError("LineChart show_events must be bool.")
         if type(self.result_presentation) is not bool:
             raise ValueError("LineChart result_presentation must be bool.")
         return {"line_style": "adaptive", "tension": self.tension,
                 "event_labels": self.event_labels,
-                **({"show_events": False} if not self.show_events else {}),
                 **({"line_result_presentation": True} if self.result_presentation else {})}
 
     def _validate_event_labels(self) -> None:

@@ -189,8 +189,6 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
         point_context_config(chart)
     except ValueError as exc:
         problems.append(("line-chart-point-context-invalid", str(exc)))
-    if type(getattr(chart, "show_events", True)) is not bool:
-        problems.append(("line-chart-show-events-invalid", "LineChart show_events must be bool."))
     if type(getattr(chart, "result_presentation", True)) is not bool:
         problems.append(("line-chart-result-presentation-invalid", "LineChart result_presentation must be bool."))
     try:

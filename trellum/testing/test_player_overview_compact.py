@@ -115,7 +115,15 @@ def build_pair(tmp_path, monkeypatch):
         module.PlayerOverviewReport().generate(ctx)
         details = compute_details(ctx, mock_data=True)
         result = validate_report(ctx, details=details)
-        render_report(ctx, str(output), auto_refresh=False, validation=result, details=details)
+        events = [
+            {"date": "2026-10-14", "label": "Release", "type": "release"},
+            {"date": "2026-10-25", "end_date": "2026-10-27", "label": "Campaign", "type": "campaign"},
+            {"date": "2026-10-20", "end_date": "2026-10-23", "label": "Experiment", "type": "ab_test"},
+        ]
+        for event in events:
+            event["default_visible"] = event["type"] in config["annotations"]["default_visible"]
+        render_report(ctx, str(output), data={"_events": events}, auto_refresh=False,
+                      validation=result, details=details)
         result.write(str(output))
         (output / "_details.json").write_text(json.dumps(details, indent=2, default=str))
         copy_vendor_tree(output)
@@ -186,7 +194,7 @@ def test_native_generator_preserves_sources_queries_kpis_and_existing_components
             "event_date", column, title, "main", "compact")
         assert chart.header_summary == dict(stat="mean", series=0, label="Daily avg", format=fmt)
         assert chart.stack_by is None and chart.y_format == fmt
-        assert chart.show_events is False
+        assert chart.event_labels == "adaptive"
     # Source populations/grains and the chunked retention contract remain independent.
     sources = {c.id: c for s in after["ctx"].sections for c in s["components"]
                if isinstance(c, DataSource)}
