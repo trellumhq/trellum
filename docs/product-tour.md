@@ -13,8 +13,9 @@ author reports.
 
 Screenshots were refreshed from the v0.10.1 release using the isolated demo
 setup. Console pages use their supported neutral Dark mode; report documents
-use the demo project’s Trellum Dark theme. Images retain their original
-2530 × 1424 dimensions (2530 × 1600 for Store Health).
+use the demo project’s Trellum Dark theme. Dense screens retain wide captures;
+sparse pages and reports use narrower viewports and focused crops. The table
+below records the final image dimensions.
 
 ## Walkthrough
 
@@ -75,10 +76,19 @@ the imported repository and built report breadcrumbs retain the demo name.
 Use the seeded demo administrator through the DEBUG-only direct sign-in
 route. Leave remote Git, email, sharing and AI providers unconfigured.
 
-Capture the actual pages with Chromium at device scale 1, with Dark console
-mode and the demo project's Trellum Dark report theme. Use the existing
-`website/static/media/tour/*.png` names and dimensions. The alert example is
-an unsaved form draft; do not submit or test it. Optimize PNGs losslessly.
+Capture the actual pages with Chromium, with Dark console mode and the demo
+project's Trellum Dark report theme. Use the existing
+`website/static/media/tour/*.png` names. The focused retakes use 1280px-wide
+viewports (1440px for Experiments, Alerts and Assistant), with browser device
+scale factor 2. The browser exports PNGs at up to 1280 pixels wide; crop those
+exports without upscaling. Console crops retain the scope/page headings and
+remove navigation and unused space. Report crops retain the header, filters,
+headline metrics and complete featured charts. The alert example is
+an unsaved form draft focused on its condition and timing; do not submit or
+test it. The assistant crop focuses on readiness, provider and model. Report
+Analytics shows its heading and the first eight rows. Optimize PNGs losslessly.
+Set each retaken image’s width, height and link aspect ratio in `tour.html` to
+its final pixels so the tour does not add a fixed empty frame around the crop.
 Review every image for completed content, matching captions and accidental
 credentials. The analytics screen shows only local demo activity.
 
@@ -88,3 +98,25 @@ After capture, remove only this compose project's containers and volumes with
 its generated demo environment for interpolation. Remove the dedicated
 `trellum-tour-shots:dev` and `trellum-tour-shots-runner:dev` images. Never
 prune shared Docker resources.
+
+## Capture classification and framing
+
+All files below are under `website/static/media/tour/`. “Previous” refers to
+the initial v0.10.1 refresh. Dense captures are kept byte-for-byte.
+
+| Image | Classification | Action | Previous pixels | Final pixels |
+|---|---|---|---|---|
+| `portal-alerts.png` | Sparse | Retaken | 2530 × 1424 | 1040 × 588 |
+| `portal-analytics.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 674 |
+| `portal-annotations.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
+| `portal-assistant.png` | Sparse | Retaken | 2530 × 1424 | 1040 × 814 |
+| `portal-datasources.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 617 |
+| `portal-experiments.png` | Sparse | Retaken | 2530 × 1424 | 1040 × 736 |
+| `portal-live-queries.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 525 |
+| `portal-metrics.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
+| `portal-operations.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
+| `portal-overview.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
+| `portal-player-report.png` | Report | Retaken | 2530 × 1424 | 1280 × 1012 |
+| `portal-repository.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
+| `portal-sharing.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 633 |
+| `store-health-dark.png` | Report | Retaken | 2530 × 1600 | 1280 × 894 |
