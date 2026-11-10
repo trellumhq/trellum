@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Stabilize funnel and heatmap visual compatibility checks against one-level
+  browser rounding in surrounding controls, while comparing chart pixels,
+  geometry and exported data exactly.
 - Keep local filters on retained live results responsive while their parent
   query is pending.
 - Keep mounted FilterBars usable when their dataset is removed and recreated,

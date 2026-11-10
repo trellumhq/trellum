@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops
 
 from trellum.components import BarChart, DataSource, FilterBar, FunnelChart, TabGroup
 from trellum.components.charts._funnel_summary import funnel_option_problems
@@ -298,11 +298,22 @@ def test_actual_baseline_off_pixels_geometry_data_csv(tmp_path, width):
                     _settle(page)
                     page.mouse.move(0, 0)
                     geometry = [_plot(page, _id(page, title)) for title in ('Static', 'Bound')]
+                    plots = [page.locator('#' + _id(page, title)).evaluate('canvas=>canvas.toDataURL()')
+                             for title in ('Static', 'Bound')]
                     image = page.locator('.fw-section').screenshot(path=str(EVIDENCE / f'opt-out-{name}-{width}-{theme.split()[-1]}.png'), animations='disabled')
                     csv = [_csv(page, _container(page, _id(page, title)), EVIDENCE / f'baseline-{name}-{title}-{width}-{theme.split()[-1]}.csv') for title in ('Static', 'Bound')]
-                    results[name, theme] = (geometry, Image.open(BytesIO(image)).convert('RGBA').tobytes(), csv)
+                    results[name, theme] = (geometry, plots, Image.open(BytesIO(image)).convert('RGBA'), csv)
                 page.close()
             for theme in ('trellum light', 'trellum dark'):
-                assert results['baseline', theme] == results['current', theme]
+                before, after = results['baseline', theme], results['current', theme]
+                assert before[0] == after[0], f'{theme}: plot geometry/data differ'
+                assert all(a == b for a, b in zip(before[1], after[1], strict=True)), f'{theme}: canvas pixels differ'
+                assert before[3] == after[3], f'{theme}: CSV differs'
+                assert before[2].size == after[2].size
+                # Whole-panel captures include sticky header controls. Chromium
+                # can round their antialiased edges by one RGB level after a
+                # theme switch; the chart canvases above remain byte-exact.
+                extrema = ImageChops.difference(before[2], after[2]).getextrema()
+                assert all(high <= 1 for _, high in extrema[:3]) and extrema[3][1] == 0, (theme, extrema)
         finally:
             browser.close()
