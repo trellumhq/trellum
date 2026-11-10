@@ -1,5 +1,11 @@
 window._fwFilterTypes = window._fwFilterTypes || {};
 window._fwFilterTypes['slider'] = {
+    disposeControls: function(el) {
+        var disposers = el._fwSliderDisposers || [];
+        el._fwSliderDisposers = [];
+        disposers.forEach(function(dispose) { dispose(); });
+    },
+
     _fmt: function(fc, value) {
         var fn = window.getFormatter ? window.getFormatter(fc.format || 'number') : null;
         return fn ? fn(Number(value)) : String(value);
@@ -109,6 +115,7 @@ window._fwFilterTypes['slider'] = {
     wireControls: function(el, cfg, dsId, h) {
         var self = window._fwFilterTypes['slider'];
         if (typeof noUiSlider === 'undefined') return;
+        var disposers = el._fwSliderDisposers = [];
 
         el.querySelectorAll('.fw-slider').forEach(function(node) {
             var fid = node.dataset.filterId;
@@ -180,30 +187,32 @@ window._fwFilterTypes['slider'] = {
             // (the 'change' path, release/keyboard-settle) is the real
             // commit: auto-queries, same as every other control type.
             var applyValues = function(values, commit) {
-                var set = commit ? h.setFilter : h.setFilterTransient;
-                var prop = commit ? h.propagate : h.propagateTransient;
-                if (isOrdinal) {
-                    if (isSingle) {
-                        var pos = Math.round(Number(values[0]));
-                        var val = fc.values[pos];
-                        set(fc.id, fc.column, 'equals', String(val));
-                        prop(fc.column, 'equals', String(val));
+                h.transaction(function() {
+                    var set = commit ? h.setFilter : h.setFilterTransient;
+                    var prop = commit ? h.propagate : h.propagateTransient;
+                    if (isOrdinal) {
+                        if (isSingle) {
+                            var pos = Math.round(Number(values[0]));
+                            var val = fc.values[pos];
+                            set(fc.id, fc.column, 'equals', String(val));
+                            prop(fc.column, 'equals', String(val));
+                        } else {
+                            var loPos = Math.round(Number(values[0]));
+                            var hiPos = Math.round(Number(values[1]));
+                            var span = fc.values.slice(loPos, hiPos + 1);
+                            set(fc.id, fc.column, 'in', span);
+                            prop(fc.column, 'in', span);
+                        }
+                    } else if (isSingle) {
+                        var snapped = self._nearestValue(fc, Number(values[0]));
+                        set(fc.id, fc.column, 'equals', String(snapped));
+                        prop(fc.column, 'equals', String(snapped));
                     } else {
-                        var loPos = Math.round(Number(values[0]));
-                        var hiPos = Math.round(Number(values[1]));
-                        var span = fc.values.slice(loPos, hiPos + 1);
-                        set(fc.id, fc.column, 'in', span);
-                        prop(fc.column, 'in', span);
+                        var rangeVal = { min: Number(values[0]), max: Number(values[1]) };
+                        set(fc.id, fc.column, 'numrange', rangeVal);
+                        prop(fc.column, 'numrange', rangeVal);
                     }
-                } else if (isSingle) {
-                    var snapped = self._nearestValue(fc, Number(values[0]));
-                    set(fc.id, fc.column, 'equals', String(snapped));
-                    prop(fc.column, 'equals', String(snapped));
-                } else {
-                    var rangeVal = { min: Number(values[0]), max: Number(values[1]) };
-                    set(fc.id, fc.column, 'numrange', rangeVal);
-                    prop(fc.column, 'numrange', rangeVal);
-                }
+                });
             };
 
             // Live while dragging: every tick re-filters, but collapsed to at
@@ -213,6 +222,14 @@ window._fwFilterTypes['slider'] = {
             // never spam the sharable URL.
             var pending = null;
             var frame = null;
+            var disposed = false;
+            disposers.push(function() {
+                disposed = true;
+                if (frame !== null) window.cancelAnimationFrame(frame);
+                frame = null;
+                pending = null;
+                if (node.noUiSlider) node.noUiSlider.destroy();
+            });
             node.noUiSlider.on('update', function(values) {
                 self._updateReadout(el, fc, values);
             });
@@ -221,14 +238,16 @@ window._fwFilterTypes['slider'] = {
                 if (frame === null) {
                     frame = window.requestAnimationFrame(function() {
                         frame = null;
-                        if (pending) { applyValues(pending, false); pending = null; }
+                        if (!disposed && pending) { applyValues(pending, false); pending = null; }
                     });
                 }
             });
             node.noUiSlider.on('change', function(values) {
-                if (frame !== null) { window.cancelAnimationFrame(frame); frame = null; pending = null; }
-                applyValues(values, true);
-                h.urlWrite();
+                h.transaction(function() {
+                    if (frame !== null) { window.cancelAnimationFrame(frame); frame = null; pending = null; }
+                    applyValues(values, true);
+                    h.urlWrite();
+                });
             });
         });
     }

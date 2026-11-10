@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Reduce cascading-dropdown allocations by reading distinct option values directly
+  from encoded data and reusing matching row indices for equivalent filter queries.
+- Settle cascading selections before delivering filtered rows to charts, and
+  suppress redundant dropdown callbacks during option updates. Preserve child
+  selections when unrelated filters produce an empty result.
+
+### Upgrade notes
+
+- Rebuild reports to include the optimized filter runtime. Existing generated HTML
+  keeps its embedded runtime until it is rebuilt.
+
 ## [0.10.2] — 2026-11-08
 
 ### Fixed

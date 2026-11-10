@@ -729,7 +729,15 @@ FilterBar("cpd_pkg", df, filters=[
 - `depends_on` accepts a single column or a list of columns.
 - Both filters must live on the same FilterBar and refer to real DataFrame columns. The validator checks this (`filter-depends-on-missing`, `filter-depends-on-self`).
 - Currently selected values that remain valid under the parent's new selection are preserved; values that drop out are removed and the URL is rewritten.
-- The child's options are derived using `getFilteredExcluding(dsId, [self_col])` so the child's own selection doesn't restrict its own options.
+- The child's options are derived using `getDistinctValues(dsId, self_col, {excludingColumns: [self_col]})` so its own selection does not restrict its options. This reads the requested column without constructing complete row objects.
+
+Cascading controls settle their selections before chart subscribers receive
+filtered rows. A parent change and its child-selection corrections form one
+update, including propagated filters and the URL. An unrelated filter change
+can produce an empty report while preserving the child's current selection;
+it does not count as a declared parent change.
+For live sources, cascading availability waits for the new server response.
+Clearing an invalid child can then require a further query for the broader result.
 
 For entity drill-down, a child dropdown can additionally declare
 `"clear_on_parent_change": True`. A real parent selection change then clears
@@ -1493,6 +1501,7 @@ The framework embeds a JS runtime in every report. All public APIs are accessibl
 | `fw.filterEngine.setFilter(dsId, filterId, column, mode, value)` | Set a filter (modes: `equals`, `in`, `range`, `flag`) |
 | `fw.filterEngine.getFiltered(dsId)` | Get current filtered rows |
 | `fw.filterEngine.getFilteredExcluding(dsId, columns)` | Get filtered rows while ignoring specific filter columns |
+| `fw.filterEngine.getDistinctValues(dsId, column, options)` | Get sorted, distinct option strings without constructing rows. Set `options.excludingColumns` to ignore local filters on those columns. Null and empty values are omitted. |
 | `fw.filterEngine.getFilterState(dsId)` | Read-only snapshot of active filters |
 | `fw.filterEngine.getDatasetIds()` | List initialized dataset IDs |
 | `fw.filterEngine.getDatasetRowCount(dsId)` | Return row count for dataset |
@@ -1504,6 +1513,13 @@ The framework embeds a JS runtime in every report. All public APIs are accessibl
 | `fw.filterEngine.removeDataset(dsId)` | Remove dataset state/subscribers from engine |
 | `fw.filterEngine.subscribe(dsId, id, fn)` | Subscribe to filter changes |
 | `fw.filterEngine.notify(dsId)` | Trigger subscriber callbacks |
+
+`getDistinctValues()` applies the same effective filters as
+`getFilteredExcluding()`. Exclusions on a scoped dataset affect its own filters;
+restrictions inherited from its ancestors still apply. Excluding the requested
+column is explicit, as in `{excludingColumns: [column]}`. The result follows
+dropdown option semantics: values are converted to strings, deduplicated and
+sorted with JavaScript's default string ordering.
 
 ### Aggregation
 

@@ -3,6 +3,47 @@ window._fwFilterTypes['dropdown'] = {
     _ssInstances: {},
     _batchMode: false,
 
+    selectedValues: function(ss) {
+        // Empty is reserved for the hidden single-select All placeholder;
+        // actual dropdown options have always omitted empty/null cells.
+        return (ss.getSelected() || []).filter(function(value) { return value !== ''; });
+    },
+
+    setCascadeOptions: function(ss, fc, available, selected, optionsChanged) {
+        // SlimSelect's single-select store turns setSelected([]) into the first
+        // option. Its supported placeholder option represents All coherently in
+        // both the native select and visible widget, without adding a menu item.
+        var needsPlaceholder = fc.multi === false && selected.length === 0;
+        if (needsPlaceholder && !ss._fwCascadePlaceholder) optionsChanged = true;
+        if (needsPlaceholder) ss._fwCascadePlaceholder = true;
+        if (optionsChanged) {
+            var data = available.map(function(value) { return {text: value, value: value}; });
+            if (ss._fwCascadePlaceholder) data.unshift({text: fc.placeholder || '(All)',
+                value: '', placeholder: true, display: false});
+            ss.setData(data);
+        }
+        ss.setSelected(selected.length ? selected : (ss._fwCascadePlaceholder ? [''] : []), false);
+    },
+
+    batchControls: function(controls, fn) {
+        var previous = this._batchMode;
+        // SlimSelect debounces afterChange. A synchronous boolean alone cannot
+        // suppress callbacks already scheduled by programmatic setData calls.
+        var callbacks = controls.map(function(ss) {
+            var callback = ss.events && ss.events.afterChange;
+            if (ss.events) ss.events.afterChange = undefined;
+            return callback;
+        });
+        this._batchMode = true;
+        try { return fn(); }
+        finally {
+            this._batchMode = previous;
+            controls.forEach(function(ss, i) {
+                if (ss.events) ss.events.afterChange = callbacks[i];
+            });
+        }
+    },
+
     disposeControls: function(el) {
         var disposers = el._fwDropdownDisposers || [];
         el._fwDropdownDisposers = [];
@@ -66,10 +107,18 @@ window._fwFilterTypes['dropdown'] = {
                         // none), not an array -- normalize to the same
                         // zero-or-one-element array shape 'in' mode expects.
                         var list = Array.isArray(newVal) ? newVal : (newVal ? [newVal] : []);
-                        var arr = list.map(function(v) { return v.value; });
-                        h.setFilter(fc.id, fc.column, 'in', arr);
-                        h.propagate(fc.column, 'in', arr);
-                        h.urlWrite();
+                        var arr = list.filter(function(v) { return !v.placeholder; }).map(function(v) { return v.value; });
+                        // Ignore an older debounced event after preparation
+                        // corrected the control, or an already committed value.
+                        var signature = function(values) { return JSON.stringify(Array.from(new Set(values)).sort()); };
+                        if (signature(arr) !== signature(self.selectedValues(ss))) return;
+                        var committed = window._fwFilterEngine.getFilterState(dsId)[fc.id];
+                        if (committed && committed.mode === 'in' && signature(committed.value || []) === signature(arr)) return;
+                        h.transaction(function() {
+                            h.setFilter(fc.id, fc.column, 'in', arr);
+                            h.propagate(fc.column, 'in', arr);
+                            h.urlWrite();
+                        });
                     }
                 }
             });
@@ -95,113 +144,19 @@ window._fwFilterTypes['dropdown'] = {
                 ss.destroy();
             });
             if (fc && fc._urlValues && fc._urlValues.length) {
-                ss.setSelected(fc._urlValues);
+                ss.setSelected(fc._urlValues, false);
             } else if (fc && fc.default_empty) {
-                self._batchMode = true;
-                try {
-                    ss.setSelected([]);
+                self.batchControls([ss], function() {
+                    self.setCascadeOptions(ss, fc, fc.options.map(String), [], true);
                     h.setFilter(fc.id, fc.column, 'in', []);
                     h.propagate(fc.column, 'in', []);
-                } finally {
-                    self._batchMode = false;
-                }
+                });
             }
 
-            // ── Cascading (depends_on) support ────────────────────────
-            // When the parent filter changes, recompute this dropdown's
-            // option list from the parent-filtered rows of the DataSource.
-            // The filter engine notifies subscribers on EVERY filter
-            // change (including the child's own selection), so we cache:
-            //   (a) parent column selection signature  → skip recompute
-            //       when parents didn't change (prevents flicker on
-            //       self-select);
-            //   (b) computed option list                → skip ss.setData
-            //       when options are identical (avoid re-render).
+            // FilterBar coordinates all cascading controls before row consumers
+            // are notified. A dropdown owns only its control and disposal.
             if (fc && fc.depends_on && fc.depends_on.length) {
-                var parentCols = fc.depends_on;
-                var selfCol = fc.column;
-                var lastParentSig = null;
-                var lastOptionList = null;
-                var recompute = function() {
-                    if (disposed || !window._fwFilterEngine.isReady(dsId)) return;
-                    // Cheap parent-signature check: only do the heavy
-                    // scan + setData when a parent's selection changed.
-                    var state = window._fwFilterEngine.getFilterState
-                        ? window._fwFilterEngine.getFilterState(dsId)
-                        : (window._fwFilterEngine._state[dsId] || {});
-                    var sigParts = [];
-                    for (var pi = 0; pi < parentCols.length; pi++) {
-                        var pc = parentCols[pi];
-                        var found = fc.clear_on_parent_change ? '[]' : '';
-                        for (var fk in state) {
-                            if (state[fk] && state[fk].column === pc) {
-                                var value = state[fk].value;
-                                if (fc.clear_on_parent_change) {
-                                    if (Array.isArray(value)) value = Array.from(new Set(value)).sort();
-                                    else if ((state[fk].mode === 'equals' && value === '__all__') ||
-                                             (state[fk].mode === 'flag' && value === 'all')) value = [];
-                                    found = JSON.stringify(value);
-                                } else found = JSON.stringify(value || null);
-                                break;
-                            }
-                        }
-                        sigParts.push(pc + '=' + found);
-                    }
-                    var sig = fc.clear_on_parent_change ? JSON.stringify(sigParts) : sigParts.join('|');
-                    if (sig === lastParentSig) return;
-                    var clearChild = fc.clear_on_parent_change && lastParentSig !== null;
-                    lastParentSig = sig;
-
-                    var rows = window._fwFilterEngine.getFilteredExcluding(dsId, [selfCol]);
-                    var seen = Object.create(null);
-                    for (var i = 0; i < rows.length; i++) {
-                        var v = rows[i][selfCol];
-                        if (v == null || v === '') continue;
-                        seen[String(v)] = true;
-                    }
-                    var available = Object.keys(seen).sort();
-                    var availableSig = JSON.stringify(available);
-
-                    var currentSel = ss.getSelected() || [];
-                    var preserved = currentSel.filter(function(v) {
-                        return seen[String(v)];
-                    });
-                    if (clearChild) preserved = [];
-                    var optionsChanged = (availableSig !== lastOptionList);
-                    lastOptionList = availableSig;
-
-                    if (optionsChanged) {
-                        self._batchMode = true;
-                        try {
-                            ss.setData(available.map(function(v) {
-                                return { text: v, value: v };
-                            }));
-                            if (preserved.length || clearChild) ss.setSelected(preserved);
-                        } finally {
-                            self._batchMode = false;
-                        }
-                    }
-                    if (clearChild && !optionsChanged) {
-                        self._batchMode = true;
-                        try { ss.setSelected([]); } finally { self._batchMode = false; }
-                    }
-                    // Push filter through only if the preserved set changed
-                    // — protects against ghost selections after a parent
-                    // narrowing event.
-                    if (preserved.length !== currentSel.length) {
-                        h.setFilter(fc.id, fc.column, 'in', preserved);
-                        h.propagate(fc.column, 'in', preserved);
-                        h.urlWrite();
-                    }
-                };
-                window._fwFilterEngine.onReady(dsId, function() {
-                    // Readiness can arrive after this scope was replaced.
-                    if (disposed) return;
-                    recompute();
-                    unsubscribe = window._fwFilterEngine.subscribe(
-                        dsId, 'cascade_' + fid, function() { recompute(); }
-                    );
-                });
+                unsubscribe = h.registerCascade(fc, ss, function() { return disposed; });
             }
         });
 
@@ -210,24 +165,30 @@ window._fwFilterTypes['dropdown'] = {
             if (!link) return;
             e.preventDefault();
             var fid = link.dataset.filterId;
-            var ss = self._ssInstances[fid];
+            var select = Array.from(el.querySelectorAll('select.fw-dropdown')).find(function(node) {
+                return node.dataset.filterId === fid;
+            });
+            var ss = select && select._fwSlimSelect;
             var fc = h.findFc(fid);
             if (!ss || !fc) return;
-            self._batchMode = true;
-            try {
-                if (link.dataset.action === 'select-all') {
-                    ss.setSelected(fc.options.map(String));
-                } else {
-                    ss.setSelected([]);
-                }
-            } finally {
-                self._batchMode = false;
-            }
-            var selected = ss.getSelected();
-            var arr = Array.isArray(selected) ? selected : (selected ? [selected] : []);
-            h.setFilter(fc.id, fc.column, 'in', arr);
-            h.propagate(fc.column, 'in', arr);
-            h.urlWrite();
+            h.transaction(function() {
+                self.batchControls([ss], function() {
+                    if (link.dataset.action === 'select-all') {
+                        ss.setSelected(ss.getData().filter(function(option) { return !option.disabled && !option.placeholder; }).map(function(option) {
+                            return option.value;
+                        }));
+                    } else {
+                        var available = ss.getData().filter(function(option) { return !option.placeholder; }).map(function(option) {
+                            return option.value;
+                        });
+                        self.setCascadeOptions(ss, fc, available, [], false);
+                    }
+                });
+                var arr = self.selectedValues(ss);
+                h.setFilter(fc.id, fc.column, 'in', arr);
+                h.propagate(fc.column, 'in', arr);
+                h.urlWrite();
+            });
         });
     }
 };
