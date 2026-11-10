@@ -5,7 +5,13 @@
         _bars: [],
 
         register: function(dsId, filters, getState) {
-            this._bars.push({dsId: dsId, filters: filters, getState: getState});
+            var bar = {dsId: dsId, filters: filters, getState: getState};
+            var bars = this._bars;
+            bars.push(bar);
+            return function() {
+                var i = bars.indexOf(bar);
+                if (i !== -1) bars.splice(i, 1);
+            };
         },
 
         parse: function() {
@@ -16,6 +22,12 @@
         },
 
         write: function() {
+            var self = this, engine = window._fwFilterEngine;
+            if (engine) engine.afterTransaction('url_sync', function() { self._writeNow(); });
+            else this._writeNow();
+        },
+
+        _writeNow: function() {
             var sp = new URLSearchParams();
             var multiBar = this._bars.length > 1;
             for (var b = 0; b < this._bars.length; b++) {

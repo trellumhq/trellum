@@ -146,7 +146,13 @@ def _switch(page, scope):
 
 def _cascade_counts(page):
     return page.evaluate(
-        "Object.fromEntries(Object.entries(_fwFilterEngine._subscribers).map(([id,rows])=>[id,rows.filter(r=>r.id.startsWith('cascade_')).length]))"
+        """() => {
+            const e = _fwFilterEngine, preparers = e._preparers || {};
+            const ids = new Set([...Object.keys(e._subscribers), ...Object.keys(preparers)]);
+            return Object.fromEntries([...ids].map(id => [id,
+                [...(e._subscribers[id] || []), ...(preparers[id] || [])]
+                    .filter(entry => entry.id.startsWith('cascade_')).length]));
+        }"""
     )
 
 
@@ -214,15 +220,15 @@ def test_late_readiness_cannot_revive_disposed_scope(_playwright, scope_report):
     page = _playwright.new_page()
     try:
         page.goto(scope_report[0], wait_until='networkidle')
-        # Hold only the dropdown's readiness callback, simulating slow hydration.
+        # Hold the bar's readiness callbacks regardless of which control owns
+        # them, simulating slow hydration across a scope replacement.
         page.evaluate("""() => {
             window.lateDropdownReady = [];
-            const dropdown = _fwFilterTypes.dropdown;
-            const wire = dropdown.wireControls;
-            dropdown.wireControls = function(el, cfg, ds, helpers) {
+            const render = _fwRenderers.filter_bar;
+            _fwRenderers.filter_bar = function(id, cfg) {
                 const ready = _fwFilterEngine.onReady;
-                if (ds === 'game_b_facts') _fwFilterEngine.onReady = (id, fn) => lateDropdownReady.push(fn);
-                try { wire.call(this, el, cfg, ds, helpers); }
+                if (cfg.dataset_id === 'game_b_facts') _fwFilterEngine.onReady = (id, fn) => { lateDropdownReady.push(fn); };
+                try { render.call(this, id, cfg); }
                 finally { _fwFilterEngine.onReady = ready; }
             };
         }""")

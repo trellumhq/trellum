@@ -45,8 +45,8 @@ class DropdownFilter(BaseFilter):
         # filter changes, the child's options are re-derived at runtime from
         # the parent-filtered rows of this DataSource. Single-column form
         # ("package_group") or list form (["region", "country"]) are both
-        # accepted. The JS reads the engine's filtered rows — no extra data
-        # is shipped to the browser.
+        # accepted. The JS queries distinct matching values from the encoded
+        # data — no extra data is shipped to the browser.
         depends_on = f.get("depends_on")
         if depends_on:
             cfg["depends_on"] = (
