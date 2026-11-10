@@ -11,6 +11,12 @@ reports; they are not a recording of a coding agent performing the work. The
 portal's optional Buddy assistant is separate from the coding agent used to
 author reports.
 
+Screenshots were refreshed from the v0.10.1 release using the isolated demo
+setup. Console pages use their supported neutral Dark mode; report documents
+use the demo project’s Trellum Dark theme. Every image is 1280 × 720, displayed in the same 16:9 frame on desktop and
+mobile. Sparse pages and reports use narrower capture viewports so their
+content is larger without changing the frame size.
+
 ## Walkthrough
 
 | Step | Feature | User and coding agent |
@@ -27,7 +33,7 @@ author reports.
 | 10 | See which reports get used | **User:** What does the team actually read? **Agent:** Report Analytics tracks views and unique viewers so you can review report usage. |
 | 11 | Query at view time when needed | **User:** Can some reports show current detail? **Agent:** Authors can declare live queries. They need a backend; the organization controls query limits. |
 | 12 | Describe what should trigger an alert | **User:** Watch for a drop in retention. **Agent:** Write a report-specific rule in plain language. This unsaved example needs an AI provider and delivery setup before it can run. |
-| 13 | Ask questions inside the portal | **User:** Can readers ask a follow-up question? **Agent:** Optional Buddy uses an administrator-configured model provider. It is separate from your coding agent and is not enabled here. |
+| 13 | Set up the optional assistant | **User:** What must be configured before readers can ask a follow-up? **Agent:** Optional Buddy needs an administrator-configured provider, model and data access. It is not enabled here. |
 | 14 | Reports that people can explore | **User:** What else can a report show? **Agent:** Store Health is a separate retail example: comparison KPIs, filters, chart annotations, revenue and margin in Trellum Dark. |
 
 ## What the demo shows
@@ -43,8 +49,8 @@ author reports.
 - The portal screens use the Nova Play organization and Product Insights
   studio. Demo sources are synthetic local SQLite (`demo_db`) and CSV
   (`ua_budget`); there is no live warehouse connection.
-- The screenshots show the Ask AI header control in its configured appearance
-  for illustration; the demo has no Buddy provider. It also has no remote Git
+- The assistant is shown in its actual unconfigured state; no AI responses
+  are staged. The demo has no Buddy provider. It also has no remote Git
   repository or email configuration. The repository screen is setup, not a
   completed remote sync. The alert is
   unsaved, and AI-backed alert evaluation and delivery are not demonstrated.
@@ -55,3 +61,65 @@ author reports.
   requires an administrator to configure a model provider.
 - Store Health is a separate synthetic retail report, not part of Nova Play's
   game data.
+
+## Screenshot refresh recipe
+
+Use a clean v0.10.1 checkout and the repository demo setup, with a unique
+`TRELLUM_DEMO_PROJECT`, an unused `TRELLUM_PORT`, and
+`TRELLUM_BIND_ADDRESS=127.0.0.1`. Run `scripts/demo.sh --dev-login`. The
+refresh used project `trellum-tour-shots` and port 8078; do not reuse an
+existing project or port. Keep generated environment files untracked.
+
+Wait for all seeded report builds to succeed before capture. This refresh
+named the synthetic organization Nova Play and its studio Product Insights;
+the imported repository and built report breadcrumbs retain the demo name.
+Use the seeded demo administrator through the DEBUG-only direct sign-in
+route. Leave remote Git, email, sharing and AI providers unconfigured.
+
+Capture the actual pages with Chromium, with Dark console mode and the demo
+project's Trellum Dark report theme. Use the existing
+`website/static/media/tour/*.png` names. Every final PNG is 1280 × 720.
+Keep the complete composition of dense screens and resize proportionally to
+that output. For sparse pages, capture a 1280 × 720 viewport. For Experiments,
+Analytics, Assistant, Alerts and reports, use 1600 × 900, then export at
+1280 × 720. These viewports share the same 16:9 aspect ratio; do not use
+individual image aspect ratios, stretch content, or add empty canvas padding.
+The browser uses device scale factor 2 and caps exported PNGs at 1280px wide.
+
+Leave the alert example as an unsaved condition/timing draft; do not submit or
+test it. The assistant screenshot shows readiness and provider setup, with no
+provider configured. Some longer pages continue below the captured viewport.
+Optimize PNGs losslessly after export. Keep all `tour.html` image dimensions
+at 1280 × 720 and use the shared 16:9 image frame at every breakpoint.
+Review every image for completed content, matching captions and accidental
+credentials. The analytics screen shows only local demo activity.
+
+After capture, remove only this compose project's containers and volumes with
+`docker compose -p trellum-tour-shots -f docker-compose.yml
+-f docker-compose.demo.yml -f docker-compose.devlogin.yml down -v`, using
+its generated demo environment for interpolation. Remove the dedicated
+`trellum-tour-shots:dev` and `trellum-tour-shots-runner:dev` images. Never
+prune shared Docker resources.
+
+## Capture classification and framing
+
+All files below are under `website/static/media/tour/`. “Previous” refers to
+the initial v0.10.1 refresh. Dense screens retain their complete composition;
+all images now share one output size and displayed aspect ratio.
+
+| Image | Classification | Action | Previous pixels | Final pixels |
+|---|---|---|---|---|
+| `portal-alerts.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-analytics.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-annotations.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-assistant.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-datasources.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-experiments.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-live-queries.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-metrics.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-operations.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-overview.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-player-report.png` | Report | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-repository.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-sharing.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `store-health-dark.png` | Report | Retaken | 2530 × 1600 | 1280 × 720 |

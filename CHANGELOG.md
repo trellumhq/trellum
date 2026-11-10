@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Documentation
+
+- Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
+  and document a proposed README visual sequence for review. Use closer
+  captures for sparse settings and reports within a consistent 1280 × 720 frame.
+
 ## [0.10.1] — 2026-11-08
 
 This recovery release includes the [report components, visual improvements and

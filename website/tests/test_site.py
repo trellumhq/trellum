@@ -1,5 +1,6 @@
 import re
 import shutil
+import struct
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -57,9 +58,17 @@ def test_tour_page_has_accessible_self_paced_screenshot_slides(client):
     assert 'id="slide-portal-repository"' in body
     assert 'alt="Edit the repository URL, branch and reports directory settings."' in body
     assert 'alt="Read the organization-wide rate limit for report live queries."' in body
-    assert 'alt="Review the disabled assistant’s provider, model and data-access settings."' in body
-    assert 'width="2530" height="1424"' in body
-    assert 'width="2530" height="1600"' in body
+    assert 'alt="Review the disabled assistant’s readiness and provider connection settings."' in body
+    images = re.findall(
+        r'<img src="/static/(media/tour/[^"]+\.png)"[^>]*width="(\d+)" height="(\d+)"',
+        body,
+    )
+    assert len(images) == 14
+    for relative, width, height in images:
+        png = (settings.BASE_DIR / "static" / relative).read_bytes()
+        assert png[:8] == b"\x89PNG\r\n\x1a\n"
+        assert (int(width), int(height)) == (1280, 720)
+        assert struct.unpack(">II", png[16:24]) == (1280, 720)
     assert 'static/tour.js' in body
     assert "/static/media/portal-tour.mp4" not in body
     assert 'autoplay' not in body
