@@ -107,6 +107,34 @@ def test_single_select_child_clear_keeps_widget_and_engine_consistent(cascade):
     assert page.evaluate("probe.deliveries") == {"consumer": 1}
 
 
+@pytest.mark.parametrize("scoped", [False, True])
+def test_cascade_survives_dataset_reentry_and_retires_with_its_dom(cascade, scoped):
+    page = cascade.page
+    page.evaluate("""async scoped => {
+        window.reentryRows = [{id:0,parent:'A',child:'a'}, {id:1,parent:'B',child:'b'}];
+        E.init('base', reentryRows);
+        if (scoped) E.addScopedChild('facts','base');
+        else E.init('facts',reentryRows);
+        mountBar('bar','facts',[{column:'parent',multi:false},
+            {column:'child',depends_on:['parent']}]);
+        await choose('parent',['A']); await choose('child',['a']);
+        window.originalParent = widget('parent');
+        window.originalChild = widget('child');
+        E.removeDataset('facts');
+        if (scoped) E.addScopedChild('facts','base');
+        else E.init('facts',reentryRows);
+    }""", scoped)
+    assert page.evaluate("widget('parent')===originalParent && widget('child')===originalChild")
+    _click_option(page, "parent", "B")
+    assert page.evaluate("optionsFor('child')") == ["b"]
+    assert page.evaluate("widget('child').getSelected()") == []
+    assert page.evaluate("E.getFiltered('facts').map(r=>r.id)") == [1]
+    assert page.evaluate("E._preparers.facts.length") == 1
+    page.evaluate("document.getElementById('bar').remove()")
+    page.wait_for_function("!E._preparers.facts.length && E._lifecycleListeners.size===0")
+    assert page.evaluate("_fwUrlSync._bars.length") == 0
+
+
 def test_user_selection_after_programmatic_pruning_is_not_suppressed(cascade):
     page = cascade.page
     _init_small(page, parent_multi=False)
@@ -185,7 +213,8 @@ def test_live_invalid_child_waits_for_corrected_query_before_delivery(cascade):
         await choose('child',['a']);
         window.liveRequests=[];
         E.registerLiveDataset('facts',{onChange(){liveRequests.push(E.getFilterState('facts'));}});
-        watch('facts','consumer'); probe.reset(); await choose('parent',['B']);
+        E.addScopedChild('local','facts');
+        watch('local','scoped'); watch('facts','consumer'); probe.reset(); await choose('parent',['B']);
         // The server confirms that B has no rows with the old child selection.
         E.setLiveRows('facts',['id','parent','child'],[]);
         await settle();
@@ -198,7 +227,7 @@ def test_live_invalid_child_waits_for_corrected_query_before_delivery(cascade):
     }""")
     assert page.evaluate("optionsFor('child')") == ["b"]
     assert page.evaluate("liveRequests.length") == 2
-    assert page.evaluate("probe.deliveries") == {"consumer": 1}
+    assert page.evaluate("probe.deliveries") == {"consumer": 1, "scoped": 1}
     assert page.evaluate("probe.observed.consumer.rows") == [1]
 
 

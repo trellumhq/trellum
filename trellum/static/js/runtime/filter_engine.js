@@ -84,7 +84,10 @@
                 // A committed change dominates transient corrections in the
                 // same interaction. Pure slider previews cannot issue queries.
                 self._pendingTransient.set(id, transient === true && self._pendingTransient.get(id) !== false);
-                if (!liveWrite) self._pending.add(id);
+                // A new server query supersedes queued deliveries of its old
+                // response. Later local edits may still filter retained rows.
+                if (liveWrite) self._pending.delete(id);
+                else self._pending.add(id);
             });
             if (liveWrite && !transient) this._livePending.add(dsId);
         },
@@ -138,10 +141,6 @@
                     var pending = Array.from(this._pending);
                     this._pending.clear();
                     pending.forEach(function(dsId) {
-                        // A cascade correction may have started a new request
-                        // while processing a response. Deliver its replacement,
-                        // not the snapshot for the superseded predicates.
-                        if (self._awaitingLiveSnapshot(dsId)) return;
                         var subscribers = (self._subscribers[dsId] || []).slice();
                         if (!subscribers.length) return;
                         var filtered = self.getFiltered(dsId);

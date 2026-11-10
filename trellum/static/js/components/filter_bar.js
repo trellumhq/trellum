@@ -50,11 +50,13 @@ window._fwRenderers['filter_bar'] = function(id, cfg) {
     var stopPreparing = null;
     var stopReady = null;
     var stopLifecycle = null;
+    var domObserver = null;
     var unregisterUrl = null;
     el._fwDisposeFilterBar = function() {
         if (disposed) return;
         disposed = true;
         el._fwDisposed = true;
+        if (domObserver) domObserver.disconnect();
         if (stopPreparing) stopPreparing();
         if (stopReady) stopReady();
         if (stopLifecycle) stopLifecycle();
@@ -311,10 +313,27 @@ window._fwRenderers['filter_bar'] = function(id, cfg) {
             stopReady = engine.onReady(dsId, function() {
                 if (!disposed) engine.prepare(dsId);
             });
+            stopLifecycle = engine.subscribeLifecycle(function(event) {
+                if (event.dataset_id !== dsId) return;
+                if (event.type === 'remove') {
+                    // Dataset storage can be replaced while its controls stay
+                    // mounted. Retire the engine binding, not the widgets.
+                    if (stopPreparing) stopPreparing();
+                    if (stopReady) stopReady();
+                    stopPreparing = stopReady = null;
+                    cascades.forEach(function(entry) { entry.parentSig = null; });
+                } else if (!stopPreparing && (event.type === 'init' || event.type === 'scope')) {
+                    stopPreparing = engine.beforeNotify(dsId, 'cascade_' + id, _prepareCascades);
+                    engine.prepare(dsId);
+                }
+            });
         }
-        stopLifecycle = engine.subscribeLifecycle(function(event) {
-            if (event.type === 'remove' && event.dataset_id === dsId) el._fwDisposeFilterBar();
+        // Widget and URL ownership follows the mounted bar, including bars
+        // without cascades; those need no dataset lifecycle subscription.
+        domObserver = new MutationObserver(function() {
+            if (document.getElementById(id) !== el) el._fwDisposeFilterBar();
         });
+        domObserver.observe(document.documentElement, {childList: true, subtree: true});
 
         // Share button
         var shareBtn = el.querySelector('.fw-share-btn');

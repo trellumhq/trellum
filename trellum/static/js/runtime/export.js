@@ -43,8 +43,10 @@
             context.fillStyle = relative;
             var match = /^color\(srgb\s+([^\s]+)\s+([^\s]+)\s+([^\s/)]+)(?:\s*\/\s*([^\s)]+))?\)$/.exec(context.fillStyle);
             if (!match) throw new Error('Image capture cannot convert CSS color: ' + value);
-            var channels = match.slice(1, 4).map(Number);
-            var alpha = match[4] === undefined ? 1 : Number(match[4]);
+            // Missing components render as zero; canvas may serialize them as none.
+            function component(token) { return token === 'none' ? 0 : Number(token); }
+            var channels = match.slice(1, 4).map(component);
+            var alpha = match[4] === undefined ? 1 : component(match[4]);
             if (!channels.every(Number.isFinite) || !Number.isFinite(alpha))
                 throw new Error('Image capture cannot convert CSS color: ' + value);
             var result = 'rgba(' + channels.map(function(n) {

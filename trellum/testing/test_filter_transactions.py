@@ -216,6 +216,33 @@ def test_live_grouping_settles_corrections_before_one_request_per_dataset(transa
     }
 
 
+def test_local_scoped_filters_update_retained_rows_while_parent_query_is_pending(transaction_page):
+    result = transaction_page.evaluate("""() => {
+        const e = _fwFilterEngine, deliveries = [], requests = [];
+        e.init('live',[{platform:'Web',value:1},{platform:'iOS',value:2}]);
+        e.addScopedChild('local','live');
+        e.registerLiveDataset('live',{onChange:() => requests.push(e.getFilterState('live'))});
+        e.subscribe('live','parent',rows => deliveries.push(['parent',rows]));
+        e.subscribe('local','child',rows => deliveries.push(['child',rows]));
+        e.transaction(() => e.setFilter('live','period','period','equals','next'));
+        const beforeLocal = deliveries.slice();
+        e.transaction(() => e.setFilter('local','platform','platform','equals','Web'));
+        const retained = deliveries.slice();
+        e.setLiveRows('live',['platform','value'],[['Web',3],['iOS',4]]);
+        return {beforeLocal,retained,deliveries,requests:requests.length};
+    }""")
+    assert result == {
+        "beforeLocal": [],
+        "retained": [["child", [{"platform": "Web", "value": 1}]]],
+        "deliveries": [
+            ["child", [{"platform": "Web", "value": 1}]],
+            ["parent", [{"platform": "Web", "value": 3}, {"platform": "iOS", "value": 4}]],
+            ["child", [{"platform": "Web", "value": 3}]],
+        ],
+        "requests": 1,
+    }
+
+
 def test_transient_corrections_and_propagation_preview_locally_until_commit(transaction_page):
     result = transaction_page.evaluate("""() => {
         const e = _fwFilterEngine, requests = [], deliveries = [];
@@ -397,7 +424,7 @@ def test_single_select_empty_correction_uses_all_placeholder(controls_page):
 
 
 def test_scope_replacement_cancels_readiness_and_disposes_preparation_and_url_owner(controls_page):
-    result = controls_page.evaluate("""() => {
+    result = controls_page.evaluate("""async () => {
         const e = _fwFilterEngine, cancelled = [], late = [];
         e.init('facts',[{parent:'A',child:'a'}]);
         e.init('other',[{parent:'B',child:'b'}]);
@@ -417,11 +444,16 @@ def test_scope_replacement_cancels_readiness_and_disposes_preparation_and_url_ow
             oldHooks:(e._preparers.facts || []).length,newHooks:e._preparers.other.length,
             urlOwners:_fwUrlSync._bars.map(bar=>bar.dsId)};
         e.removeDataset('other');
-        return {beforeRemove,afterRemove:{cancelled,urlOwners:_fwUrlSync._bars.length,
+        const afterDatasetRemove = {urlOwners:_fwUrlSync._bars.length,
+            hooks:(e._preparers.other || []).length,popup:document.querySelectorAll('.ss-content').length};
+        document.getElementById('bar').remove();
+        await Promise.resolve();
+        return {beforeRemove,afterDatasetRemove,afterRemove:{cancelled,urlOwners:_fwUrlSync._bars.length,
             popup:document.querySelectorAll('.ss-content').length}};
     }""")
     assert result == {
         "beforeRemove": {"cancelled": ["facts"], "oldConnected": False, "oldHooks": 0,
                          "newHooks": 1, "urlOwners": ["other"]},
+        "afterDatasetRemove": {"urlOwners": 1, "hooks": 0, "popup": 2},
         "afterRemove": {"cancelled": ["facts", "other"], "urlOwners": 0, "popup": 0},
     }

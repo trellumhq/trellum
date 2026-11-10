@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep local filters on retained live results responsive while their parent
+  query is pending.
+- Keep mounted FilterBars usable when their dataset is removed and recreated,
+  and release their control subscriptions when the bar leaves the document.
+- Preserve missing CSS color components and alpha during image capture on
+  browsers that serialize those components as `none`.
 - Reduce cascading-dropdown allocations by reading distinct option values directly
   from encoded data and reusing matching row indices for equivalent filter queries.
 - Settle cascading selections before delivering filtered rows to charts, and

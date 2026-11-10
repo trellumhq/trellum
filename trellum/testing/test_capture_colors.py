@@ -272,7 +272,8 @@ def test_numeric_browser_conversion_and_computed_paint_tokens(native_capture):
             const [make,paint]=factory(),convert=make();
             const inputs=['color(srgb .2 .4 .6 / .12345)','color(srgb 1.4 -.2 .5 / .35)',
                 'oklch(70% .2 30 / .6)','color(display-p3 1 0 0 / .35)',
-                'color(srgb none .3 .2 / none)'];
+                'color(srgb none .3 .2 / none)', 'color(srgb none .3 .2)',
+                'color(srgb none .3 .2 / .12345)'];
             const ordinary=['rgb(1, 2, 3)','rgba(1, 2, 3, 0.4)','#123abc','transparent','red'];
             const url=`url("data:image/svg+xml,<svg data-color='color(srgb .1 .2 .3)'/>")`;
             const gradient='linear-gradient(45deg, color(srgb .2 .4 .6 / .4) 20%, color(srgb .2 .4 .6 / .4) 80%), '+
@@ -283,7 +284,8 @@ def test_numeric_browser_conversion_and_computed_paint_tokens(native_capture):
             return {converted:inputs.map(convert),ordinary:ordinary.map(convert),paint:paint(gradient,convert),url,unknown,unresolved,multicolor};
         }""", EXPORT.read_text())
         assert result["converted"] == ["rgba(51, 102, 153, 0.12345)", "rgba(255, 0, 128, 0.35)",
-                                        "rgba(255, 97, 77, 0.6)", "rgba(255, 0, 0, 0.35)", "rgba(0, 77, 51, 0)"]
+                                        "rgba(255, 97, 77, 0.6)", "rgba(255, 0, 0, 0.35)", "rgba(0, 77, 51, 0)",
+                                        "rgba(0, 77, 51, 1)", "rgba(0, 77, 51, 0.12345)"]
         assert result["ordinary"] == ["rgb(1, 2, 3)", "rgba(1, 2, 3, 0.4)", "#123abc", "transparent", "red"]
         assert result["paint"].startswith("linear-gradient(45deg, rgba(51, 102, 153, 0.4) 20%, rgba(51, 102, 153, 0.4) 80%)")
         assert result["paint"].endswith(result["url"])
