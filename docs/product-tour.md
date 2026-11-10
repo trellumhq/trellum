@@ -13,9 +13,9 @@ author reports.
 
 Screenshots were refreshed from the v0.10.1 release using the isolated demo
 setup. Console pages use their supported neutral Dark mode; report documents
-use the demo project’s Trellum Dark theme. Dense screens retain wide captures;
-sparse pages and reports use narrower viewports and focused crops. The table
-below records the final image dimensions.
+use the demo project’s Trellum Dark theme. Every image is 1280 × 720, displayed in the same 16:9 frame on desktop and
+mobile. Sparse pages and reports use narrower capture viewports so their
+content is larger without changing the frame size.
 
 ## Walkthrough
 
@@ -78,17 +78,19 @@ route. Leave remote Git, email, sharing and AI providers unconfigured.
 
 Capture the actual pages with Chromium, with Dark console mode and the demo
 project's Trellum Dark report theme. Use the existing
-`website/static/media/tour/*.png` names. The focused retakes use 1280px-wide
-viewports (1440px for Experiments, Alerts and Assistant), with browser device
-scale factor 2. The browser exports PNGs at up to 1280 pixels wide; crop those
-exports without upscaling. Console crops retain the scope/page headings and
-remove navigation and unused space. Report crops retain the header, filters,
-headline metrics and complete featured charts. The alert example is
-an unsaved form draft focused on its condition and timing; do not submit or
-test it. The assistant crop focuses on readiness, provider and model. Report
-Analytics shows its heading and the first eight rows. Optimize PNGs losslessly.
-Set each retaken image’s width, height and link aspect ratio in `tour.html` to
-its final pixels so the tour does not add a fixed empty frame around the crop.
+`website/static/media/tour/*.png` names. Every final PNG is 1280 × 720.
+Keep the complete composition of dense screens and resize proportionally to
+that output. For sparse pages, capture a 1280 × 720 viewport. For Experiments,
+Analytics, Assistant, Alerts and reports, use 1600 × 900, then export at
+1280 × 720. These viewports share the same 16:9 aspect ratio; do not use
+individual image aspect ratios, stretch content, or add empty canvas padding.
+The browser uses device scale factor 2 and caps exported PNGs at 1280px wide.
+
+Leave the alert example as an unsaved condition/timing draft; do not submit or
+test it. The assistant screenshot shows readiness and provider setup, with no
+provider configured. Some longer pages continue below the captured viewport.
+Optimize PNGs losslessly after export. Keep all `tour.html` image dimensions
+at 1280 × 720 and use the shared 16:9 image frame at every breakpoint.
 Review every image for completed content, matching captions and accidental
 credentials. The analytics screen shows only local demo activity.
 
@@ -102,21 +104,22 @@ prune shared Docker resources.
 ## Capture classification and framing
 
 All files below are under `website/static/media/tour/`. “Previous” refers to
-the initial v0.10.1 refresh. Dense captures are kept byte-for-byte.
+the initial v0.10.1 refresh. Dense screens retain their complete composition;
+all images now share one output size and displayed aspect ratio.
 
 | Image | Classification | Action | Previous pixels | Final pixels |
 |---|---|---|---|---|
-| `portal-alerts.png` | Sparse | Retaken | 2530 × 1424 | 1040 × 588 |
-| `portal-analytics.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 674 |
-| `portal-annotations.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
-| `portal-assistant.png` | Sparse | Retaken | 2530 × 1424 | 1040 × 814 |
-| `portal-datasources.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 617 |
-| `portal-experiments.png` | Sparse | Retaken | 2530 × 1424 | 1040 × 736 |
-| `portal-live-queries.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 525 |
-| `portal-metrics.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
-| `portal-operations.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
-| `portal-overview.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
-| `portal-player-report.png` | Report | Retaken | 2530 × 1424 | 1280 × 1012 |
-| `portal-repository.png` | Dense | Kept | 2530 × 1424 | 2530 × 1424 |
-| `portal-sharing.png` | Sparse | Retaken | 2530 × 1424 | 1009 × 633 |
-| `store-health-dark.png` | Report | Retaken | 2530 × 1600 | 1280 × 894 |
+| `portal-alerts.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-analytics.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-annotations.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-assistant.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-datasources.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-experiments.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-live-queries.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-metrics.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-operations.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-overview.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-player-report.png` | Report | Retaken | 2530 × 1424 | 1280 × 720 |
+| `portal-repository.png` | Dense | Composition retained, resized | 2530 × 1424 | 1280 × 720 |
+| `portal-sharing.png` | Sparse | Retaken | 2530 × 1424 | 1280 × 720 |
+| `store-health-dark.png` | Report | Retaken | 2530 × 1600 | 1280 × 720 |

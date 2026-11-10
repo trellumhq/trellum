@@ -58,7 +58,7 @@ def test_tour_page_has_accessible_self_paced_screenshot_slides(client):
     assert 'id="slide-portal-repository"' in body
     assert 'alt="Edit the repository URL, branch and reports directory settings."' in body
     assert 'alt="Read the organization-wide rate limit for report live queries."' in body
-    assert 'alt="Review the disabled assistant’s provider and model settings."' in body
+    assert 'alt="Review the disabled assistant’s readiness and provider connection settings."' in body
     images = re.findall(
         r'<img src="/static/(media/tour/[^"]+\.png)"[^>]*width="(\d+)" height="(\d+)"',
         body,
@@ -67,7 +67,8 @@ def test_tour_page_has_accessible_self_paced_screenshot_slides(client):
     for relative, width, height in images:
         png = (settings.BASE_DIR / "static" / relative).read_bytes()
         assert png[:8] == b"\x89PNG\r\n\x1a\n"
-        assert struct.unpack(">II", png[16:24]) == (int(width), int(height))
+        assert (int(width), int(height)) == (1280, 720)
+        assert struct.unpack(">II", png[16:24]) == (1280, 720)
     assert 'static/tour.js' in body
     assert "/static/media/portal-tour.mp4" not in body
     assert 'autoplay' not in body

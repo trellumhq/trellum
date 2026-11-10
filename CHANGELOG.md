@@ -10,8 +10,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Documentation
 
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
-  and document a proposed README visual sequence for review. Use focused
-  crops for sparse settings and report screenshots to keep their content legible.
+  and document a proposed README visual sequence for review. Use closer
+  captures for sparse settings and reports within a consistent 1280 × 720 frame.
 
 ## [0.10.1] — 2026-11-08
 
