@@ -34,6 +34,9 @@ def project(tmp_path, monkeypatch):
         encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("FW_PROJECT_ROOT", raising=False)
+    # Other build tests pin an explicit root, which outranks cwd and the
+    # environment. This fixture owns its project regardless of test order.
+    monkeypatch.setattr("trellum.project._project_root_override", None)
 
     # The config loader caches per process; a test that inherits another
     # test's project would be testing the wrong warehouse.
