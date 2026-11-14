@@ -14,6 +14,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Report AI completions price model overrides independently, retain valid usage
   when an answer is rejected, and retry cloud overload responses. Broker cleanup
   failures cannot interrupt report termination or monitoring of other runs.
+- Image and PDF captures handle missing CSS color channels and alpha in newer
+  browsers.
 
 
 ### Documentation
