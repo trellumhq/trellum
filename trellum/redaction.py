@@ -8,6 +8,7 @@ import html
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import traceback
@@ -33,9 +34,10 @@ def redact(value):
     if isinstance(value, bytes):
         return redact(value.decode('utf-8')).encode('utf-8')
     if isinstance(value, str):
-        for secret in _secret_values():
-            value = value.replace(secret, '[REDACTED]')
-        return value
+        # One pass prevents a short secret from corrupting a replacement,
+        # including when an artifact is filtered again during publication.
+        pattern = '|'.join(re.escape(part) for part in ('[REDACTED]', *_secret_values()))
+        return re.sub(pattern, '[REDACTED]', value)
     if isinstance(value, dict):
         return {redact(k): redact(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):

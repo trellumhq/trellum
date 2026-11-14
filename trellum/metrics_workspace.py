@@ -10,7 +10,7 @@ from pathlib import Path
 
 import orjson
 
-from trellum.redaction import redact, safe_json_bytes
+from trellum.rendering.redaction import html_content, json_bytes, record
 
 PAGE_SIZE = 25
 VERSION = 1
@@ -108,7 +108,7 @@ def early_route(catalog, build, page, pages):
     definition_page = definitions.pop() if definitions else 0
     if any(type(number) is not int or not 1 <= number <= pages for number in (*routes.values(), *([definition_page] if definition_page else []))):
         raise ValueError('invalid generated workspace route page')
-    encoded = safe_json_bytes(routes).decode().replace('<', '\\u003c').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
+    encoded = orjson.dumps(routes).decode().replace('<', '\\u003c').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
     return ('<script data-metrics-early-route>(function(){'
         'var url=new URL(location.href),target=url.searchParams.get("only");'
         'if(!target){target=url.hash.slice(1);try{target=decodeURIComponent(target)}catch(e){}}'
@@ -126,6 +126,7 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
     the catalog routes every definition. Its rows come from the catalog in the
     browser, so a page carries no definition rows of its own.
     """
+    html = html_content(html)
     blocks = render_ctx._metric_workspace_blocks
     metric_ids = {cid for block in blocks for cid in block['ids']}
     common = {cid: value for cid, value in report_data['components'].items() if cid not in metric_ids}
@@ -134,10 +135,11 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
         indexed = {row[0]: row[2:] for row in common[definition_id]['rows']}
         catalog = [{**row, 'details': indexed[row['name']]} if not row.get('monitored', True) else row
                    for row in catalog]
+    catalog = [{**record(row), 'name': row['name'], 'anchor': row['anchor']} for row in catalog]
     pages = page_count(len(blocks))
     files = []
     catalog_name = f'{PREFIX}{build}-catalog.json'
-    Path(out, catalog_name).write_bytes(safe_json_bytes({'version': VERSION, 'build': build, 'metrics': catalog}))
+    Path(out, catalog_name).write_bytes(orjson.dumps({'version': VERSION, 'build': build, 'metrics': catalog}))
     files.append(catalog_name)
     first = None
     for page in range(1, pages + 1):
@@ -174,20 +176,18 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
                   'data': data_name, 'catalog': catalog_name, 'root': 'index.html',
                   'definitionId': definition_id}
         # The fixed JSON script contains only validated generated file names.
-        boot = (early_route(catalog, build, page, pages) + '<script>window._fwMetricsWorkspace=' + safe_json_bytes(config).decode() + ';</script>'
+        boot = (early_route(catalog, build, page, pages) + '<script>window._fwMetricsWorkspace=' + orjson.dumps(config).decode() + ';</script>'
                 '<noscript><style>.fw-loading{display:none!important}</style></noscript>')
         definition_html = ''
         if definition_id and page == pages:
             definition_html = ('<section class="fw-section"><h2>Defined but not monitored</h2>'
                 + getattr(render_ctx, '_metric_workspace_definition_html', '') + '</section>')
         page_html = html.replace(CONTROLS, controls(catalog, page, pages, build)).replace(
-            BLOCKS, '\n'.join(block['html'] for block in visible)).replace(
-            DEFINITIONS, definition_html).replace('<head>', '<head>' + boot, 1)
-        Path(out, data_name).write_bytes(safe_json_bytes(payload, option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS))
-        # Workspace blocks, controls and definitions are inserted after the
-        # ordinary renderer filters its output. Filter the complete page too,
-        # including the first page that replaces the root index.
-        page_html = redact(page_html)
+            BLOCKS, '\n'.join(html_content(block['html']) for block in visible)).replace(
+            DEFINITIONS, html_content(definition_html)).replace('<head>', '<head>' + boot, 1)
+        Path(out, data_name).write_bytes(json_bytes(payload, kind='payload', option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS))
+        # Content fragments are filtered before adding generated routing,
+        # controls and page labels; those public values must stay functional.
         Path(out, html_name).write_text(page_html, encoding='utf-8')
         files.extend((data_name, html_name))
         if first is None:
@@ -196,7 +196,7 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
     meta_path = Path(out, '_meta.json')
     meta = orjson.loads(meta_path.read_bytes())
     meta['metrics_workspace'] = {'version': VERSION, 'build': build, 'pages': pages, 'files': files}
-    meta_path.write_bytes(safe_json_bytes(meta, option=orjson.OPT_INDENT_2))
+    meta_path.write_bytes(orjson.dumps(meta, option=orjson.OPT_INDENT_2))
     return files
 
 
@@ -278,7 +278,7 @@ def staged_render(ctx, out, render, **kwargs):
             if saved.get('_meta.json'):
                 marker = orjson.loads(saved['_meta.json'])
                 marker['last_status'] = 'uncertain'
-                _replace(out / '_meta.json', safe_json_bytes(marker))
+                _replace(out / '_meta.json', orjson.dumps(marker))
             for name in roots:
                 if name not in ('index.html', '_meta.json'):
                     _replace(out / name, (staged / name).read_bytes())

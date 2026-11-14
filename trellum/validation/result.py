@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from trellum.redaction import redact
+from trellum.rendering.redaction import validation
 
 
 @dataclass
@@ -121,7 +121,7 @@ class ValidationResult:
     def write(self, output_dir: str) -> None:
         path = os.path.join(output_dir, "_validation.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(redact(self.to_dict()), f, indent=2)
+            json.dump(validation(self.to_dict()), f, indent=2)
 
 def _deduplicate(checks: list[Check]) -> list[Check]:
     """Remove duplicate checks with the same id + message, keeping one."""

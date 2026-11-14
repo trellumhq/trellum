@@ -417,7 +417,11 @@ or `TRELLUM_SCALAR_SECRET_NAMES` as a JSON list of injected `TRELLUM_DS_*_VALUE`
 environment names. Avoid printing
 or rendering secrets deliberately: redaction covers known literal and common
 escaped representations, not arbitrary transformations such as hashing or
-base64 encoding.
+base64 encoding. Short and common values are supported. Generated runtime
+code, schema fields and navigation identities can contain coincidental matching
+characters; these remain intact so the report can run. Report text and data
+values are filtered. Do not interpolate secrets into custom JavaScript or CSS:
+redaction cannot infer the meaning of arbitrary executable code.
 
 <!-- topic: report-yaml -->
 ## Report Structure

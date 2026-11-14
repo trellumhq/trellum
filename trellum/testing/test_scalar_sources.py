@@ -324,3 +324,167 @@ def test_metrics_workspace_build_redacts_every_published_artifact(project, monke
         assert '[REDACTED]' in (out / f'{prefix}-page-{page}.html').read_text()
         assert 'public' in json.dumps(payload)
         assert 91378 in [cell for row in payload['_ds_daily']['_data'] for cell in row]
+
+
+@pytest.mark.parametrize('secret', ['1', 'a', 'true'])
+def test_common_secret_preserves_generated_html_and_browser_runtime(project, monkeypatch, secret):
+    import html
+
+    from playwright.sync_api import sync_playwright
+
+    from trellum.components import KpiRow, RawHTML
+    from trellum.rendering.cdn import copy_vendor_tree
+    from trellum.testing.test_chart_header_summaries_browser import _route
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    def generate(self, ctx):
+        value = ctx.read_text('input')
+        ctx.add_section('Results', [KpiRow([{'label': value, 'value': 7}]),
+            RawHTML(html='<h1>' + html.escape(value) + '</h1>',
+                    data_key='note', data={'token': value})])
+    out = build(project, monkeypatch, generate)
+    data = json.loads((out / 'data.json').read_bytes())
+    assert data['note']['token'] == '[REDACTED]'
+    assert 'fw_c2' in data['components']
+    assert data['components']['fw_c2']['label'] == '[REDACTED]'
+    assert data['components']['fw_c2']['type'] == 'kpi'
+    assert '<h1>[REDACTED]</h1>' in (out / 'index.html').read_text()
+    copy_vendor_tree(out)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            _route(page, out)
+            page.goto('http://scalar.test/index.html', wait_until='networkidle')
+            page.wait_for_function('window._reportData && window._reportData.components')
+            assert page.locator('.fw-raw h1').inner_text() == '[REDACTED]'
+            assert '7' in page.locator('#fw_c2').inner_text()
+            assert not errors
+        finally:
+            browser.close()
+
+
+@pytest.mark.parametrize('secret', ['1', 'a', '{"token":"true","number":1}'])
+def test_common_secret_workspace_routes_and_dictionary_codes_remain_valid(project, monkeypatch, secret):
+    import pandas as pd
+    from playwright.sync_api import sync_playwright
+
+    from trellum.metrics import invalidate_metrics_cache
+    from trellum.metrics_report import MetricsReport
+    from trellum.rendering.cdn import copy_vendor_tree
+    from trellum.testing.test_chart_header_summaries_browser import _route
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    value = 'true' if secret.startswith('{') else secret
+    (project / 'metrics.yaml').write_text(json.dumps({'version': 1, 'datasets': {
+        'daily': {'provider': 'fixture:daily', 'time': {'column': 'date', 'grain': 'day'}}},
+        'metrics': [{'name': f'sales_{index:02}', 'label': value, 'agg': 'sum',
+                     'column': 'value', 'dataset': 'daily'} for index in range(26)]}))
+    invalidate_metrics_cache()
+    def generate(self, ctx):
+        ctx.metrics = lambda *args, **kwargs: pd.DataFrame({
+            'date': ['2026-06-06', '2026-06-07'], 'value': [7, 8]})
+        MetricsReport().generate(ctx)
+    try:
+        out = build(project, monkeypatch, generate, type='json' if secret.startswith('{') else 'secret', secret=True)
+    finally:
+        invalidate_metrics_cache()
+    meta = json.loads((out / '_meta.json').read_bytes())
+    marker = meta['metrics_workspace']
+    assert marker['version'] == 1 and marker['pages'] == 2
+    assert meta['schema_version'] == 2 and meta['last_status'] == 'success'
+    validation = json.loads((out / '_validation.json').read_bytes())
+    assert all(check['level'] in {'pass', 'info', 'warn', 'fail'} for check in validation['checks'])
+    assert any(check['id'] == 'yaml-missing-required' for check in validation['checks'])
+    assert all(type(count) is int for count in validation['summary'].values())
+    catalog = json.loads((out / f'_metrics-workspace-{marker["build"]}-catalog.json').read_bytes())
+    assert catalog['version'] == 1
+    names = {f'sales_{index:02}' for index in range(26)}
+    assert {item['id'] for item in meta['metrics_used']} == names
+    assert set(json.loads((out / 'data.json').read_bytes())['_metrics']) == names
+    assert {row['name'] for row in catalog['metrics']} == names
+    assert all(row['label'] == '[REDACTED]' for row in catalog['metrics'])
+    copy_vendor_tree(out)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            _route(page, out)
+            page.goto('http://scalar.test/index.html', wait_until='networkidle')
+            page.wait_for_function('window._reportData && window._reportData.components')
+            assert page.evaluate('window._fwMetricsWorkspace.page') == 1
+            assert page.locator('.fw-metric-block').count() == 25
+            assert page.locator('.fw-kpi-value').all_text_contents() == ['15'] * 25
+            page.get_by_role('link', name='Page 2', exact=True).click()
+            page.wait_for_function('window._fwMetricsWorkspace.page === 2 && window._reportData')
+            assert page.locator('.fw-metric-block').count() == 1
+            assert page.locator('.fw-kpi-value').all_text_contents() == ['15']
+            assert not errors
+        finally:
+            browser.close()
+
+
+def test_short_secret_filters_real_cells_without_rewriting_dictionary_indexes(project, monkeypatch):
+    from trellum.redaction import build_redaction
+    from trellum.rendering.redaction import json_bytes
+
+    monkeypatch.setenv('TRELLUM_SCALAR_SECRETS', '["1"]')
+    with build_redaction({}):
+        encoded = json_bytes({'components': {'fw_c1': {'type': 'kpi', 'value': 1}},
+            '_ds_daily': {'_cols': ['segment', 'value'], '_dict': {'segment': ['public', '1']},
+                          '_data': [[0, 1], [1, 7]]}}, kind='payload')
+    data = json.loads(encoded)
+    assert data['components']['fw_c1']['value'] == '[REDACTED]'
+    assert data['_ds_daily']['_dict']['segment'] == ['public', '[REDACTED]']
+    assert data['_ds_daily']['_data'] == [[0, '[REDACTED]'], [1, 7]]
+
+
+def test_custom_markup_attributes_and_escaped_content_are_filtered(project, monkeypatch):
+    from trellum.redaction import build_redaction
+    from trellum.rendering.redaction import html_content
+
+    monkeypatch.setenv('TRELLUM_SCALAR_SECRETS', '["synthetic-token", "private<&token"]')
+    with build_redaction({}):
+        output = html_content('<h1 class="synthetic-token" title=synthetic-token>'
+                              'private&lt;&amp;token</h1><script>window.key="synthetic-token"</script>',
+                              trusted_code=False)
+    assert output == ('<h1 class="[REDACTED]" title="[REDACTED]">[REDACTED]</h1>'
+                      '<script>window.key="[REDACTED]"</script>')
+
+
+def test_custom_component_markup_and_assets_keep_secret_filtering(project, monkeypatch):
+    from trellum.components.base import Component
+
+    secret = 'synthetic-custom-component-secret'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    class PluginComponent(Component):
+        # Simulate a report/plugin implementation, not a bundled component.
+        def render_html(self, ctx):
+            return '<div id="' + ctx.next_id() + '"><script>window.componentKey="' + secret + '"</script></div>'
+
+        @classmethod
+        def client_js(cls):
+            return 'window.assetKey="' + secret + '";'
+
+        @classmethod
+        def css(cls):
+            return '.custom::after{content:"' + secret + '"}'
+
+    # The tests are under trellum.testing, while real report methods have a
+    # project module. Mark the implementation's provenance accordingly.
+    PluginComponent.render_html.__module__ = 'report_plugin'
+    PluginComponent.client_js.__func__.__module__ = 'report_plugin'
+    PluginComponent.css.__func__.__module__ = 'report_plugin'
+    def generate(self, ctx):
+        ctx.add_section('Plugin', [PluginComponent(), '<script>window.rawKey="' + secret + '"</script>'])
+    out = build(project, monkeypatch, generate)
+    output = (out / 'index.html').read_text()
+    assert secret not in output
+    assert 'window.componentKey="[REDACTED]"' in output
+    assert 'window.assetKey="[REDACTED]"' in output
+    assert 'content:"[REDACTED]"' in output
+    assert 'window.rawKey="[REDACTED]"' in output

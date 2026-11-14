@@ -78,12 +78,13 @@ def collect_asset_parts(
     seen_js = set() if seen_js is None else seen_js
     css_parts: list[str] = []
     js_parts: list[str] = []
+    from trellum.rendering.redaction import component_output
     for cls in sorted(types, key=_asset_order):
-        c = cls.css()
+        c = component_output(cls.css, cls.css())
         if c and c not in seen_css:
             seen_css.add(c)
             css_parts.append(c)
-        j = cls.client_js()
+        j = component_output(cls.client_js, cls.client_js())
         if j and j not in seen_js:
             seen_js.add(j)
             js_parts.append(j)
@@ -161,12 +162,13 @@ class RenderContext:
         return "\n".join(self.render_child(c) for c in children)
 
     def render_child(self, child: Any) -> str:
+        from trellum.rendering.redaction import component_output, html_content
         if isinstance(child, str):
-            return child
+            return html_content(child, trusted_code=False)
         if isinstance(child, Component):
             self._seen_types.add(type(child))
             before = self._counter
-            rendered = child.render_html(self)
+            rendered = component_output(child.render_html, child.render_html(self), markup=True)
             return self._stamp_identity(child, rendered, before)
         return f"<!-- Unknown component: {type(child).__name__} -->"
 

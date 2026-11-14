@@ -36,7 +36,7 @@ from typing import Any
 
 import orjson
 
-from trellum.redaction import safe_json_bytes
+from trellum.rendering.redaction import json_bytes
 from trellum.reporting.diagnostics.datasets import compute_dataset_metrics
 from trellum.reporting.diagnostics.filters import compute_filter_effectiveness
 from trellum.reporting.diagnostics.types import (
@@ -166,4 +166,4 @@ def write_details(output_dir: str, details: ReportDetails) -> None:
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, "_details.json")
     with open(path, "wb") as f:
-        f.write(safe_json_bytes(details, option=orjson.OPT_INDENT_2))
+        f.write(json_bytes(details, option=orjson.OPT_INDENT_2))

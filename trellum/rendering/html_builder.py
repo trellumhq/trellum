@@ -28,7 +28,7 @@ from trellum.components.base import RenderContext, collect_asset_parts
 from trellum.diagnostics import instrument
 from trellum.licensing import inject_source_notice, source_notice_html
 from trellum.project import load_extensions
-from trellum.redaction import redact, safe_json_bytes, safe_json_document
+from trellum.redaction import redact, safe_json_bytes
 from trellum.rendering.artifacts import (
     _cron_to_seconds,
     _gc_stale_chunks,
@@ -38,6 +38,8 @@ from trellum.rendering.artifacts import (
 )
 from trellum.rendering.cdn import build_cdn_tags
 from trellum.rendering.js_runtime import generate_js_runtime, host_flag_scripts
+from trellum.rendering.redaction import component_output, html_content
+from trellum.rendering.redaction import json_bytes as artifact_json
 from trellum.rendering.report_assets import collect_report_assets
 from trellum.rendering.sections import _inject_nav, _render_section_list
 from trellum.themes import BUILTIN_THEMES, DEFAULT_THEME_NAME, THEME_REGISTRY, effective_theme_name
@@ -136,7 +138,7 @@ def _flash_script(themes=None) -> str:
     data-theme stands -- the baked default, or a host's serve-time override
     of it, which a fallback stamp here used to clobber.
     """
-    known_themes_js = safe_json_bytes(list(THEME_REGISTRY if themes is None else themes)).decode()
+    known_themes_js = orjson.dumps(list(THEME_REGISTRY if themes is None else themes)).decode()
     return f"""<script>
 (function(){{var v={known_themes_js};var t=null;try{{t=localStorage.getItem('fw-theme');}}catch(e){{}}
 if(v.indexOf(t)>=0)document.documentElement.setAttribute('data-theme',t);}})();
@@ -173,11 +175,11 @@ def _integrate_default_chrome(ctx, header_html, metadata_html):
 def _render_custom_html(ctx, out, data, name, extensions, live_registry, validation, details):
     """Write a report that supplies its own HTML page and data file."""
     custom = inject_source_notice(
-        _inject_nav(ctx.custom_html, extensions["nav_html"])
+        _inject_nav(html_content(ctx.custom_html, trusted_code=False), extensions["nav_html"])
     )
     html_path = os.path.join(out, ctx.custom_html_filename)
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(redact(custom))
+        f.write(custom)
 
     data_json = ctx.custom_data or data or {}
     json_path = os.path.join(out, ctx.custom_data_filename)
@@ -313,8 +315,8 @@ def render_report(
             scope_files[scope_name] = fname
             scope_path = os.path.join(out, fname)
             with open(scope_path, "wb") as f:
-                f.write(safe_json_bytes(
-                    {"components": scope_components},
+                f.write(artifact_json(
+                    {"components": scope_components}, kind="payload",
                     option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
                 ))
 
@@ -379,7 +381,7 @@ def render_report(
         )
 
     header_render_ctx = RenderContext(theme)
-    header_html = header_component.render_html(header_render_ctx)
+    header_html = component_output(header_component.render_html, header_component.render_html(header_render_ctx), markup=True)
     header_render_ctx._seen_types.add(type(header_component))
 
     # Re-collect CSS/JS including header. The seen_* sets carry over, so the
@@ -413,7 +415,7 @@ def render_report(
         default_theme_name, themes, refresh_seconds,
     )
     data_loader = _generate_data_loader_js()
-    raw_js_html = "\n".join(f"<script>{js}</script>" for js in raw_js_collected)
+    raw_js_html = "\n".join(f"<script>{redact(js)}</script>" for js in raw_js_collected)
 
     flash_script = _flash_script(themes)
 
@@ -532,22 +534,22 @@ setTimeout(function(){
     )
 
     t0 = time.time()
-    json_bytes = safe_json_bytes(
-        report_data,
+    json_bytes = artifact_json(
+        report_data, kind="payload",
         option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
     )
     ctx.mark("serialize_json", time.time() - t0)
 
     t0 = time.time()
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(redact(html))
+        f.write(html_content(html))
     with open(json_path, "wb") as f:
         f.write(json_bytes)
 
     # ── Write chunk files ────────────────────────────────────
     for fname, chunk_bytes in all_pending_chunks.items():
         with open(os.path.join(out, fname), "wb") as f:
-            f.write(safe_json_document(chunk_bytes))
+            f.write(artifact_json(orjson.loads(chunk_bytes), kind="dataset"))
 
     # ── GC stale chunk files from prior runs ─────────────────
     # The framework rewrites chunks for whatever periods this run

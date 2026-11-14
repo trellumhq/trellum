@@ -325,6 +325,9 @@ do not block build admission. Secret values are redacted from framework logs,
 native and child-process build output, validator output and report artifacts,
 including paginated Metrics workspaces; do not deliberately transform secrets
 into report content. Values are never stored in project config or uploads.
+For short or common values, redaction targets report content: coincidental
+characters in generated HTML, JavaScript or navigation identifiers remain intact
+so the report can still run.
 
 For local runs, declare a credential prefix in `data-sources/config.yaml`:
 

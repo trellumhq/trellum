@@ -28,6 +28,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   secret replacements, and show scalar status and controls appropriate to each type.
 - Preserve declared scalar types and secret protection when editing existing
   source bindings, including description-only saves.
+- Keep generated report markup, navigation and metric identities intact when
+  redacting short scalar secrets, while filtering report content and custom
+  component output.
 
 ## [0.10.1] — 2026-11-08
 
