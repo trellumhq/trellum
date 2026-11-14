@@ -340,6 +340,41 @@ def test_process_error_binary_output_is_filtered_without_losing_exception(projec
     assert secret not in str(error.value)
 
 
+@pytest.mark.parametrize('code', ['synthetic-exit-key', 7])
+def test_exit_messages_are_filtered_without_changing_numeric_status(project, monkeypatch, code):
+    from trellum.redaction import build_redaction
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', str(code))
+    with pytest.raises(SystemExit) as error:
+        with build_redaction(context('secret').config):
+            raise SystemExit(code)
+    assert error.value.code == (code if isinstance(code, int) else '[REDACTED]')
+
+
+def test_logging_extra_is_filtered_for_independent_handlers(project, monkeypatch):
+    from trellum.redaction import build_redaction
+
+    secret = 'synthetic-extra-log-key'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    path = project / 'structured.log'
+    handler = logging.FileHandler(path)
+    handler.setFormatter(logging.Formatter('%(credential)s %(details)s'))
+    logger = logging.getLogger('scalar-structured-logging')
+    logger.addHandler(handler)
+    original_factory, original_make_record = logging.getLogRecordFactory(), logging.Logger.makeRecord
+    try:
+        with build_redaction(context('secret').config):
+            with build_redaction(context('secret').config):
+                logger.warning('request failed', extra={'credential': secret, 'details': {'key': secret}})
+        assert secret not in path.read_text()
+        assert '[REDACTED]' in path.read_text()
+        assert logging.getLogRecordFactory() is original_factory
+        assert logging.Logger.makeRecord is original_make_record
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+
+
 @pytest.mark.parametrize('secret', ['workspace-private<&"token', '9137'])
 def test_metrics_workspace_build_redacts_every_published_artifact(project, monkeypatch, secret):
     import html

@@ -215,10 +215,21 @@ def build_redaction(config):
                 return record
             factory.previous = old_factory
             logging.setLogRecordFactory(factory)
+            old_make_record = logging.Logger.makeRecord
+            def make_record(logger, name, level, fn, lno, msg, args, exc_info,
+                            func=None, extra=None, sinfo=None):
+                # Extra fields are attached after the record factory runs.
+                # Preserve formatter field names while filtering their values.
+                if extra and _secret_values():
+                    extra = {key: redact(value) for key, value in extra.items()}
+                return old_make_record(logger, name, level, fn, lno, msg, args,
+                                       exc_info, func, extra, sinfo)
+            make_record.previous = old_make_record
+            logging.Logger.makeRecord = make_record
         _users += 1
     try:
         yield
-    except Exception as exc:
+    except BaseException as exc:
         # Preserve the exception type for callers, remove unsafe exception chains.
         seen = set()
         def scrub(error):
@@ -231,6 +242,8 @@ def build_redaction(config):
             for attribute, value in vars(error).items():
                 if isinstance(value, (str, bytes, list, tuple, dict)):
                     setattr(error, attribute, redact(value))
+            if isinstance(error, SystemExit) and not isinstance(error.code, int):
+                error.code = redact(error.code)
             # OSError.__str__ uses these attributes independently of args.
             if isinstance(error, OSError):
                 for attribute in ('filename', 'filename2', 'strerror'):
@@ -258,6 +271,7 @@ def build_redaction(config):
             if _users == 0:
                 sys.stdout, sys.stderr = sys.stdout.stream, sys.stderr.stream
                 logging.setLogRecordFactory(logging.getLogRecordFactory().previous)
+                logging.Logger.makeRecord = logging.Logger.makeRecord.previous
         _values.reset(token)
 
 
