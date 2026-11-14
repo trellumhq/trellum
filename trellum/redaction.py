@@ -229,7 +229,7 @@ def build_redaction(config):
             # HTTPError, CalledProcessError and custom exceptions may render
             # stored text independently of args after this context has exited.
             for attribute, value in vars(error).items():
-                if isinstance(value, (str, bytes)):
+                if isinstance(value, (str, bytes, list, tuple, dict)):
                     setattr(error, attribute, redact(value))
             # OSError.__str__ uses these attributes independently of args.
             if isinstance(error, OSError):

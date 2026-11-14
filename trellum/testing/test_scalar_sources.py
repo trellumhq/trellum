@@ -333,9 +333,11 @@ def test_process_error_binary_output_is_filtered_without_losing_exception(projec
     monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
     with pytest.raises(CalledProcessError) as error:
         with build_redaction(context('secret').config):
-            raise CalledProcessError(2, 'command', output=b'\xff' + secret.encode())
+            raise CalledProcessError(2, ['command', secret], output=b'\xff' + secret.encode())
     assert error.value.returncode == 2
     assert error.value.output == b'\xff[REDACTED]'
+    assert error.value.cmd == ['command', '[REDACTED]']
+    assert secret not in str(error.value)
 
 
 @pytest.mark.parametrize('secret', ['workspace-private<&"token', '9137'])
