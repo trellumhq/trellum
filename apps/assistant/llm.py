@@ -170,6 +170,12 @@ class LLMConfig:
             return {"in": i, "out": o, "cache_write": i, "cache_read": i, "cached_in": i}
         return None if self.custom_endpoint else _list_price(self.provider, self.model)
 
+    def with_model(self, model: str | None) -> "LLMConfig":
+        """Select a model without carrying another model's saved prices."""
+        if model is None or model == self.model:
+            return self
+        return replace(self, model=model, price_in=None, price_out=None)
+
 
 def _list_price(provider: str, model: str) -> dict | None:
     if provider == "openai":
@@ -181,7 +187,7 @@ def _list_price(provider: str, model: str) -> dict | None:
     return ANTHROPIC_PRICING.get(_pricing_model(model)) if provider == "anthropic" else None
 
 
-def is_available(org, purpose="chat") -> tuple[bool, str]:
+def is_available(org, purpose="chat", *, model=None) -> tuple[bool, str]:
     """Return ``(ok, reason)`` for one org. Reason is user-visible."""
     from apps.orgs.models import OrgAssistantConfig
 
@@ -193,7 +199,7 @@ def is_available(org, purpose="chat") -> tuple[bool, str]:
     if not cfg.enabled:
         return False, "The AI assistant is disabled for this organization."
 
-    config = LLMConfig.from_config(cfg)
+    config = LLMConfig.from_config(cfg).with_model(model)
     if config.provider not in SUPPORTED_PROVIDERS:
         return False, "Unsupported LLM provider."
     if not config.model:
@@ -641,14 +647,13 @@ def complete_once(config, *, system, user, max_tokens=DEFAULT_MAX_TOKENS,
     owns process isolation to terminate providers that ignore network timeouts.
     """
     from trellum.ai import CompletionResult, ReportAIError, validate_request
-    from .transport import complete_request, normalize_error
+    from .transport import TransportError, complete_request, normalize_error
 
     validate_request(system=system, user=user, max_tokens=max_tokens,
                      response_format=response_format, model=model, timeout=timeout)
     if config is None:
         raise ReportAIError("disabled", "AI is disabled for this organization.")
-    if model is not None:
-        config = replace(config, model=model)
+    config = config.with_model(model)
     deadline = time.monotonic() + timeout
     try:
         _validate_credentials(config)
@@ -670,6 +675,11 @@ def complete_once(config, *, system, user, max_tokens=DEFAULT_MAX_TOKENS,
                 break
             except Exception as error:
                 safe = normalize_error(error)
+                if isinstance(error, TransportError) and safe.kind == "protocol":
+                    # The provider completed a request whose content is invalid.
+                    # Keep any returned usage and book it before rejecting the answer.
+                    response = {"usage": safe.usage}
+                    break
                 if safe.kind not in ("rate_limit", "server") or attempt == RETRY_MAX_ATTEMPTS - 1:
                     raise
                 delay = min(RETRY_BASE_DELAY * 2 ** attempt, RETRY_MAX_DELAY)

@@ -468,6 +468,71 @@ class TestCompletionAndTimeouts:
         # Live log dir is gone once tails are persisted.
         assert not Path(run.log_dir).exists()
 
+    @pytest.mark.parametrize("reason", ["completed", "stop", "timeout"])
+    def test_replaced_ai_socket_does_not_block_other_tenants(
+        self, fake_popen, queued_run, other_studio, reason
+    ):
+        ex, proc = self._start(fake_popen, queued_run)
+        other_studio.ensure_dirs()
+        other_dir = other_studio.reports_dir / "other"
+        other_dir.mkdir()
+        (other_dir / "report.yaml").write_text("name: Other\n")
+        (other_dir / "generator.py").write_text("# test stub\n")
+        other_report = Report.objects.create(studio=other_studio, slug="other", name="Other")
+        other_run = Run.objects.create(
+            report=other_report, studio=other_studio, slug="other", status=Run.STARTING
+        )
+        assert ex.start_run(other_run)
+        fake_popen["procs"][-1].finish(0)
+
+        running = ex._procs[queued_run.pk]
+        socket_path = Path(running.ai_broker.path)
+        socket_path.unlink()
+        socket_path.mkdir()
+        if reason == "completed":
+            proc.finish(0)
+        elif reason == "stop":
+            Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+        else:
+            running.timeout_seconds = 1
+            running.started_at = timezone.now() - timedelta(seconds=60)
+
+        ex.tick()
+        other_run.refresh_from_db()
+        assert other_run.status == Run.SUCCESS
+        if reason != "completed":
+            assert signal.SIGTERM in proc.signals
+            proc.finish(-signal.SIGTERM if os.name != "nt" else 1)
+            ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == {
+            "completed": Run.SUCCESS, "stop": Run.STOPPED, "timeout": Run.TIMEOUT
+        }[reason]
+        assert ex.running_count == 0
+
+    def test_broker_cleanup_exception_does_not_prevent_stop(
+        self, fake_popen, queued_run, monkeypatch, caplog
+    ):
+        ex, proc = self._start(fake_popen, queued_run)
+        broker = ex._procs[queued_run.pk].ai_broker
+        close = broker.close
+
+        def broken_close():
+            close()
+            raise OSError("synthetic-private-detail")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(broker, "close", broken_close)
+            Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+            ex.tick()
+            assert signal.SIGTERM in proc.signals
+            proc.finish(-signal.SIGTERM if os.name != "nt" else 1)
+            ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.STOPPED
+        assert ex.running_count == 0
+        assert "synthetic-private-detail" not in caplog.text
+
     def test_error_completion_writes_meta(self, fake_popen, queued_run, studio_tree):
         ex, proc = self._start(fake_popen, queued_run)
         run = Run.objects.get(pk=queued_run.pk)

@@ -16,8 +16,9 @@ def closing_client(client):
 
 
 class TransportError(Exception):
-    def __init__(self, kind, message):
+    def __init__(self, kind, message, *, usage=None):
         self.kind = kind
+        self.usage = usage
         super().__init__(message)
 
 
@@ -25,29 +26,36 @@ def normalize_error(error):
     if isinstance(error, TransportError):
         return error
     names = {cls.__name__ for cls in type(error).__mro__}
-    status = getattr(error, "status_code", None)
-    body = getattr(error, "body", None)
+    status = getattr(error, "status_code", None) or getattr(error, "code", None)
     response = getattr(error, "response", None)
     if status is None and isinstance(response, dict):
         status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-    overload = any(name.lower() in ("overloadederror", "overloaderror", "overloaded_error") for name in names)
-    if isinstance(body, dict):
-        detail = body.get("error", body)
-        overload = overload or (isinstance(detail, dict) and (
-            detail.get("type") == "overloaded_error" or detail.get("code") in (529, "529", "overloaded_error")
-            or detail.get("status_code") in (529, "529") or detail.get("status") in (529, "529")))
-    if overload or status in (529, "529"):
-        return TransportError("server", "The provider is temporarily unavailable.")
+    overload_names = {"overload", "overloaded", "overloaderror", "overloadederror",
+                      "overloadexception", "overloadedexception", "overloaded_error"}
+    overload = any(name.lower() in overload_names for name in names)
+    # Some SDKs expose HTTP 529 only in a body or service error code.
+    for body in (getattr(error, "body", None), getattr(error, "details", None), response):
+        if not isinstance(body, dict):
+            continue
+        detail = body.get("error", body.get("Error", body))
+        if isinstance(detail, dict):
+            overload = overload or any(str(detail.get(key, "")).lower() in overload_names
+                                       for key in ("type", "code", "Code"))
+            if status is None:
+                status = next((detail[key] for key in ("status_code", "status", "code", "Code")
+                               if str(detail.get(key, "")).isdigit()), None)
+    if isinstance(status, str) and status.isdigit():
+        status = int(status)
     if status in (401, 403) or "AuthenticationError" in names:
         return TransportError("authentication", "The provider rejected the credentials.")
+    if status in (400, 404, 422):
+        return TransportError("unsupported", "The endpoint or model does not support this request.")
     if status == 429 or "RateLimitError" in names:
         return TransportError("rate_limit", "The provider is rate limiting requests.")
-    if isinstance(status, int) and 500 <= status < 600:
+    if overload or isinstance(status, int) and 500 <= status < 600:
         return TransportError("server", "The provider is temporarily unavailable.")
     if names & {"APIConnectionError", "APITimeoutError", "TimeoutError", "ConnectionError"}:
         return TransportError("connection", "Could not reach the model provider.")
-    if status in (400, 404, 422):
-        return TransportError("unsupported", "The endpoint or model does not support this request.")
     return TransportError("protocol", "The provider returned an invalid response.")
 
 
@@ -59,17 +67,24 @@ def _usage(raw, *, openai=False):
     if raw is None:
         return None
     if openai:
-        prompt = _value(raw, "prompt_tokens")
+        inputs = _value(raw, "prompt_tokens")
         output = _value(raw, "completion_tokens")
-        cached = _value(_value(raw, "prompt_tokens_details"), "cached_tokens", 0) or 0
-        inputs, creation = prompt - cached if isinstance(prompt, int) else None, 0
+        cached = _value(_value(raw, "prompt_tokens_details"), "cached_tokens", 0)
+        creation = 0
     else:
         inputs, output = _value(raw, "input_tokens"), _value(raw, "output_tokens")
-        cached = _value(raw, "cache_read_input_tokens", 0) or 0
-        creation = _value(raw, "cache_creation_input_tokens", 0) or 0
+        cached = _value(raw, "cache_read_input_tokens", 0)
+        creation = _value(raw, "cache_creation_input_tokens", 0)
+    cached = 0 if cached is None else cached
+    creation = 0 if creation is None else creation
     counts = (inputs, output, cached, creation)
     if any(not isinstance(n, int) or isinstance(n, bool) or n < 0 for n in counts):
         return None
+    if openai:
+        inputs -= cached
+        if inputs < 0:
+            return None
+        counts = (inputs, output, cached, creation)
     return dict(zip(("input_tokens", "output_tokens", "cache_read_input_tokens",
                      "cache_creation_input_tokens"), counts))
 
@@ -80,6 +95,18 @@ def _tool_input(raw):
     except (ValueError, TypeError):
         return raw  # shared validation rejects it after booking the response usage
     return args
+
+
+def _completion_parts(parts, usage):
+    if not isinstance(parts, (list, tuple)) or not parts:
+        raise TransportError("protocol", "The provider returned no completion.", usage=usage)
+    return parts
+
+
+def _completion_text(parts, usage):
+    if not parts or any(not isinstance(part, str) for part in parts):
+        raise TransportError("protocol", "The provider returned invalid text.", usage=usage)
+    return "".join(parts)
 
 
 def stream_openai(config, messages, system_blocks, schemas, *, max_tokens,
@@ -264,24 +291,24 @@ def complete_request(config, *, system, user, max_tokens, response_format=None,
             if response_format == "json":
                 kwargs["response_format"] = {"type": "json_object"}
             response = client.chat.completions.create(**kwargs)
-            choices = _value(response, "choices", [])
-            if not choices:
-                raise TransportError("protocol", "The provider returned no completion.")
+            usage = _usage(_value(response, "usage"), openai=True)
+            choices = _completion_parts(_value(response, "choices"), usage)
             choice = choices[0]
             message = _value(choice, "message")
             if _value(message, "tool_calls"):
-                raise TransportError("protocol", "The provider returned an unexpected tool call.")
+                raise TransportError("protocol", "The provider returned an unexpected tool call.", usage=usage)
             return {"text": _value(message, "content"), "finish_reason": _value(choice, "finish_reason"),
-                    "usage": _usage(_value(response, "usage"), openai=True)}
+                    "usage": usage}
     if config.provider == "anthropic":
         with closing_client(llm._anthropic_client(config)) as client:
             response = client.messages.create(model=config.model, system=system,
                 messages=[{"role": "user", "content": user}], max_tokens=max_tokens, timeout=timeout)
-            blocks = _value(response, "content", [])
+            usage = _usage(_value(response, "usage"))
+            blocks = _completion_parts(_value(response, "content"), usage)
             if any(_value(block, "type") == "tool_use" for block in blocks):
-                raise TransportError("protocol", "The provider returned an unexpected tool call.")
-            return {"text": "".join(_value(block, "text", "") for block in blocks if _value(block, "type") == "text"),
-                    "finish_reason": _value(response, "stop_reason"), "usage": _usage(_value(response, "usage"))}
+                raise TransportError("protocol", "The provider returned an unexpected tool call.", usage=usage)
+            return {"text": _completion_text([_value(block, "text") for block in blocks if _value(block, "type") == "text"], usage),
+                    "finish_reason": _value(response, "stop_reason"), "usage": usage}
     from . import cloud
     client = None
     try:
@@ -289,14 +316,14 @@ def complete_request(config, *, system, user, max_tokens, response_format=None,
             client = cloud._aws_client(config, "bedrock-runtime", timeout)
             response = client.converse(modelId=config.model, system=[{"text": system}],
                 messages=[{"role": "user", "content": [{"text": user}]}], inferenceConfig={"maxTokens": max_tokens})
-            blocks = response.get("output", {}).get("message", {}).get("content", [])
-            if any("toolUse" in block for block in blocks):
-                raise TransportError("protocol", "The provider returned an unexpected tool call.")
-            raw = response.get("usage", {})
-            usage = cloud._usage_counts(raw.get("inputTokens"), raw.get("outputTokens"),
-                                       raw.get("cacheReadInputTokens", 0), raw.get("cacheWriteInputTokens", 0))
-            return {"text": "".join(block.get("text", "") for block in blocks),
-                    "finish_reason": response.get("stopReason"), "usage": usage}
+            raw = _value(response, "usage")
+            usage = cloud._usage_counts(_value(raw, "inputTokens"), _value(raw, "outputTokens"),
+                                       _value(raw, "cacheReadInputTokens", 0), _value(raw, "cacheWriteInputTokens", 0))
+            blocks = _completion_parts(_value(_value(_value(response, "output"), "message"), "content"), usage)
+            if any(_value(block, "toolUse") is not None for block in blocks):
+                raise TransportError("protocol", "The provider returned an unexpected tool call.", usage=usage)
+            return {"text": _completion_text([_value(block, "text") for block in blocks if _value(block, "text") is not None], usage),
+                    "finish_reason": _value(response, "stopReason"), "usage": usage}
         if config.provider == "vertex":
             from google.genai import types
             client = cloud._vertex_client(config, timeout)
@@ -305,18 +332,24 @@ def complete_request(config, *, system, user, max_tokens, response_format=None,
                 config=types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens,
                                                    automatic_function_calling={"disable": True}))
             candidates = _value(response, "candidates", []) or []
-            if not candidates:
-                raise TransportError("protocol", "The provider returned no completion.")
-            candidate = candidates[0]
-            parts = _value(_value(candidate, "content"), "parts", []) or []
-            if any(_value(part, "function_call") for part in parts):
-                raise TransportError("protocol", "The provider returned an unexpected tool call.")
             raw = _value(response, "usage_metadata")
             inputs, outputs = _value(raw, "prompt_token_count"), _value(raw, "candidates_token_count")
-            cache = _value(raw, "cached_content_token_count", 0) or 0
-            usage = cloud._usage_counts(inputs - cache, outputs + (_value(raw, "thoughts_token_count", 0) or 0), cache) if isinstance(inputs, int) and isinstance(outputs, int) else None
+            # Blocked prompts may omit the output count because no candidate was generated.
+            if not candidates and outputs is None:
+                outputs = 0
+            cache = _value(raw, "cached_content_token_count")
+            thoughts = _value(raw, "thoughts_token_count")
+            cache = 0 if cache is None else cache
+            thoughts = 0 if thoughts is None else thoughts
+            usage = cloud._usage_counts(inputs, outputs, cache, thoughts)
+            if usage is not None:
+                usage = cloud._usage_counts(inputs - cache, outputs + thoughts, cache)
+            candidate = _completion_parts(candidates, usage)[0]
+            parts = _completion_parts(_value(_value(candidate, "content"), "parts"), usage)
+            if any(_value(part, "function_call") for part in parts):
+                raise TransportError("protocol", "The provider returned an unexpected tool call.", usage=usage)
             finish = _value(candidate, "finish_reason")
-            return {"text": "".join(_value(part, "text", "") or "" for part in parts if not _value(part, "thought")),
+            return {"text": _completion_text([_value(part, "text") for part in parts if not _value(part, "thought")], usage),
                     "finish_reason": str(getattr(finish, "value", finish)).lower() if finish else None, "usage": usage}
         raise TransportError("unsupported", "Unsupported LLM provider.")
     except Exception as error:

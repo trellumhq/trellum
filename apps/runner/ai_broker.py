@@ -33,7 +33,7 @@ def _complete(org_id, request):
     config = LLMConfig.for_org(org)
     if config is None:
         raise ReportAIError("disabled", "AI is disabled or not configured for this organization.")
-    ok, _ = is_available(org, purpose="report")
+    ok, _ = is_available(org, purpose="report", model=request.get("model"))
     if not ok:
         # Readiness can contain administrator-controlled values; never relay it.
         raise ReportAIError("unavailable", "Check the saved AI configuration and model prices in AI settings.")
@@ -43,7 +43,7 @@ def _complete(org_id, request):
     try:
         result = complete_once(config, **request)
     except ReportAIError as error:
-        # An invalid JSON answer can still be a successfully metered request.
+        # A rejected answer can still carry valid usage from the provider.
         cost = getattr(error, "cost_usd", None)
         if cost is not None:
             budget.report_record(org, cost)
@@ -127,17 +127,25 @@ class AIBroker:
     def close(self):
         self._stop.set()
         if self._listener is not None:
-            self._listener.close()
+            try:
+                self._listener.close()
+            except OSError:
+                pass
         if self._connection is not None:
             try:
                 self._connection.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
-        if self._thread is not None and self._thread is not threading.current_thread():
+        if self._thread is not None and self._thread.ident is not None and self._thread is not threading.current_thread():
             self._thread.join(2)
-        if self._handler is not None and self._handler is not threading.current_thread():
+        if self._handler is not None and self._handler.ident is not None and self._handler is not threading.current_thread():
             self._handler.join(2)
-        Path(self.path).unlink(missing_ok=True)
+        try:
+            # The report can replace this entry in its writable mount. Never
+            # follow it or recursively remove a replacement directory.
+            Path(self.path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Report AI socket cleanup failed")
 
     def _serve(self):
         while not self._stop.is_set():

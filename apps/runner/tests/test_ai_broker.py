@@ -12,12 +12,13 @@ import tempfile
 import threading
 import time
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from apps.assistant.models import LlmUsage
 from apps.orgs.models import OrgAssistantConfig
-from apps.runner.ai_broker import AIBroker
+from apps.runner.ai_broker import AIBroker, _complete
 from apps.runner.executor import Executor, child_env
 from apps.runner.models import Run
 from trellum.ai import ReportAI, ReportAIError, unix_socket_address
@@ -75,6 +76,92 @@ def live_broker(studio, monkeypatch, requested_by=None):
         finally:
             broker.close()
         assert not Path(broker.path).exists()
+
+
+@pytest.mark.parametrize("replacement", ["directory", "symlink", "missing"])
+def test_close_tolerates_tenant_replacing_socket(tmp_path, replacement):
+    run = SimpleNamespace(pk="run", studio=SimpleNamespace(org_id="org"), requested_by_id=None)
+    broker = AIBroker(run, tmp_path).start()
+    path = Path(broker.path)
+    target = tmp_path / "keep"
+    target.mkdir()
+    marker = target / "marker"
+    marker.write_text("preserve this file")
+    path.unlink()
+    if replacement == "directory":
+        path.mkdir()
+        (path / "marker").write_text("preserve this directory")
+    elif replacement == "symlink":
+        path.symlink_to(target, target_is_directory=True)
+
+    broker.close()
+    broker.close()
+
+    assert not broker._thread.is_alive()
+    assert broker._listener.fileno() == -1
+    assert marker.read_text() == "preserve this file"
+    if replacement == "directory":
+        assert (path / "marker").read_text() == "preserve this directory"
+    else:
+        assert not path.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("output_tokens", [0, None])
+def test_rejected_vertex_answer_is_metered_once_and_stops_at_org_cap(
+    org, org_admin, monkeypatch, output_tokens
+):
+    from google.genai import types
+    from apps.assistant import cloud
+
+    OrgAssistantConfig.objects.create(
+        org=org, enabled=True, provider="vertex", auth_mode="service_account",
+        cloud_credentials={"service_account": {"type": "service_account"}},
+        model="saved-model", monthly_budget_usd=Decimal("0.01"),
+        price_in_per_mtok=Decimal("10"), price_out_per_mtok=Decimal("20"),
+    )
+    client = Mock()
+    client.models.generate_content.return_value = types.GenerateContentResponse(
+        candidates=[],
+        usage_metadata=types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=1000, candidates_token_count=output_tokens,
+        ),
+    )
+    monkeypatch.setattr(cloud, "_vertex_client", lambda *args: client)
+
+    with pytest.raises(ReportAIError) as caught:
+        _complete(org.pk, {"system": "system", "user": "facts"})
+    assert caught.value.code == "invalid_response"
+    assert LlmUsage.month_total(org) == Decimal("0.01")
+    assert LlmUsage.user_month_total(org, org_admin) == 0
+    assert not LlmUsage.objects.filter(org=org).exists()
+    with pytest.raises(ReportAIError) as caught:
+        _complete(org.pk, {"system": "system", "user": "facts"})
+    assert caught.value.code == "budget"
+    assert client.models.generate_content.call_count == 1
+    assert LlmUsage.month_total(org) == Decimal("0.01")
+
+
+@pytest.mark.django_db
+def test_broker_prices_the_selected_override(org, monkeypatch):
+    from apps.assistant import llm
+
+    OrgAssistantConfig.objects.create(
+        org=org, enabled=True, provider="openai", api_key="synthetic-org-secret",
+        model="unpriced-saved-model", monthly_budget_usd=Decimal("1"),
+    )
+    client = Mock()
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(
+            message=SimpleNamespace(content="ok", tool_calls=[]), finish_reason="stop"
+        )],
+        usage=SimpleNamespace(prompt_tokens=1000, completion_tokens=100),
+    )
+    monkeypatch.setattr(llm, "_openai_client", lambda *args: client)
+    response = _complete(org.pk, {"system": "system", "user": "facts", "model": "gpt-4o"})
+    assert response["result"]["model"] == "gpt-4o"
+    assert LlmUsage.month_total(org) == Decimal("0.0035")
+    assert client.chat.completions.create.call_args.kwargs["model"] == "gpt-4o"
 
 
 @pytest.mark.heavy

@@ -391,6 +391,16 @@ class RunningProc:
     ai_broker: object | None = field(default=None, repr=False)
 
 
+def _close_ai_broker(broker):
+    if broker is not None:
+        try:
+            broker.close()
+        except Exception:
+            # Cleanup must not prevent termination or monitoring other runs.
+            # The socket directory is tenant-writable; do not log its contents.
+            logger.warning("Report AI broker cleanup failed")
+
+
 class Executor:
     """Owns the report subprocesses of one runner."""
 
@@ -683,8 +693,7 @@ class Executor:
                 extra={"run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
                        "worker_id": self.worker_id, "trigger": run.trigger, "reason": "start_failed"},
             )
-            if ai_broker is not None:
-                ai_broker.close()
+            _close_ai_broker(ai_broker)
             for fh in (stdout_fh, stderr_fh):
                 if fh is not None:
                     try:
@@ -744,8 +753,7 @@ class Executor:
                 logger.exception("Cannot persist progress; enforcing local build deadline")
             ret = proc.process.poll()
             if ret is not None:
-                if proc.ai_broker is not None:
-                    proc.ai_broker.close()
+                _close_ai_broker(proc.ai_broker)
                 finished.append((proc, ret))
                 continue
 
@@ -793,8 +801,7 @@ class Executor:
             f"Sending SIGTERM to {proc.slug}: {reason}",
             extra={**self._log_context(proc), "reason": reason, "signal": "SIGTERM"},
         )
-        if proc.ai_broker is not None:
-            proc.ai_broker.close()
+        _close_ai_broker(proc.ai_broker)
         try:
             self._signal_process_tree(proc, signal.SIGTERM)
             proc.sigterm_at = now
@@ -1110,8 +1117,7 @@ class Executor:
 
     @staticmethod
     def _cleanup(proc: RunningProc) -> None:
-        if proc.ai_broker is not None:
-            proc.ai_broker.close()
+        _close_ai_broker(proc.ai_broker)
         # Remove the finished sandbox container (no-op for in-process runs).
         cleanup = getattr(proc.process, "cleanup", None)
         if cleanup is not None:

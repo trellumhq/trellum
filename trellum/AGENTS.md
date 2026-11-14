@@ -391,6 +391,11 @@ The sandbox receives no provider credentials or endpoint.
 Every report completion shares the monthly organization AI cap. Report spend
 never counts toward a user's personal cap, including manually requested builds.
 There is no per-build call-count cap; the organization budget stops later calls.
+Saved price overrides apply only to the saved model. A different `model=` uses
+its own known direct-provider prices; a budgeted call fails before contacting
+the provider if those prices are unknown. For a gateway or cloud model, save
+the desired model and its prices in AI settings. Returned usage still counts
+toward spend when the answer is rejected as invalid.
 A build allows one in-flight request at a time; concurrent calls are rejected
 with `invalid_request`, so call sequentially. Prompts together are limited to 256 KiB UTF-8; `max_tokens` defaults to 4096 and accepts 1–16384;
 `timeout` defaults to 90 seconds and accepts up to 120 seconds.

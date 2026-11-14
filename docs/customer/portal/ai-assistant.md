@@ -443,6 +443,13 @@ calls fail cleanly with `budget`, while a report that catches the error can
 still publish. Budgeted reports need known pricing and returned token usage,
 but never need a stored successful Cost metering check. Missing usage fails
 that call without booking a guessed charge; the next call can try again.
+If returned usage is valid but the answer is rejected, that usage still counts
+toward the organization cap.
+
+The optional `model=` argument selects another model for one call. Saved prices
+apply only to the saved model; an override uses its own known direct-provider
+prices. Budgeted calls fail before contacting a model whose prices are unknown.
+For a gateway or cloud model, save the desired model and its prices in AI settings.
 
 Optional `response_format="json"` uses native JSON response format on
 OpenAI-protocol providers. Anthropic, Bedrock and Vertex instead receive a
