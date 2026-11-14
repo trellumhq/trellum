@@ -72,6 +72,24 @@ def get_datasource(name: str) -> dict | None:
     return load_datasource_config().get(name)
 
 
+def resolve_declared_source(sources: list, name: str) -> dict:
+    """Resolve inline or central configuration through a report's declarations.
+
+    Declarations are checked in order. An inline dict supplies its own
+    configuration; a string refers to the central configuration by name.
+    Undeclared central sources remain inaccessible to the report.
+    """
+    for source in sources:
+        if isinstance(source, dict) and source.get("name") == name:
+            return source
+        if isinstance(source, str) and source == name:
+            central = get_datasource(source)
+            if central is not None:
+                return central
+
+    raise ValueError(f"Data source '{name}' not found: not declared in report.yaml or not configured")
+
+
 def resolve_to_legacy_format(name: str) -> dict | None:
     """Convert a central config entry to the dict format that resolve_connection() expects.
 

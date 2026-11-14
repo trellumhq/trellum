@@ -130,25 +130,10 @@ class ReportContext:
     # ── Data access ──────────────────────────────────────────
 
     def _resolve_source(self, name: str) -> dict:
-        """Find a data source by name, supporting both dict and string entries.
+        """Resolve a source only when this report declares its name."""
+        from trellum.data.datasource_config import resolve_declared_source
 
-        Resolution order:
-        1. Dict entry in report.yaml ``data_sources`` with ``name: <name>``
-        2. String entry in report.yaml matching ``<name>``
-        Central configuration is accessible only through a declared name.
-        """
-        from trellum.data.datasource_config import get_datasource
-
-        sources = self._config.get("data_sources", [])
-        for s in sources:
-            if isinstance(s, dict) and s.get("name") == name:
-                return s
-            if isinstance(s, str) and s == name:
-                central = get_datasource(s)
-                if central is not None:
-                    return central
-
-        raise ValueError(f"Data source '{name}' not found: not declared in report.yaml or not configured")
+        return resolve_declared_source(self._config.get("data_sources", []), name)
 
     def _resolve_scalar_source(self, name: str) -> dict:
         # Check membership first; portal materialization replaces local
