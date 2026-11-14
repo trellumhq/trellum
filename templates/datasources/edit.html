@@ -10,13 +10,13 @@
 <section class="ui-form-section" aria-label="Saved source status">
   <h2>Saved configuration</h2>
   <p data-ds-saved-evidence>{{ label }}{% if detail %} · {{ detail }}{% endif %}</p>
-  <p class="muted" data-ds-saved-scope>{% if state.binding_scope == "org" %}Organization credentials shared with every studio.{% else %}Credentials for this studio.{% endif %}</p>
-  <p class="muted">A confirmation records the last test; it does not guarantee current connectivity.</p>
+  <p class="muted" data-ds-saved-scope>{% if scalar %}Available to reports {% if state.binding_scope == "org" %}in this organization{% else %}in this studio{% endif %} that list the source.{% elif state.binding_scope == "org" %}Organization credentials shared with every studio.{% else %}Credentials for this studio.{% endif %}</p>
+  <p class="muted" data-ds-connection-only{% if scalar %} hidden style="display:none"{% endif %}>A confirmation records the last test; it does not guarantee current connectivity.</p>
   <div id="ds-editor-status" data-ds-status>
     <span class="ui-badge {{ badge }}" data-ds-badge>{{ label }}</span>
     <span class="muted" data-ds-detail>{{ detail }}</span>
     <div data-ds-result role="status" aria-live="polite"></div>
-    <button type="button" class="ui-btn ghost" data-ds-test {% if not state.binding %}disabled{% endif %}>Test saved configuration</button>
+    <button type="button" class="ui-btn ghost" data-ds-test data-ds-connection-only{% if scalar %} hidden style="display:none"{% endif %} {% if not state.binding %}disabled{% endif %}>Test saved configuration</button>
   </div>
   {% if state.declaration %}<h3>Effective declaration</h3>
   <p class="muted">Declared in <code>{{ state.declaration.source_file }}</code>. Repository fields are read-only.</p>
@@ -54,7 +54,7 @@
       <span class="ui-help">Replaces shared credentials. Blank secrets keep the organization's saved values. A studio source with the same name still takes precedence.</span>
     </div>{% endif %}
     <div class="ui-form-actions">
-      <button class="ui-btn ghost" type="button" data-ds-draft-test>Test draft</button>
+      <button class="ui-btn ghost" type="button" data-ds-draft-test data-ds-connection-only{% if scalar %} hidden style="display:none"{% endif %}>Test draft</button>
       <button class="ui-btn primary" type="submit">Save source</button>
       <a class="ui-btn ghost" data-ds-cancel data-settings-leave data-console-nav href="{{ list_url }}">Back to data sources</a>
     </div>
@@ -64,6 +64,6 @@
     {% csrf_token %}<input type="hidden" name="action" value="remove_credentials"><input type="hidden" name="name" value="{{ state.name }}">
     <button class="ui-btn danger" type="submit">Remove credentials</button>
   </form>{% endif %}
-  <p class="ui-help">Tests use the effective declaration and this draft. Testing a draft does not save credentials or start builds.</p>
+  <p class="ui-help" data-ds-connection-only{% if scalar %} hidden style="display:none"{% endif %}>Tests use the effective declaration and this draft. Testing a draft does not save credentials or start builds.</p>
 </div>
 {% endblock %}

@@ -79,9 +79,8 @@ class _Stream:
         return getattr(self.stream, name)
 
 
-def _secrets(config):
-    from trellum.data.datasource_config import get_datasource
-    from trellum.data.scalar import SCALAR_TYPES, scalar_value
+def environment_secrets():
+    """Host-registered scalar values, without importing report or project code."""
     values = []
     try:
         supplied = json.loads(os.environ.get('TRELLUM_SCALAR_SECRETS', '[]'))
@@ -104,6 +103,46 @@ def _secrets(config):
         if value:
             values.extend([value, value.strip()])
     values.extend(supplied)
+    # A JSON secret can be consumed as separate fields by native/child code.
+    # The host registration contains the original object; retain its leaves
+    # for the process-level filter too, without importing project config.
+    def leaves(item):
+        if isinstance(item, dict):
+            for key, child in item.items():
+                yield str(key)
+                yield from leaves(child)
+        elif isinstance(item, list):
+            for child in item:
+                yield from leaves(child)
+        elif isinstance(item, str):
+            yield item
+        else:
+            yield json.dumps(item)
+    for value in tuple(values):
+        try:
+            obj = json.loads(value)
+            if isinstance(obj, dict):
+                values.extend(leaves(obj))
+        except (ValueError, RecursionError):
+            pass
+    return values
+
+
+def secret_variants(values):
+    """Literal and common escaped representations at text output boundaries."""
+    variants = set()
+    for value in values:
+        if value:
+            variants.update((value, html.escape(value), html.escape(value, quote=False),
+                             json.dumps(value)[1:-1], json.dumps(value, ensure_ascii=False)[1:-1],
+                             quote(value, safe='')))
+    return tuple(sorted(variants, key=len, reverse=True))
+
+
+def _secrets(config):
+    from trellum.data.datasource_config import get_datasource
+    from trellum.data.scalar import SCALAR_TYPES, scalar_value
+    values = environment_secrets()
     for entry in config.get('data_sources', []):
         source = (get_datasource(entry) if isinstance(entry, str)
                   else get_datasource(entry.get('name')) or entry)
@@ -132,13 +171,7 @@ def _secrets(config):
                     except ValueError:
                         pass
 
-    variants = set()
-    for value in values:
-        if value:
-            variants.update((value, html.escape(value), html.escape(value, quote=False),
-                             json.dumps(value)[1:-1], json.dumps(value, ensure_ascii=False)[1:-1],
-                             quote(value, safe='')))
-    return tuple(sorted(variants, key=len, reverse=True))
+    return secret_variants(values)
 
 
 @contextlib.contextmanager

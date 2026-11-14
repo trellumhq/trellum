@@ -246,3 +246,81 @@ def test_oserror_filename_does_not_escape_redaction(project, monkeypatch):
         with build_redaction(context('secret')._config):
             raise OSError(2, 'unavailable', 'synthetic-error-filename')
     assert 'synthetic-error-filename' not in str(error.value)
+
+
+@pytest.mark.parametrize('secret', ['workspace-private<&"token', '9137'])
+def test_metrics_workspace_build_redacts_every_published_artifact(project, monkeypatch, secret):
+    import html
+
+    import pandas as pd
+
+    from trellum.components import RawHTML
+    from trellum.metrics import invalidate_metrics_cache
+    from trellum.metrics_report import MetricsReport
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    metrics = [{'name': f'metric_{index:02}', 'label': f'Metric {index:02} {secret}',
+                'tags': [secret], 'agg': 'sum', 'column': 'value', 'dataset': 'daily',
+                'description': f'Controlled metric description containing {secret}.'}
+               for index in range(26)]
+    metrics.append({'name': 'unbound', 'label': secret, 'description': secret})
+    (project / 'metrics.yaml').write_text(json.dumps({'version': 1, 'datasets': {
+        'daily': {'provider': 'fixture:daily', 'dimensions': ['segment'],
+                  'time': {'column': 'date', 'grain': 'day'}}}, 'metrics': metrics}))
+    invalidate_metrics_cache()
+
+    def generate(self, ctx):
+        value = ctx.read_text('input')
+        ctx.metrics = lambda *args, **kwargs: pd.DataFrame({
+            'date': ['2026-01-01', '2026-01-02'], 'segment': [value, 'public'],
+            'value': [9137, 91378]})
+        MetricsReport().generate(ctx)
+        ctx.set_header(subtitle=value, meta={'source': value})
+        ctx.add_section('Common content', [RawHTML(html=html.escape(value),
+                        data_key='private_note', data={'token': value, 'public': 'kept'})])
+
+    try:
+        out = build(project, monkeypatch, generate)
+    finally:
+        invalidate_metrics_cache()
+
+    variants = (secret, html.escape(secret), json.dumps(secret)[1:-1])
+    documents = {}
+    for path in out.rglob('*'):
+        if not path.is_file():
+            continue
+        if path.suffix == '.json':
+            documents[path.name] = json.loads(path.read_bytes())
+            # Numeric secrets must be redacted as JSON values: filtering raw
+            # serialized bytes would corrupt a larger number like 91378.
+            if secret.isdigit():
+                def check(value):
+                    if isinstance(value, dict):
+                        for key, child in value.items():
+                            check(key)
+                            check(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            check(child)
+                    elif isinstance(value, str):
+                        assert secret not in value
+                    else:
+                        assert value != int(secret)
+                check(documents[path.name])
+                continue
+        assert all(variant.encode() not in path.read_bytes() for variant in variants)
+
+    marker = documents['_meta.json']['metrics_workspace']
+    assert marker['pages'] == 2
+    prefix = f'_metrics-workspace-{marker["build"]}'
+    assert (out / 'index.html').read_bytes() == (out / f'{prefix}-page-1.html').read_bytes()
+    catalog = documents[f'{prefix}-catalog.json']['metrics']
+    assert len(catalog) == 27
+    assert catalog[0]['category'] == '[REDACTED]'
+    assert catalog[-1]['label'] == '[REDACTED]'
+    for page in (1, 2):
+        payload = documents[f'{prefix}-page-{page}.json']
+        assert payload['private_note'] == {'token': '[REDACTED]', 'public': 'kept'}
+        assert '[REDACTED]' in (out / f'{prefix}-page-{page}.html').read_text()
+        assert 'public' in json.dumps(payload)
+        assert 91378 in [cell for row in payload['_ds_daily']['_data'] for cell in row]

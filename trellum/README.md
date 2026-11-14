@@ -410,8 +410,11 @@ Missing or empty values raise `ValueError` when read. Catch it in a generator
 when the input is optional; an unused empty source does not prevent a build.
 
 Use `type: secret` or `secret: true` on a scalar to filter its value from
-framework build logs, HTML, JSON and validation diagnostics. Hosts may also
-supply `TRELLUM_SCALAR_SECRETS` as a JSON list of secret strings. Avoid printing
+framework build logs, HTML, JSON and validation diagnostics. CLI builds filter
+native and child-process stdout/stderr before the host writes its log files.
+Hosts may also supply `TRELLUM_SCALAR_SECRETS` as a JSON list of secret strings,
+or `TRELLUM_SCALAR_SECRET_NAMES` as a JSON list of injected `TRELLUM_DS_*_VALUE`
+environment names. Avoid printing
 or rendering secrets deliberately: redaction covers known literal and common
 escaped representations, not arbitrary transformations such as hashing or
 base64 encoding.

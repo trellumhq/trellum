@@ -90,9 +90,19 @@ _SECRET_FIELDS = [
 
 
 
+class SecretTextarea(forms.Textarea):
+    """Accept multiline replacements without rendering submitted/stored secrets."""
+
+    def format_value(self, value):
+        return None
+
+
 class DataSourceForm(forms.Form):
     name = forms.CharField(max_length=64, validators=[name_validator])
-    type = forms.ChoiceField(choices=DataSource.TYPES)
+    type = forms.ChoiceField(choices=[
+        (kind, {"file": "Data file", "json": "JSON"}.get(kind, label))
+        for kind, label in DataSource.TYPES
+    ])
     description = forms.CharField(max_length=400, required=False)
     value = forms.CharField(required=False, max_length=16384, strip=True)
     clear_value = forms.BooleanField(required=False, label="Clear saved value")
@@ -132,13 +142,24 @@ class DataSourceForm(forms.Form):
             self.fields["scope"].widget = forms.HiddenInput()
         for key, field in _CONFIG_FIELDS + _SECRET_FIELDS:
             self.fields[key] = deepcopy(field)
+        if not allow_secret_reference:
+            self.fields["secret_reference"].widget = forms.HiddenInput()
         kind = self.data.get("type", initial.get("type")) if self.is_bound else initial.get("type")
         hidden_value = kind == "secret" or bool(self.data.get("secret") if self.is_bound else initial.get("secret")) or bool(self.data.get("secret_reference") if self.is_bound else initial.get("secret_reference"))
         if hidden_value:
-            self.fields["value"].widget = forms.PasswordInput(render_value=False)
+            self.fields["value"].widget = (
+                SecretTextarea(attrs={"rows": 5, "autocomplete": "off", "spellcheck": "false"})
+                if kind in {"text", "json"} else forms.PasswordInput(render_value=False)
+            )
             self.fields["value"].help_text = "Blank keeps the saved value. Saved secrets are never shown again."
         elif kind in {"text", "json"}:
             self.fields["value"].widget = forms.Textarea(attrs={"rows": 5})
+        elif kind == "boolean":
+            self.fields["value"].widget = forms.Select(choices=[("", "No value"), ("true", "True"), ("false", "False")])
+        elif kind == "number":
+            self.fields["value"].widget = forms.NumberInput(attrs={"step": "any"})
+        if not instance:
+            self.fields["clear_value"].widget = forms.HiddenInput()
         if instance and not hidden_value:
             self.initial["value"] = (instance.credentials or {}).get("value", "")
 
@@ -171,7 +192,8 @@ class DataSourceForm(forms.Form):
                         raise ValueError
             except (ValueError, TypeError, OverflowError, RecursionError):
                 self.add_error("value", "Enter a finite number, true/false boolean, or JSON object matching the selected type.")
-        if cleaned.get("secret_reference") and not self.allow_secret_reference:
+        stored_reference = (self.instance.config or {}).get("secret_reference", "") if self.instance else ""
+        if cleaned.get("secret_reference") and cleaned["secret_reference"] != stored_reference and not self.allow_secret_reference:
             self.add_error("secret_reference", "Only organization admins may use an organization secret.")
         if cleaned.get("secret_reference") and ds_type in SCALAR_TYPES:
             if ds_type != "secret" and not cleaned.get("secret"):

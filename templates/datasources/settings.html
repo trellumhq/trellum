@@ -101,13 +101,13 @@
         {% if row.download_url %}
         <a class="ui-btn ghost" data-ds-download href="{{ row.download_url }}">Download</a>
         {% endif %}
-        {% if row.ds %}
+        {% if row.ds and not row.scalar %}
         <button class="ui-btn ghost" type="button" data-ds-test
                 onclick="testSource({{ row.ds.pk }}, '{{ row.name|escapejs }}', this)">Test</button>
         {% endif %}
         {% if row.state.declared and not org_page %}
           {% if row.configurable and row.can_manage %}
-          <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Edit credentials</a>
+          <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">{% if row.scalar %}Edit value{% else %}Edit credentials{% endif %}</a>
           {% elif row.configurable and not row.ds %}
           <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Configure</a>
           {% elif row.manage_url %}
@@ -182,25 +182,55 @@
   var pathHelp = form.querySelector('[data-f="path"] .helptext');
   var filePathLabel = pathLabel ? pathLabel.textContent : 'Path';
 
-  function applyType() {
+  function applyType(event) {
     var relevant = (TYPE_FIELDS[typeSelect.value] || []).slice();
-    if (relevant.indexOf("value") !== -1) relevant.push("clear_value");
+    var scalar = relevant.indexOf('value') !== -1;
+    var clear = form.querySelector('[name="clear_value"]');
+    if (scalar && clear && clear.type !== 'hidden') relevant.push('clear_value');
     var value = form.querySelector('[name="value"]');
     var secret = form.querySelector('[name="secret"]');
     var reference = form.querySelector('[name="secret_reference"]');
     if (value) {
       var masked = typeSelect.value === 'secret' || (secret && secret.checked) || (reference && reference.value);
-      var multiline = !masked && ['text', 'json'].indexOf(typeSelect.value) !== -1;
-      if ((value.tagName === 'TEXTAREA') !== multiline) {
-        var replacement = document.createElement(multiline ? 'textarea' : 'input');
-        Array.from(value.attributes).forEach(function (attr) { if (attr.name !== 'type' && attr.name !== 'value') replacement.setAttribute(attr.name, attr.value); });
+      // Keep multiline replacements as textareas: password inputs discard line breaks.
+      var multiline = ['text', 'json'].indexOf(typeSelect.value) !== -1;
+      var boolean = typeSelect.value === 'boolean' && !masked;
+      var tag = multiline ? 'TEXTAREA' : boolean ? 'SELECT' : 'INPUT';
+      var preserveFocus = document.activeElement === value && (!event || event.type !== 'change');
+      if (value.tagName !== tag && preserveFocus && !value._dsPendingWidget) {
+        value._dsPendingWidget = true;
+        value.addEventListener('blur', function () { this._dsPendingWidget = false; applyType(); }, {once: true});
+      }
+      if (value.tagName !== tag && form.getAttribute('aria-busy') !== 'true' && !preserveFocus) {
+        var replacement = document.createElement(tag.toLowerCase());
+        Array.from(value.attributes).forEach(function (attr) { if (['type', 'value', 'rows', 'step'].indexOf(attr.name) === -1) replacement.setAttribute(attr.name, attr.value); });
+        if (boolean) [['', 'No value'], ['true', 'True'], ['false', 'False']].forEach(function (option) {
+          replacement.add(new Option(option[1], option[0]));
+        });
         replacement.value = value.value;
         if (multiline) replacement.rows = 5;
         value.replaceWith(replacement);
         value = replacement;
+        if (window.TrellumSettingsForms) TrellumSettingsForms.trackControls(form, [value]);
       }
-      if (!multiline) value.type = masked ? 'password' : 'text';
+      if (value.tagName === 'INPUT') {
+        value.type = masked ? 'password' : typeSelect.value === 'number' ? 'number' : 'text';
+        if (value.type === 'number') value.step = 'any';
+      }
+      value.autocomplete = masked ? 'off' : '';
+      var valueRow = value.closest('[data-f="value"]');
+      if (valueRow) {
+        var help = valueRow.querySelector('.ui-help');
+        if (!help) { help = document.createElement('span'); help.className = 'ui-help'; valueRow.appendChild(help); }
+        help.textContent = masked
+          ? (multiline ? 'Replacement text is visible while editing and cleared after saving. ' : '') + (clear && clear.type !== 'hidden' ? 'Blank keeps the saved secret. ' : '') + 'Saved secrets are never shown again.'
+          : 'Available to reports that list this source.';
+      }
+      if (reference && reference.value) relevant = relevant.filter(function (name) { return name !== 'value'; });
     }
+    if (typeSelect.value === 'secret') relevant = relevant.filter(function (name) { return name !== 'secret'; });
+    document.querySelectorAll('[data-ds-connection-only]').forEach(function (node) { node.hidden = scalar; node.style.display = scalar ? 'none' : ''; });
+
     form.querySelectorAll('[data-f]').forEach(function (row) {
       row.style.display = relevant.indexOf(row.getAttribute('data-f')) === -1 ? 'none' : '';
     });
@@ -221,6 +251,7 @@
      and the person may know something we do not. */
   var IS_ORG_PAGE = {% if org_page %}true{% else %}false{% endif %};
   function applyGitWarning() {
+    if (!pathInput || !uploadBox) return;
     var rel = (pathInput.value || '').replace(/\\/g, '/').replace(/^\.?\//, '');
     var risky = !IS_ORG_PAGE && uploadBox.checked && rel.indexOf('reports/') === 0;
     if (gitWarning) gitWarning.hidden = !risky;
@@ -228,8 +259,9 @@
 
   typeSelect.addEventListener('change', applyType);
   ['secret', 'secret_reference'].forEach(function (name) { var control = form.querySelector('[name="' + name + '"]'); if (control) control.addEventListener('change', applyType); });
-  pathInput.addEventListener('input', applyGitWarning);
-  uploadBox.addEventListener('change', applyGitWarning);
+  if (pathInput) pathInput.addEventListener('input', applyGitWarning);
+  if (uploadBox) uploadBox.addEventListener('change', applyGitWarning);
+  form.addEventListener('settings:success', applyType);
   applyType();
   applyGitWarning();
 })();
@@ -618,8 +650,16 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
       }
     };
   }
+  function scalarType() {
+    var type = form.querySelector('[name="type"]');
+    return type && ['string', 'secret', 'text', 'number', 'boolean', 'json'].indexOf(type.value) !== -1;
+  }
   function invalidateTest() {
     if (!form._dsTestingRow) return;
+    if (scalarType()) {
+      form._dsTestingRow.querySelector('[data-ds-result]').textContent = 'Unsaved changes.';
+      return;
+    }
     form._dsTestingRow._dsGeneration += 1;
     if (editor) form._dsTestingRow.querySelector('[data-ds-test]').disabled = true;
     dsBadge(form._dsTestingRow, 'warn', editor ? 'Draft changed' : 'Not confirmed');
@@ -642,7 +682,7 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
   form.addEventListener('settings:success', function (event) {
     var data = event.detail;
     if (data.redirect) return;
-    if (!data.test_url) return;
+    if (!data.test_url && !data.source_type) return;
     if (editor) {
       form.dataset.revision = data.editor_revision || data.revision;
       form.dataset.orgRevision = data.org_revision || '';
@@ -655,10 +695,18 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
       document.querySelector('[data-ds-saved-evidence]').textContent = data.label + (data.detail ? ' · ' + data.detail : '');
       document.querySelectorAll('[data-ds-editor-name]').forEach(function (name) { name.textContent = data.source_name; });
       var savedScope = document.querySelector('[data-ds-saved-scope]');
-      if (savedScope) savedScope.textContent = data.source_scope === 'org' ? 'Organization credentials shared with every studio.' : 'Credentials for this studio.';
+      if (savedScope) savedScope.textContent = scalarType()
+        ? (data.source_scope === 'org' ? 'Available to reports in this organization that list the source.' : 'Available to reports in this studio that list the source.')
+        : (data.source_scope === 'org' ? 'Organization credentials shared with every studio.' : 'Credentials for this studio.');
       var savedType = document.querySelector('[data-ds-editor-type]');
       if (savedType) savedType.textContent = data.source_type;
       var row = form._dsTestingRow;
+      if (!data.test_url) {
+        dsBadge(row, data.badge || '', data.label);
+        row.querySelector('[data-ds-detail]').textContent = data.detail || '';
+        row.querySelector('[data-ds-result]').textContent = form._dsGeneration !== form._dsSubmittedGeneration ? 'Saved. There are newer unsaved changes.' : '';
+        return;
+      }
       row.querySelector('[data-ds-test]').disabled = form._dsGeneration !== form._dsSubmittedGeneration;
       if (form._dsGeneration !== form._dsSubmittedGeneration) {
         dsBadge(row, 'warn', 'Draft changed');

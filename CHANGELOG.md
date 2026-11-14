@@ -20,6 +20,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and document a proposed README visual sequence for review. Use closer
   captures for sparse settings and reports within a consistent 1280 × 720 frame.
 
+### Fixed
+
+- Redact scalar secrets from paginated Metrics workspace artifacts and from
+  native and subprocess build logs, including local `.env` builds.
+- Keep cleared scalar values empty after later editor saves, preserve multiline
+  secret replacements, and show scalar status and controls appropriate to each type.
+
 ## [0.10.1] — 2026-11-08
 
 This recovery release includes the [report components, visual improvements and

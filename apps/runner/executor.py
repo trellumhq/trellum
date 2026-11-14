@@ -285,6 +285,54 @@ def read_peak_rss_mb(pid: int) -> int | None:
     return None
 
 
+def read_process_tree_peak_rss_mb(pid: int) -> int | None:
+    """Largest observed process RSS high-water mark in a direct build tree.
+
+    A log supervisor is now the process leader, so measuring only its PID
+    misses the report's allocations. Keep the existing per-process peak
+    metric; summing historical peaks would count allocations that did not
+    coexist. Windows Job processes and Docker supply their own sampler.
+    """
+    pending = [pid]
+    seen = set()
+    peak = None
+    # Bound procfs work even when an unsandboxed build creates many tasks.
+    budget = 4096
+    while pending and budget:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        budget -= 1
+        observed = read_peak_rss_mb(current)
+        if observed is not None:
+            peak = max(peak or 0, observed)
+        if not sys.platform.startswith("linux"):
+            continue
+        try:
+            with os.scandir(f"/proc/{current}/task") as tasks:
+                for task in tasks:
+                    if not budget:
+                        break
+                    budget -= 1
+                    try:
+                        with open(f"{task.path}/children", encoding="ascii") as fh:
+                            children = fh.read(65537)
+                        if len(children) > 65536:
+                            continue
+                        for child in children.split():
+                            if len(pending) >= budget:
+                                break
+                            child_pid = int(child)
+                            if child_pid not in seen:
+                                pending.append(child_pid)
+                    except (OSError, ValueError):
+                        continue
+        except OSError:
+            continue
+    return peak
+
+
 def _read_peak_working_set_mb(pid: int) -> int | None:
     """Windows: PeakWorkingSetSize via GetProcessMemoryInfo (psapi)."""
     import ctypes
@@ -736,11 +784,11 @@ class Executor:
                 finished.append((proc, ret))
                 continue
 
-            # Sample peak memory while the process is alive. In-process runs
-            # read /proc VmHWM; sandboxed runs expose it via the facade (the
-            # container's own /proc is gone once it exits).
+            # Sample peak memory while the process is alive. Direct runs must
+            # include the report behind its log supervisor; Windows Jobs and
+            # sandboxes expose their sampler through the process facade.
             sampler = getattr(proc.process, "peak_rss_mb", None)
-            observed = sampler() if sampler else read_peak_rss_mb(proc.process.pid)
+            observed = sampler() if sampler else read_process_tree_peak_rss_mb(proc.process.pid)
             if observed is not None and observed > (proc.peak_memory_mb or 0):
                 proc.peak_memory_mb = observed
 

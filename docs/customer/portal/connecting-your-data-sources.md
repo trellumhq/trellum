@@ -322,7 +322,8 @@ except ValueError:
 
 Missing, empty and undeclared sources raise a catchable error when read. They
 do not block build admission. Secret values are redacted from framework logs,
-validator output and report artifacts; do not deliberately transform secrets
+native and child-process build output, validator output and report artifacts,
+including paginated Metrics workspaces; do not deliberately transform secrets
 into report content. Values are never stored in project config or uploads.
 
 For local runs, declare a credential prefix in `data-sources/config.yaml`:

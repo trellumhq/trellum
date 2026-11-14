@@ -88,6 +88,9 @@ class SourceState:
     NEEDS_CREDENTIALS: ClassVar[str] = "needs_credentials"
     NEEDS_UPLOAD: ClassVar[str] = "needs_upload"
     CONNECTED: ClassVar[str] = "connected"
+    SAVED: ClassVar[str] = "saved"
+    EMPTY: ClassVar[str] = "empty"
+    REFERENCED: ClassVar[str] = "referenced"
     FAILING: ClassVar[str] = "failing"
     CHECKING: ClassVar[str] = "checking"
     NOT_IN_REPO: ClassVar[str] = "not_in_repo"
@@ -186,8 +189,15 @@ def _state(name, declaration, binding, used_by) -> SourceState:
         st.last_check_error = binding.last_check_error
 
     if st.type in SCALAR_TYPES:
-        st.state = SourceState.CONNECTED if declaration is not None else SourceState.NOT_IN_REPO
-        st.detail = "Value is resolved when the report requests it."
+        if binding and (binding.config or {}).get("secret_reference"):
+            st.state = SourceState.REFERENCED
+            st.detail = "Organization secret is resolved during the build."
+        elif binding and str((binding.credentials or {}).get("value", "")).strip():
+            st.state = SourceState.SAVED
+            st.detail = "Available to reports that list this source."
+        else:
+            st.state = SourceState.EMPTY
+            st.detail = "No value saved. Reports can handle an empty source."
         return st
 
     if declaration is not None and declaration.file_error and st.type in INLINE_TYPES:

@@ -22,7 +22,7 @@
     <section class="ui-form-section" data-ds-fields>
       <h2>Value</h2>
       <div class="ui-form-row">
-      {% for field in form %}{% if field.name == "value" or field.name == "secret" or field.name == "secret_reference" or field.name == "clear_value" or field.name == "mode" %}
+      {% for field in form.visible_fields %}{% if field.name == "value" or field.name == "secret" or field.name == "secret_reference" or field.name == "clear_value" or field.name == "mode" %}
         <div class="ui-field ui-field-wide" data-f="{{ field.name }}">
           {% if field.field.widget.input_type == "checkbox" %}<label class="ui-check-row">{{ field }} {{ field.label }}</label>{% else %}<label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}
           {% if field.errors %}<div class="ui-field-error" role="alert">{{ field.errors }}</div>{% endif %}

@@ -412,11 +412,21 @@ _BADGES = {
     SourceState.NEEDS_UPLOAD: ("warn", "Needs upload"),
     SourceState.CHECKING: ("info", "Checking…"),
     SourceState.CONNECTED: ("ok", "Connected"),
+    SourceState.SAVED: ("ok", "Saved"),
+    SourceState.EMPTY: ("", "Empty"),
+    SourceState.REFERENCED: ("info", "Referenced"),
     SourceState.FAILING: ("fail", "Failing"),
     SourceState.NOT_IN_REPO: ("", "Not in repository"),
 }
 NEEDS_STATES = (SourceState.NEEDS_CREDENTIALS, SourceState.NEEDS_UPLOAD)
 _TYPE_LABELS = dict(DataSource.TYPES)
+_TYPE_LABELS.update(file="Data file", json="JSON")
+
+
+def _type_label(kind, fields):
+    if kind == "file":
+        return "Text file" if fields.get("mode") == "text" else "Table file"
+    return _TYPE_LABELS.get(kind, kind or "—")
 
 
 def _badge(st):
@@ -555,12 +565,13 @@ def _row(request, st: SourceState, *, studio) -> dict:
     )
     return {
         "state": st,
+        "scalar": st.type in SCALAR_TYPES,
         "ds": ds,
         "name": st.name,
         # Element-id suffix: the row's pk where a binding exists (the tested JS
         # contract), else the name.
         "key": ds.pk if ds is not None else f"n-{st.name}",
-        "type_label": _TYPE_LABELS.get(st.type, st.type or "—"),
+        "type_label": _type_label(st.type, effective_fields(st.declaration, ds)),
         "badge": badge,
         "label": label,
         "detail": _status_detail(st),
@@ -644,11 +655,14 @@ def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=N
         values.update(clear_value=False, secret_reference=(ds.config or {}).get("secret_reference", ""))
         if ds.type == "secret" or (ds.config or {}).get("secret") or (ds.config or {}).get("secret_reference"):
             values["value"] = ""
+        else:
+            values["value"] = (ds.credentials or {}).get("value", "")
+    scalar = ds.type in SCALAR_TYPES
     return settings_success(
-        request, "Saved. Use Test to verify the connection." if redirect_to else "Saved. Testing connection…",
+        request, "Saved." if scalar else ("Saved. Use Test to verify the connection." if redirect_to else "Saved. Testing connection…"),
         source_id=ds.pk, source_name=ds.name,
-        test_url=base + ds.name + "/test", revision=check_revision(ds, test_studio),
-        source_type=ds.type, type_label=_TYPE_LABELS.get(ds.type, ds.type),
+        test_url="" if scalar else base + ds.name + "/test", revision=check_revision(ds, test_studio),
+        source_type=ds.type, type_label=_type_label(ds.type, effective_fields(state.declaration, ds)),
         source_scope=ds.scope, description=ds.description,
         upload_url=base + ds.name + "/upload" if (ds.config or {}).get("upload") else "",
         values=values, redirect_url=redirect_to,
@@ -863,7 +877,7 @@ def _create_page(request, studio=None):
             audit(request, "datasource.create", target=ds, name=ds.name, scope=ds.scope)
             if is_settings_request(request):
                 return _saved_response(request, ds, studio, redirect_to=list_url)
-            messages.success(request, _saved_message(ds) + " Use Test to verify the connection.")
+            messages.success(request, _saved_message(ds) + ("" if ds.type in SCALAR_TYPES else " Use Test to verify the connection."))
             return redirect(list_url)
         if is_settings_request(request):
             return settings_error(request, form=form)
@@ -966,9 +980,12 @@ def _editor(request, name, studio=None):
         form.initial.update(scalar_initial)
         for key in ("name", "type"):
             form.fields[key].disabled = True
-        if scalar_initial.get("secret"):
+        if state.type == "secret" or scalar_initial.get("secret"):
             form.fields["secret"].disabled = True
-            form.fields["value"].widget = forms.PasswordInput(render_value=False)
+            from apps.datasources.forms import SecretTextarea
+            form.initial.pop("value", None)
+            form.fields["value"].widget = (SecretTextarea(attrs={"rows": 5}) if state.type in {"text", "json"}
+                                            else forms.PasswordInput(render_value=False))
     if credentials_only:
         # The declaration owns identity/config; only these fields may change.
         keys = credential_fields(state.declaration)
@@ -1024,7 +1041,7 @@ def _editor(request, name, studio=None):
                 audit(request, "datasource.update", target=ds, name=ds.name, scope=ds.scope)
             if is_settings_request(request):
                 return _saved_response(request, ds, studio, configured=credentials_only)
-            ok, detail = check_binding(ds, None if ds.org_id else studio)
+            ok, detail = (True, "") if scalar else check_binding(ds, None if ds.org_id else studio)
             (messages.success if ok else messages.error)(request, _saved_message(ds) + " " + detail)
             return redirect(f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
                             else f"/s/{request.org.slug}/{studio.slug}/settings/datasources")
@@ -1037,7 +1054,7 @@ def _editor(request, name, studio=None):
                  else f"/s/{request.org.slug}/{studio.slug}/api/datasources" if studio else "")
     return render(request, "datasources/edit.html", {
         "org": request.org, "studio": studio, "org_page": org_page, "state": state,
-        "form": form, "credentials_only": credentials_only,
+        "form": form, "credentials_only": credentials_only, "scalar": scalar,
         "field_groups": _editor_field_groups(form),
         "wide_fields": _WIDE_EDITOR_FIELDS,
         "secret_fields": _SECRET_EDITOR_FIELDS,

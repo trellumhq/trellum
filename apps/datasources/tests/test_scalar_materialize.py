@@ -45,8 +45,7 @@ def test_cleared_scalar_is_not_a_build_blocker_and_reader_can_catch(studio_tree,
     env = materialize(studio_tree, report=report)
     assert env[f"{ds.env_prefix}_VALUE"] == ""
     monkeypatch.setenv(f"{ds.env_prefix}_VALUE", "")
-    monkeypatch.setattr("trellum.project.get_project_root", lambda: str(studio_tree.project_root))
-    monkeypatch.setattr(datasource_config, "get_project_root", lambda: str(studio_tree.project_root))
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(studio_tree.project_root))
     datasource_config.invalidate_datasource_cache()
     try:
         ctx = ReportContext(report.config, "revenue-pulse", str(studio_tree.output_dir))
