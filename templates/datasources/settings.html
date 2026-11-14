@@ -83,13 +83,20 @@
           {% else %}<span class="muted">Not declared by any studio</span>{% endif %}
         {% elif row.used_by %}{{ row.used_by }} report{{ row.used_by|pluralize }}
         {% else %}<span class="muted">0 reports</span>{% endif %}</td>
-    <td class="ui-row-actions" data-label="Actions">
+    <td class="ui-row-actions{% if row.upload_url %} ds-file-actions{% endif %}" data-label="Actions">
       {% if row.state.state == "needs_credentials" and row.configurable %}
         {# A link, so ghost: the page's primary action is the form it opens. #}
         <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Configure</a>
         <button class="ui-btn ghost" type="button" data-ds-test disabled title="Add the credentials first">Test</button>
       {% else %}
         {% if row.upload_url %}
+        <span class="muted" data-ds-filename>{{ row.filename }}</span>
+        <form class="inline" style="display:{% if row.filename %}inline{% else %}none{% endif %}" method="post" action="{{ row.upload_url }}" data-ds-remove
+              data-settings-form data-settings-save{% if not row.filename %} hidden{% endif %}>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="remove">
+          <button class="ui-btn ghost" type="submit">Remove file</button>
+        </form>
         <label class="ui-btn {% if row.state.state == "needs_upload" %}primary{% else %}ghost{% endif %}"
                title="{{ row.name }} is stored by the portal — this replaces its file">
           <input type="file" class="ds-file-input"
@@ -238,8 +245,79 @@ function dsFormatSize(n) {
   return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + ' ' + units[i];
 }
 
+function dsFileControls(row, filename) {
+  var input = row.querySelector('.ds-file-input');
+  if (!input) return;
+  var actions = input.closest('td');
+  var name = row.querySelector('[data-ds-filename]');
+  if (!name) {
+    name = document.createElement('span');
+    name.className = 'muted';
+    name.dataset.dsFilename = '';
+    actions.appendChild(name);
+  }
+  name.textContent = filename;
+  var form = row.querySelector('[data-ds-remove]');
+  if (!form) {
+    form = document.createElement('form');
+    form.method = 'post';
+    form.className = 'inline';
+    form.style.display = 'inline';
+    form.dataset.dsRemove = '';
+    form.dataset.settingsForm = '';
+    form.dataset.settingsSave = '';
+    [['csrfmiddlewaretoken', getCookie('csrftoken')], ['action', 'remove']].forEach(function (entry) {
+      var field = document.createElement('input');
+      field.type = 'hidden'; field.name = entry[0]; field.value = entry[1];
+      form.appendChild(field);
+    });
+    var button = document.createElement('button');
+    button.type = 'submit'; button.className = 'ui-btn ghost';
+    button.textContent = 'Remove file';
+    form.appendChild(button);
+    actions.appendChild(form);
+    TrellumSettingsForms.init(form);
+  }
+  form.action = input.dataset.url;
+  form.hidden = !filename;
+  form.style.display = filename ? 'inline' : 'none';
+}
+
+document.addEventListener('submit', function (event) {
+  if (!event.target.matches('[data-ds-remove]')) return;
+  var row = event.target.closest('tr');
+  if (row._dsFileBusy) { event.preventDefault(); return; }
+  row._dsFileBusy = true;
+  row.querySelector('.ds-file-input').disabled = true;
+});
+function dsReleaseRemove(event) {
+  if (!event.target.matches('[data-ds-remove]')) return;
+  var row = event.target.closest('tr');
+  row._dsFileBusy = false;
+  row.querySelector('.ds-file-input').disabled = false;
+}
+document.addEventListener('settings:error', dsReleaseRemove);
+document.addEventListener('settings:success', function (event) {
+  if (!event.target.matches('[data-ds-remove]')) return;
+  dsReleaseRemove(event);
+  var data = event.detail;
+  var row = event.target.closest('tr');
+  if (!data.removed) return;
+  row._dsGeneration = (row._dsGeneration || 0) + 1;
+  row.dataset.revision = data.revision;
+  dsFileControls(row, '');
+  row.querySelector('[data-ds-upload-label]').textContent = 'Upload file';
+  var download = row.querySelector('[data-ds-download]');
+  if (download) download.remove();
+  var progress = row.querySelector('.ds-progress');
+  if (progress) progress.hidden = true;
+  dsBadge(row, data.badge, data.label, data.detail);
+  row.querySelector('.ds-file-input').focus({preventScroll:true});
+});
+
 function dsUpload(input) {
   if (!input.files || !input.files.length) return;
+  if (input.closest('tr')._dsFileBusy) return;
   var file = input.files[0];
   var pk = input.dataset.pk;
   var box = document.getElementById('ds-progress-' + pk);
@@ -263,6 +341,14 @@ function dsUpload(input) {
   bar.style.width = '0%';
   label.textContent = 'Starting…';
   input.disabled = true;
+  row._dsFileBusy = true;
+  var removeButton = row.querySelector('[data-ds-remove] button');
+  if (removeButton) removeButton.disabled = true;
+  function releaseFileAction() {
+    input.disabled = false;
+    row._dsFileBusy = false;
+    if (removeButton) removeButton.disabled = false;
+  }
 
   var data = new FormData();
   data.append('file', file);
@@ -270,6 +356,7 @@ function dsUpload(input) {
   xhr.open('POST', input.dataset.url);
   xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
   xhr.withCredentials = true;
+  xhr.timeout = 120000;
 
   xhr.upload.addEventListener('progress', function (e) {
     if (row._dsGeneration !== generation) return;
@@ -281,16 +368,17 @@ function dsUpload(input) {
   });
 
   xhr.addEventListener('load', function () {
-    input.disabled = false;
+    releaseFileAction();
     if (row._dsGeneration !== generation) return;
     var body = {};
     try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON error page */ }
     if (xhr.status === 200 && body.ok) {
       bar.style.width = '100%';
-      label.textContent = 'Uploaded ' + (body.size_label || '') + '.';
+      label.textContent = 'Uploaded ' + (body.size_label || '') + '. Takes effect on the next build.';
       row.dataset.revision = body.revision;
       row.dataset.sourceId = body.source_id;
       dsBadge(row, body.badge || 'ok', body.label || 'Connected', body.detail || body.size_label || 'File uploaded.');
+      dsFileControls(row, body.filename || file.name);
       input.parentElement.querySelector('[data-ds-upload-label]').textContent = 'Replace file';
       input.parentElement.classList.remove('primary');
       input.parentElement.classList.add('ghost');
@@ -310,13 +398,19 @@ function dsUpload(input) {
   });
 
   xhr.addEventListener('error', function () {
-    input.disabled = false;
+    releaseFileAction();
     if (row._dsGeneration !== generation) return;
     box.hidden = true;
-    result.textContent = '✗ Upload failed — the connection dropped.';
+    result.textContent = 'Upload outcome unconfirmed — the connection dropped. Check the current file before trying again.';
     result.style.color = 'var(--red)';
   });
 
+  xhr.addEventListener('timeout', function () {
+    releaseFileAction();
+    if (row._dsGeneration !== generation) return;
+    box.hidden = true;
+    result.textContent = 'Upload outcome unconfirmed. Check the current file before trying again.';
+  });
   xhr.send(data);
 }
 

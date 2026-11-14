@@ -136,12 +136,22 @@ class ReportContext:
         1. Dict entry in report.yaml ``data_sources`` with ``name: <name>``
         2. String entry in report.yaml matching ``<name>``
         3. Lookup in ``data-sources/config.yaml``
+
+        A central file entry with ``upload: true`` supplies the current path
+        even for an inline file declaration, including a cleared path.
         """
         from trellum.data.datasource_config import get_datasource
 
         sources = self._config.get("data_sources", [])
         for s in sources:
             if isinstance(s, dict) and s.get("name") == name:
+                # A portal-managed upload can move or be cleared without
+                # changing the report's committed declaration.
+                if s.get("type") == "file":
+                    central = get_datasource(name)
+                    if (central is not None and central.get("type") == "file"
+                            and central.get("upload")):
+                        return {**s, "path": central.get("path", "")}
                 return s
             if isinstance(s, str) and s == name:
                 central = get_datasource(s)

@@ -1127,6 +1127,9 @@ a.ui-card { display: block; color: inherit; text-decoration: none; }
     padding: 0 !important; border: 0 !important;
     opacity: 0; overflow: hidden; clip: rect(0 0 0 0);
 }
+/* File controls wrap within their row on desktop as well as mobile cards. */
+.ui-table td.ds-file-actions { white-space: normal; }
+.ds-file-actions [data-ds-filename] { display: inline-block; max-width: 180px; overflow-wrap: anywhere; vertical-align: middle; }
 .ds-progress { margin-top: 6px; min-width: 140px; }
 .ds-progress-bar {
     height: 6px; border-radius: var(--r-sm);

@@ -1287,6 +1287,25 @@ class TestReadApi:
 class TestReportContextReadSource:
     """ctx.read_source() must resolve source config from report.yaml and call read_source."""
 
+    @pytest.mark.parametrize("upload", [False, True])
+    def test_inline_file_uses_only_managed_upload_path(self, tmp_path, upload):
+        from trellum.report import ReportContext
+
+        baseline = tmp_path / "baseline.csv"
+        replacement = tmp_path / "replacement.csv"
+        baseline.write_text("value\nbaseline\n")
+        replacement.write_text("value\nreplacement\n")
+        ctx = ReportContext(config={"data_sources": [{"name": "file", "type": "file",
+                            "path": str(baseline)}]}, slug="test", output_dir=str(tmp_path))
+        with patch("trellum.data.datasource_config.get_datasource", return_value={
+            "type": "file", "path": str(replacement), "upload": upload,
+        }):
+            assert ctx.read_source("file")["value"].tolist() == ["replacement" if upload else "baseline"]
+        with patch("trellum.data.datasource_config.get_datasource", return_value={
+            "type": "file", "upload": True,
+        }), pytest.raises(ValueError, match="no 'path' configured"):
+            ctx.read_source("file")
+
     def test_excel_source_with_path_in_yaml(self):
         """Excel source with path directly in report.yaml."""
         from trellum.report import ReportContext

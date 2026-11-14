@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Uploaded data-source files can be replaced with another file type or removed without deleting the source. Changes take effect on the next build.
+
 ### Documentation
 
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data

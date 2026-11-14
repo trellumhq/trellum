@@ -148,7 +148,10 @@ def effective_fields(declaration, binding) -> dict:
     # override (including False) ahead of the repository declaration.
     if "new_connection_per_query" in (binding.config or {}):
         fields["new_connection_per_query"] = binding.config["new_connection_per_query"]
-    if declaration.type in INLINE_TYPES and (binding.config or {}).get("path"):
+    if declaration.type in INLINE_TYPES and (
+        (binding.config or {}).get("path")
+        or ((binding.config or {}).get("upload") and "path" in binding.config)
+    ):
         fields["path"] = binding.config["path"]
     return fields
 

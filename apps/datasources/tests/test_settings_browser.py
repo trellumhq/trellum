@@ -354,7 +354,7 @@ def test_upload_updates_file_controls_without_navigation_and_preserves_draft():
         page.evaluate("completeUpload()")
         assert page.locator('[data-ds-upload-label]').text_content() == "Replace file"
         assert page.locator('[data-ds-download]').get_attribute("href") == "/download"
-        assert page.locator('.ds-progress-label').text_content() == "Uploaded 8 B."
+        assert page.locator('.ds-progress-label').text_content() == "Uploaded 8 B. Takes effect on the next build."
         assert page.evaluate("window.scrollY") == scroll
         assert page.locator('[name="other"]').input_value() == "Another draft"
         browser.close()
@@ -499,4 +499,43 @@ def test_first_credential_save_updates_configure_and_removal_controls():
         page.on("dialog", lambda dialog: (confirmations.append(dialog.message), dialog.dismiss()))
         remove.locator('button').click()
         assert "Remove the stored credentials" in confirmations[-1] and "wh" in confirmations[-1]
+        browser.close()
+
+
+def test_replace_filename_and_remove_clear_slot_without_navigation_or_losing_draft():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        load_page(page)
+        page.locator('[name="other"]').fill("Another draft")
+        for filename in ("litellm_key.xlsx", "litellm_key.csv"):
+            page.locator('.ds-file-input').set_input_files({
+                "name": filename, "mimeType": "application/octet-stream", "buffer": b"replacement",
+            })
+            page.evaluate("completeUpload()")
+            assert page.locator('[data-ds-filename]').text_content() == filename
+            assert page.locator('[data-ds-remove]').is_visible()
+            assert page.locator('[data-ds-upload-label]').text_content() == "Replace file"
+        page.evaluate("""() => {
+            window.fetch = function(url, options) {
+                window.removeAction = options.body.get('action');
+                return Promise.resolve({ok:true,json:function(){return Promise.resolve({
+                    ok:true,removed:true,revision:'removed',badge:'warn',label:'Needs upload',
+                    detail:'No file uploaded.',message:'Removed. Takes effect on the next build.'
+                })}});
+            };
+            window.pageMarker = 'same document';
+        }""")
+        page.locator('[data-ds-remove] button').scroll_into_view_if_needed()
+        scroll = page.evaluate("window.scrollY")
+        page.locator('[data-ds-remove] button').click()
+        page.wait_for_function("document.querySelector('[data-ds-remove]').hidden")
+        assert page.evaluate("window.removeAction") == "remove"
+        assert page.locator('[data-ds-filename]').text_content() == ""
+        assert page.locator('[data-ds-download]').count() == 0
+        assert page.locator('[data-ds-upload-label]').text_content() == "Upload file"
+        assert page.locator('[name="other"]').input_value() == "Another draft"
+        assert page.evaluate("window.pageMarker") == "same document"
+        assert page.evaluate("window.scrollY") == scroll
+        assert page.locator('.ds-file-input').is_enabled()
         browser.close()
