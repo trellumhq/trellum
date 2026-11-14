@@ -135,7 +135,7 @@ class ReportContext:
         Resolution order:
         1. Dict entry in report.yaml ``data_sources`` with ``name: <name>``
         2. String entry in report.yaml matching ``<name>``
-        3. Lookup in ``data-sources/config.yaml``
+        Central configuration is accessible only through a declared name.
         """
         from trellum.data.datasource_config import get_datasource
 
@@ -148,14 +148,25 @@ class ReportContext:
                 if central is not None:
                     return central
 
-        # Not listed in report.yaml — try central config directly
-        central = get_datasource(name)
-        if central is not None:
-            return central
+        raise ValueError(f"Data source '{name}' not found: not declared in report.yaml or not configured")
 
-        raise ValueError(
-            f"Data source '{name}' not found in report.yaml or data-sources/config.yaml"
-        )
+    def _resolve_scalar_source(self, name: str) -> dict:
+        # Check membership first; portal materialization replaces local
+        # credential prefixes even for inline report.yaml declarations.
+        source = self._resolve_source(name)
+        from trellum.data.datasource_config import get_datasource
+
+        return get_datasource(name) or source
+
+    def read_text(self, name: str) -> str:
+        """Read a declared text scalar or a mode:text upload, stripped."""
+        from trellum.data.scalar import read_text
+        return read_text(self._resolve_scalar_source(name), name)
+
+    def read_value(self, name: str):
+        """Read a declared number, boolean or JSON object with its native type."""
+        from trellum.data.scalar import read_value
+        return read_value(self._resolve_scalar_source(name), name)
 
     def get_connection(self, name: str):
         """Get (or create) a database connection by name.
@@ -164,6 +175,7 @@ class ReportContext:
         ``trellum.data.resolvers``) using the data_sources section in
         report.yaml or central config.
         """
+        self._resolve_source(name)
         if name in self._connections:
             return self._connections[name]
 

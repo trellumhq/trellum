@@ -55,7 +55,10 @@ ENV_SUFFIXES = {
 
 #: Non-secret keys live in ``config``; secret keys live encrypted in
 #: ``credentials``. The materializer merges both into the child env.
+SCALAR_TYPES = ("string", "secret", "text", "number", "boolean", "json")
+
 CONFIG_KEYS = {
+    "secret", "secret_reference", "mode",
     "host", "port", "database", "path", "upload", "project", "account",
     "warehouse", "schema", "catalog", "http_path", "secure",
     "tenant_id", "client_id", "site_url", "credentials_path",
@@ -63,6 +66,7 @@ CONFIG_KEYS = {
     "new_connection_per_query",
 }
 CREDENTIAL_KEYS = {
+    "value",
     "user", "password", "client_secret", "credentials_json", "access_token",
     "ssh_private_key", "ssh_password",
 }
@@ -126,10 +130,13 @@ TYPE_FIELDS = {
     "google_sheets": ["path", "credentials_json", "credentials_path"],
     "sqlite": ["path", "upload"],
     "duckdb": ["path", "upload"],
-    "file": ["path", "upload"],
+    "file": ["path", "upload", "mode"],
     "image": ["path", "upload"],
     "onedrive": ["tenant_id", "client_id", "client_secret", "site_url", "path"],
 }
+
+TYPE_FIELDS.update({kind: ["value", "secret", "secret_reference"] for kind in SCALAR_TYPES})
+REQUIRED_FIELDS.update({kind: [] for kind in SCALAR_TYPES})
 
 #: Types whose config.yaml entry is inline-path only (no resolver involved).
 #: "image" is a portal-side refinement of "file" (image uploads/previews);
@@ -149,7 +156,7 @@ GIT_MANAGED_PREFIX = "reports/"
 ORG_ALLOWED_TYPES = (
     "postgres", "mysql", "vertica", "clickhouse", "sqlserver", "redshift",
     "trino", "databricks", "snowflake", "bigquery", "google_sheets",
-    "onedrive", "sqlite", "duckdb", "file", "image",
+    "onedrive", "sqlite", "duckdb", "file", "image", *SCALAR_TYPES,
 )
 
 
@@ -163,7 +170,7 @@ def missing_required(type_: str, fields: dict) -> list[str]:
 
 
 class DataSource(models.Model):
-    TYPES = [
+    TYPES = [(kind, kind.title()) for kind in SCALAR_TYPES] + [
         ("postgres", "PostgreSQL"),
         ("mysql", "MySQL"),
         ("vertica", "Vertica"),

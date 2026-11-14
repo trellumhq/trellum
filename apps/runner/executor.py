@@ -548,7 +548,7 @@ class Executor:
             # framework + decrypted TRELLUM_DS_* credentials for the child env.
             from apps.datasources.materialize import materialize, shared_read_paths
 
-            ds_env = materialize(studio)
+            ds_env = materialize(studio, report=run.report)
             if extra_env:
                 ds_env.update(extra_env)
 

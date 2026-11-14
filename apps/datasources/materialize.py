@@ -8,11 +8,13 @@ Before every report build the worker calls :func:`materialize`, which
 2. returns the ``TRELLUM_DS_<id>_<FIELD>`` env vars (decrypted) that the
    framework's LocalEnvResolver reads in the child process.
 
-Nothing in the framework changes: it sees the same file format and the same
-env-var convention it always has.
+Database sources keep the existing resolver contract. Scalar sources use
+``<prefix>_VALUE`` and are injected only for the report's declared names.
+No scalar value is written to the project filesystem.
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 import time
@@ -21,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-from apps.datasources.models import CREDENTIAL_KEYS, ENV_SUFFIXES, INLINE_TYPES
+from apps.datasources.models import CREDENTIAL_KEYS, ENV_SUFFIXES, INLINE_TYPES, SCALAR_TYPES
 from apps.datasources.status import SourceState, effective_fields, source_states
 
 #: Nothing to write for these: the build would be blocked before it started.
@@ -40,19 +42,25 @@ def _replace_config(source: Path, destination: Path) -> None:
             time.sleep(delay)
 
 
-def materialize(studio) -> dict[str, str]:
+def materialize(studio, *, report=None) -> dict[str, str]:
     """Write config.yaml for the studio; return env vars for the child.
 
     A source the repository declares is written as declared -- its type and
     non-secret config -- with credentials from its binding; one whose binding
     is incomplete is left out. A binding with no declaration is written as it
     always was. Includes the organization's shared sources; a studio source
-    with the same name wins (see sources_for_studio)."""
+    with the same name wins (see sources_for_studio). Without a report, no scalar
+    values are injected."""
     sources: dict[str, dict] = {}
     env: dict[str, str] = {}
 
+    from apps.datasources.status import referenced_names
+
+    allowed = set(referenced_names(report.config)) if report is not None else set()
+    secrets = []
+    assistant_value = None
     for state in source_states(studio):
-        if state.state in _OMITTED:
+        if state.state in _OMITTED and state.type not in SCALAR_TYPES:
             continue
         ds, declaration = state.binding, state.declaration
         fields = effective_fields(declaration, ds)
@@ -62,7 +70,30 @@ def materialize(studio) -> dict[str, str]:
         if description:
             entry["description"] = description
 
-        if state.type in INLINE_TYPES:
+        if state.type in SCALAR_TYPES:
+            # Values never become documents or YAML, including plain scalars.
+            # Only this report's selected bindings enter its child environment.
+            secret = (state.type == "secret" or fields.get("secret") is True
+                      or (ds is not None and (ds.config or {}).get("secret") is True))
+            entry["secret"] = secret
+            if ds is not None:
+                entry["credentials"] = {"local": ds.env_prefix}
+                if state.name in allowed:
+                    value = (ds.credentials or {}).get("value", "")
+                    if (ds.config or {}).get("secret_reference") == "assistant_api_key":
+                        from apps.orgs.models import OrgAssistantConfig
+
+                        if assistant_value is None:
+                            assistant = OrgAssistantConfig.objects.filter(org_id=studio.org_id).first()
+                            assistant_value = assistant.api_key if assistant else ""
+                        value = assistant_value
+                        secret = True
+                        entry["secret"] = True
+                    value = "" if value is None else str(value)
+                    env[f"{ds.env_prefix}_VALUE"] = value
+                    if secret and value:
+                        secrets.append(f"{ds.env_prefix}_VALUE")
+        elif state.type in INLINE_TYPES:
             if fields.get("path"):
                 if ds is not None and ds.org_id:
                     # An org file is shared: its bytes live outside any studio,
@@ -80,6 +111,8 @@ def materialize(studio) -> dict[str, str]:
                     entry["path"] = fields["path"]
             if fields.get("upload"):
                 entry["upload"] = True
+            if state.type == "file" and fields.get("mode"):
+                entry["mode"] = fields["mode"]
         else:
             if declaration is not None:
                 entry.update(
@@ -102,6 +135,8 @@ def materialize(studio) -> dict[str, str]:
 
         sources[state.name] = entry
 
+    if secrets:
+        env["TRELLUM_SCALAR_SECRET_NAMES"] = json.dumps(list(dict.fromkeys(secrets)))
     config_path = studio.datasources_dir / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     try:

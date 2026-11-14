@@ -5,6 +5,7 @@ import os
 from dataclasses import replace
 from urllib.parse import quote
 
+from django import forms
 from django.contrib import messages
 from django.db.models.functions import Collate
 from django.http import FileResponse, Http404, JsonResponse
@@ -27,6 +28,7 @@ from apps.datasources.materialize import (
     upload_rel_path,
 )
 from apps.datasources.models import (
+    SCALAR_TYPES,
     CREDENTIAL_KEYS,
     INLINE_TYPES,
     TYPE_FIELDS,
@@ -67,7 +69,7 @@ def _upload_target(studio, name: str) -> DataSource | None:
     if declaration is None or not (declaration.config or {}).get("upload"):
         return None
     return DataSource.objects.create(
-        studio=studio, name=name, type=declaration.type, config={"upload": True}
+        studio=studio, name=name, type=declaration.type, config={"upload": True, **({"mode": declaration.config["mode"]} if "mode" in declaration.config else {})}
     )
 
 
@@ -171,6 +173,19 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
     if not files:
         return JsonResponse({"ok": False, "error": "No file found in request"}, status=400)
     upload = files[0]
+    if ds.type not in INLINE_TYPES:
+        return JsonResponse({"ok": False, "error": "Only file sources accept uploads."}, status=400)
+    if ds.type == "file":
+        extension = os.path.splitext(upload.name or "")[1].lower()
+        config = ds.config or {}
+        studio = getattr(request, "studio", None)
+        if studio is not None:
+            declaration = RepoDataSource.objects.filter(studio=studio, name=ds.name, present=True).first()
+            config = effective_fields(declaration, ds)
+        mode = config.get("mode", "table")
+        allowed = {".txt", ".json", ".yaml", ".yml"} if mode == "text" else {".csv", ".xlsx", ".xls", ".parquet"}
+        if extension not in allowed:
+            return JsonResponse({"ok": False, "error": "Choose a " + mode + " file: " + ", ".join(sorted(allowed)) + "."}, status=400)
     incoming = int(upload.size or 0)
 
     cap = instance_config.max_upload_bytes()
@@ -558,6 +573,8 @@ def _row(request, st: SourceState, *, studio) -> dict:
         "configurable": st.declared and bool(_credential_keys(st.type)),
         "edit_url": _editor_url(request, st.name, org_page=studio is None),
         "file_available": info.get("status") == "available",
+        "file_accept": (".txt,.json,.yaml,.yml" if effective_fields(st.declaration, ds).get("mode") == "text"
+                        else ".csv,.xlsx,.xls,.parquet") if st.type == "file" else "",
         "used_by": len(st.used_by),
         **urls,
     }
@@ -569,6 +586,8 @@ def _configure(request, name: str):
     queue whatever the passing test unblocks."""
     studio = request.studio
     decl = get_object_or_404(RepoDataSource, studio=studio, name=name, present=True)
+    if decl.type in SCALAR_TYPES:
+        return settings_error(request, "Use the source editor to change scalar values.")
     if request.POST.get("action") == "remove_credentials":
         ds = DataSource.objects.filter(studio=studio, name=name).first()
         if ds is None:
@@ -620,6 +639,11 @@ def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=N
         f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
         else f"/s/{request.org.slug}/{ds.studio.slug}/settings/datasources"
     )
+    values = {"id": ds.pk}
+    if ds.type in SCALAR_TYPES:
+        values.update(clear_value=False, secret_reference=(ds.config or {}).get("secret_reference", ""))
+        if ds.type == "secret" or (ds.config or {}).get("secret") or (ds.config or {}).get("secret_reference"):
+            values["value"] = ""
     return settings_success(
         request, "Saved. Use Test to verify the connection." if redirect_to else "Saved. Testing connection…",
         source_id=ds.pk, source_name=ds.name,
@@ -627,11 +651,11 @@ def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=N
         source_type=ds.type, type_label=_TYPE_LABELS.get(ds.type, ds.type),
         source_scope=ds.scope, description=ds.description,
         upload_url=base + ds.name + "/upload" if (ds.config or {}).get("upload") else "",
-        values={"id": ds.pk}, redirect_url=redirect_to,
+        values=values, redirect_url=redirect_to,
         download_url=_file_urls(ds, info, True, studio=test_studio)["download_url"],
         edit_url=manage_path + f"/{quote(ds.name, safe='')}/edit", delete_url=manage_path,
         declared=state.declared, configured=configured,
-        can_edit=not (state.declared and studio is not None),
+        can_edit=not (state.declared and studio is not None and state.type not in SCALAR_TYPES),
         configure_url=(_editor_url(request, ds.name) if configured and ds.studio_id else ""),
         remove_credentials=bool(configured and ds.studio_id),
         badge=_badge(state)[0], label=_badge(state)[1], detail=_status_detail(state),
@@ -646,7 +670,7 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
 
     # Org-wide sources are created and edited in Organization settings; this
     # page only creates studio-scoped ones and lists shared ones read-only.
-    form_kwargs = dict(studio=request.studio, org=request.org, fixed_scope="studio")
+    form_kwargs = dict(allow_secret_reference=request.org_roles.is_org_admin, studio=request.studio, org=request.org, fixed_scope="studio")
 
     editing = None
     if request.GET.get("edit"):
@@ -748,7 +772,7 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
 def org_settings_page(request, org_slug):  # noqa: ARG001
     """Organization settings → Data sources: shared connections every studio
     in the org can use (a studio source with the same name shadows them)."""
-    form_kwargs = dict(studio=None, org=request.org, fixed_scope="org")
+    form_kwargs = dict(allow_secret_reference=request.org_roles.is_org_admin, studio=None, org=request.org, fixed_scope="org")
 
     editing = None
     if request.GET.get("edit"):
@@ -820,7 +844,7 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
 
 def _create_page(request, studio=None):
     org_page = studio is None
-    form_kwargs = dict(
+    form_kwargs = dict(allow_secret_reference=request.org_roles.is_org_admin,
         studio=studio, org=request.org,
         fixed_scope="org" if org_page else "studio",
     )
@@ -876,8 +900,9 @@ def _editor_state(request, name, studio, *, org_target=False):
 
 _EDITOR_FIELD_GROUPS = (
     ("Source", ("name", "type", "description", "scope")),
+    ("Value", ("value", "secret", "secret_reference", "clear_value")),
     ("Connection", (
-        "host", "port", "database", "path", "upload", "project", "account",
+        "host", "port", "database", "path", "upload", "mode", "project", "account",
         "warehouse", "schema", "catalog", "http_path", "secure",
         "new_connection_per_query", "tenant_id", "client_id", "site_url",
         "credentials_path",
@@ -891,7 +916,7 @@ _EDITOR_FIELD_GROUPS = (
     )),
 )
 _WIDE_EDITOR_FIELDS = {
-    "description", "path", "credentials_json", "http_path", "site_url",
+    "value", "description", "path", "credentials_json", "http_path", "site_url",
     "ssh_private_key", "ssh_host_key",
 }
 _SECRET_EDITOR_FIELDS = {
@@ -927,14 +952,23 @@ def _editor_field_groups(form):
 def _editor(request, name, studio=None):
     org_page = studio is None
     state = _editor_state(request, name, studio)
-    credentials_only = studio is not None and state.declared and bool(_credential_keys(state.type))
+    scalar = state.type in SCALAR_TYPES
+    credentials_only = studio is not None and state.declared and not scalar and bool(_credential_keys(state.type))
     if studio is not None and not credentials_only and state.binding and state.binding.org_id:
         if not request.org_roles.is_org_admin:
             raise Http404
         return redirect(_editor_url(request, name, org_page=True))
-    form_kwargs = dict(instance=state.binding, studio=studio, org=request.org,
+    form_kwargs = dict(allow_secret_reference=request.org_roles.is_org_admin, instance=state.binding, studio=studio, org=request.org,
                        fixed_scope="org" if org_page else "studio")
-    form = DataSourceForm(request.POST if request.method == "POST" else None, **form_kwargs)
+    scalar_initial = {"name": name, "type": state.type, **{k: v for k, v in (state.declaration.config or {}).items() if k not in {"value", "secret_reference"}}} if scalar and state.declaration else {}
+    form = DataSourceForm(request.POST if request.method == "POST" else None, initial=scalar_initial, **form_kwargs)
+    if scalar and state.declared:
+        form.initial.update(scalar_initial)
+        for key in ("name", "type"):
+            form.fields[key].disabled = True
+        if scalar_initial.get("secret"):
+            form.fields["secret"].disabled = True
+            form.fields["value"].widget = forms.PasswordInput(render_value=False)
     if credentials_only:
         # The declaration owns identity/config; only these fields may change.
         keys = credential_fields(state.declaration)

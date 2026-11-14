@@ -22,7 +22,7 @@ DECLARATION_FILE = "data-sources/config.yaml"
 
 #: Keys never stored: secrets, the credential reference they hang off, and
 #: the two that are columns of their own.
-_DROPPED_KEYS = CREDENTIAL_KEYS | {"credentials", "local_env", "secret", "name", "type"}
+_DROPPED_KEYS = CREDENTIAL_KEYS | {"credentials", "local_env", "name", "type"}
 #: ``type`` is free-form, so a driver the portal does not know may name its
 #: secrets anything; a key containing one of these is dropped too.
 _SECRET_HINTS = ("pass", "secret", "token", "key")
@@ -53,7 +53,7 @@ def _entry(name, raw, source_file: str) -> dict | None:
         # The framework's default when ``type`` is omitted
         # (trellum.data.connections.resolve_connection).
         "type": str(raw.get("type") or "vertica")[:64],
-        "config": {k: v for k, v in raw.items() if not _dropped(k)},
+        "config": {k: v for k, v in raw.items() if not _dropped(k) and k != "secret_reference" and (k != "secret" or isinstance(v, bool))},
         "source_file": source_file,
     }
 

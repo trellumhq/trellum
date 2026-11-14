@@ -15,6 +15,7 @@ import orjson
 import trellum
 from trellum.licensing import LICENSE_ID, source_url, write_output_license
 from trellum.meta import META_SCHEMA_VERSION, normalize_metrics_used
+from trellum.redaction import redact, safe_json_bytes
 
 
 def _write_manifest(out: str, slug: str, name: str) -> None:
@@ -59,7 +60,7 @@ def _write_manifest(out: str, slug: str, name: str) -> None:
     import json as _json
     manifest_path = os.path.join(out, "manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as f:
-        _json.dump(manifest, f, indent=2)
+        _json.dump(redact(manifest), f, indent=2)
 
 def _gc_stale_chunks(output_dir: str, canonical_filenames: set[str], ctx=None) -> None:
     """Delete ``data_chunk_*.json`` files that the current run did not produce.
@@ -167,7 +168,7 @@ def _write_meta(
         meta["details"] = details
     meta_path = os.path.join(out, "_meta.json")
     with open(meta_path, "wb") as f:
-        f.write(orjson.dumps(
+        f.write(safe_json_bytes(
             meta,
             option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS,
         ))
@@ -210,7 +211,7 @@ def _write_live_queries(out: str, live_queries: dict) -> None:
         },
     }
     with open(path, "wb") as f:
-        f.write(orjson.dumps(manifest, option=orjson.OPT_INDENT_2))
+        f.write(safe_json_bytes(manifest, option=orjson.OPT_INDENT_2))
 
 def _cron_to_seconds(cron: str) -> int:
     if not cron:

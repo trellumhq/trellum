@@ -371,6 +371,51 @@ python3 -m trellum.run --all --serve --port 8060
 
 ---
 
+<!-- topic: data-sources -->
+## Scalar values and text uploads
+
+Declare every source used by a report in `report.yaml`:
+
+```yaml
+data_sources: [api_token, threshold, options, notes]
+```
+
+Configure named sources in `data-sources/config.yaml`. Scalar values use
+`credentials.local` and the existing `.env` loader:
+
+```yaml
+sources:
+  api_token:
+    type: secret
+    credentials: {local: API_TOKEN}
+  threshold:
+    type: number
+    credentials: {local: THRESHOLD}
+  options:
+    type: json
+    credentials: {local: OPTIONS}
+  notes:
+    type: file
+    mode: text
+    path: data-sources/uploads/notes.txt
+```
+
+Set `API_TOKEN_VALUE`, `THRESHOLD_VALUE` and `OPTIONS_VALUE` in `.env`.
+`ctx.read_text("api_token")` returns stripped text for `string`, `secret` and
+`text` scalars. It also reads UTF-8 `file` sources with `mode: text` and a
+`.txt`, `.json`, `.yaml` or `.yml` extension. Structured files remain text.
+`ctx.read_value("threshold")` returns a finite number; `boolean` accepts JSON
+`true` or `false`; `json` requires a JSON object, not an array or primitive.
+Missing or empty values raise `ValueError` when read. Catch it in a generator
+when the input is optional; an unused empty source does not prevent a build.
+
+Use `type: secret` or `secret: true` on a scalar to filter its value from
+framework build logs, HTML, JSON and validation diagnostics. Hosts may also
+supply `TRELLUM_SCALAR_SECRETS` as a JSON list of secret strings. Avoid printing
+or rendering secrets deliberately: redaction covers known literal and common
+escaped representations, not arbitrary transformations such as hashing or
+base64 encoding.
+
 <!-- topic: report-yaml -->
 ## Report Structure
 

@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.utils.timesince import timesince
 
 from apps.datasources.models import (
+    SCALAR_TYPES,
     CREDENTIAL_KEYS,
     INLINE_TYPES,
     REQUIRED_FIELDS,
@@ -183,6 +184,11 @@ def _state(name, declaration, binding, used_by) -> SourceState:
         st.last_check_at = binding.last_check_at
         st.last_check_ok = binding.last_check_ok
         st.last_check_error = binding.last_check_error
+
+    if st.type in SCALAR_TYPES:
+        st.state = SourceState.CONNECTED if declaration is not None else SourceState.NOT_IN_REPO
+        st.detail = "Value is resolved when the report requests it."
+        return st
 
     if declaration is not None and declaration.file_error and st.type in INLINE_TYPES:
         # git sync refused to ship the declared file (it escapes the project,

@@ -7,6 +7,8 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
+from trellum.redaction import redact
+
 #: Schema version of the ``_meta.json`` artifact. Bump on any breaking change
 #: to its shape; consumers outside this repo read it to decide
 #: whether they understand the file. See docs/COMPATIBILITY.md.
@@ -52,7 +54,7 @@ def write_meta(output_dir: str, updates: dict) -> None:
     fd, tmp_path = tempfile.mkstemp(dir=output_dir, prefix=".meta-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2, default=str)
+            json.dump(redact(meta), f, indent=2, default=str)
             f.flush()
             os.fsync(f.fileno())
         # mkstemp creates 0600; keep the file readable by the portal when it

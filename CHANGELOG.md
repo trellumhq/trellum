@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Configure string, secret, text, number, boolean and JSON data sources in the
+  portal without uploading a spreadsheet. Report-scoped scalar values use
+  encrypted storage and build-only environment injection, with secret output
+  redaction. Text-mode file sources support TXT, JSON and YAML uploads.
+
 ### Documentation
 
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data

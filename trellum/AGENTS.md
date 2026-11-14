@@ -13,7 +13,7 @@ trellum checks             every validator check id and its level
 trellum validate <dir>     the current validation state of a built report
 ```
 
-`trellum guide` topics: `answer`, `queries`, `format`, `generator`,
+`trellum guide` topics: `answer`, `data-sources`, `queries`, `format`, `generator`,
 `components`, `header`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
 `report-yaml`, `themes`, `review`, `portal`, `analysis`.
 

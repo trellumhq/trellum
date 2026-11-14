@@ -294,3 +294,59 @@ sources page itself, and configuring credentials, need studio admin.
 - [Organizations & studios](/docs/latest/portal/organizations-and-studios/) —
   where shared credentials live
 - [Build failures](/docs/latest/troubleshooting/build-failures/)
+
+## Scalar values and text files
+
+Create a source in **Studio settings → Data sources**, choose **Secret**, name
+it `litellm_key`, enter its value and save. There is no file upload. The portal
+stores scalar values encrypted, using the same storage as database credentials.
+Values may contain up to 16 KiB of UTF-8 text.
+Plain **String** values stay visible; **Secret** values and strings marked secret
+are write-only after saving. Blank secret input preserves the saved value; use
+**Clear value** to remove it. Replacements take effect on the next build without
+a repository commit.
+
+A report must list the source:
+
+```yaml
+data_sources:
+  - litellm_key
+```
+
+```python
+try:
+    key = ctx.read_text("litellm_key")  # stripped str, only available in this build
+except ValueError:
+    key = None  # optional input; the report can still publish
+```
+
+Missing, empty and undeclared sources raise a catchable error when read. They
+do not block build admission. Secret values are redacted from framework logs,
+validator output and report artifacts; do not deliberately transform secrets
+into report content. Values are never stored in project config or uploads.
+
+For local runs, declare a credential prefix in `data-sources/config.yaml`:
+
+```yaml
+sources:
+  litellm_key:
+    type: secret
+    credentials:
+      local: LITELLM_KEY
+```
+
+Set `LITELLM_KEY_VALUE` in the project's untracked `.env`. Production resolves
+the portal binding instead. No file is needed in `data-sources/uploads/`.
+
+The same editor supports **Text** (multiline), **Number**, **Boolean** (JSON
+`true` or `false`) and **JSON** (an object). Use `ctx.read_text(name)` for string,
+secret and text; use `ctx.read_value(name)` for a parsed number, boolean or dict.
+An organization admin can reference the organization's existing assistant key
+instead of entering a second copy. Rotation is picked up at build time.
+
+For an uploaded text document, declare `type: file`, `mode: text`, and
+`upload: true`. The portal accepts `.txt`, `.json`, `.yaml` and `.yml`; read it
+with `ctx.read_text(name)`. Default table mode and `ctx.read_source(name)` remain
+for Excel, CSV and Parquet dataframes.
+
+The same reference is available through `python3 -m trellum guide data-sources`.

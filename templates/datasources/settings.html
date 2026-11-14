@@ -94,7 +94,7 @@
                title="{{ row.name }} is stored by the portal — this replaces its file">
           <input type="file" class="ds-file-input"
                  data-pk="{{ row.key }}" data-url="{{ row.upload_url }}"
-                 data-name="{{ row.name }}">
+                 data-name="{{ row.name }}"{% if row.file_accept %} accept="{{ row.file_accept }}"{% endif %}>
           <span data-ds-upload-label>{% if row.file_available %}Replace file{% elif row.state.state == "needs_upload" %}Upload{% else %}Upload file{% endif %}</span>
         </label>
         {% endif %}
@@ -183,7 +183,24 @@
   var filePathLabel = pathLabel ? pathLabel.textContent : 'Path';
 
   function applyType() {
-    var relevant = TYPE_FIELDS[typeSelect.value] || [];
+    var relevant = (TYPE_FIELDS[typeSelect.value] || []).slice();
+    if (relevant.indexOf("value") !== -1) relevant.push("clear_value");
+    var value = form.querySelector('[name="value"]');
+    var secret = form.querySelector('[name="secret"]');
+    var reference = form.querySelector('[name="secret_reference"]');
+    if (value) {
+      var masked = typeSelect.value === 'secret' || (secret && secret.checked) || (reference && reference.value);
+      var multiline = !masked && ['text', 'json'].indexOf(typeSelect.value) !== -1;
+      if ((value.tagName === 'TEXTAREA') !== multiline) {
+        var replacement = document.createElement(multiline ? 'textarea' : 'input');
+        Array.from(value.attributes).forEach(function (attr) { if (attr.name !== 'type' && attr.name !== 'value') replacement.setAttribute(attr.name, attr.value); });
+        replacement.value = value.value;
+        if (multiline) replacement.rows = 5;
+        value.replaceWith(replacement);
+        value = replacement;
+      }
+      if (!multiline) value.type = masked ? 'password' : 'text';
+    }
     form.querySelectorAll('[data-f]').forEach(function (row) {
       row.style.display = relevant.indexOf(row.getAttribute('data-f')) === -1 ? 'none' : '';
     });
@@ -210,6 +227,7 @@
   }
 
   typeSelect.addEventListener('change', applyType);
+  ['secret', 'secret_reference'].forEach(function (name) { var control = form.querySelector('[name="' + name + '"]'); if (control) control.addEventListener('change', applyType); });
   pathInput.addEventListener('input', applyGitWarning);
   uploadBox.addEventListener('change', applyGitWarning);
   applyType();

@@ -28,6 +28,7 @@ from trellum.components.base import RenderContext, collect_asset_parts
 from trellum.diagnostics import instrument
 from trellum.licensing import inject_source_notice, source_notice_html
 from trellum.project import load_extensions
+from trellum.redaction import redact, safe_json_bytes, safe_json_document
 from trellum.rendering.artifacts import (
     _cron_to_seconds,
     _gc_stale_chunks,
@@ -135,7 +136,7 @@ def _flash_script(themes=None) -> str:
     data-theme stands -- the baked default, or a host's serve-time override
     of it, which a fallback stamp here used to clobber.
     """
-    known_themes_js = orjson.dumps(list(THEME_REGISTRY if themes is None else themes)).decode()
+    known_themes_js = safe_json_bytes(list(THEME_REGISTRY if themes is None else themes)).decode()
     return f"""<script>
 (function(){{var v={known_themes_js};var t=null;try{{t=localStorage.getItem('fw-theme');}}catch(e){{}}
 if(v.indexOf(t)>=0)document.documentElement.setAttribute('data-theme',t);}})();
@@ -176,12 +177,12 @@ def _render_custom_html(ctx, out, data, name, extensions, live_registry, validat
     )
     html_path = os.path.join(out, ctx.custom_html_filename)
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(custom)
+        f.write(redact(custom))
 
     data_json = ctx.custom_data or data or {}
     json_path = os.path.join(out, ctx.custom_data_filename)
     with open(json_path, "wb") as f:
-        f.write(orjson.dumps(
+        f.write(safe_json_bytes(
             data_json,
             option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
         ))
@@ -312,7 +313,7 @@ def render_report(
             scope_files[scope_name] = fname
             scope_path = os.path.join(out, fname)
             with open(scope_path, "wb") as f:
-                f.write(orjson.dumps(
+                f.write(safe_json_bytes(
                     {"components": scope_components},
                     option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
                 ))
@@ -531,7 +532,7 @@ setTimeout(function(){
     )
 
     t0 = time.time()
-    json_bytes = orjson.dumps(
+    json_bytes = safe_json_bytes(
         report_data,
         option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
     )
@@ -539,14 +540,14 @@ setTimeout(function(){
 
     t0 = time.time()
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html)
+        f.write(redact(html))
     with open(json_path, "wb") as f:
         f.write(json_bytes)
 
     # ── Write chunk files ────────────────────────────────────
     for fname, chunk_bytes in all_pending_chunks.items():
         with open(os.path.join(out, fname), "wb") as f:
-            f.write(chunk_bytes)
+            f.write(safe_json_document(chunk_bytes))
 
     # ── GC stale chunk files from prior runs ─────────────────
     # The framework rewrites chunks for whatever periods this run
