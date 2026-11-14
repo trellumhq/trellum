@@ -20216,9 +20216,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "56fc2cea87459b9d31afcbff6e30c35a11c202df9df6354db0ffa3907e5ceaab",
+      "source_sha256": "a18095da8438536014f530f7e926f0b04e04cb23e79ede88c74989e2e57640ef",
       "request_conditions": [],
-      "adapter_sha256": "0d925b53ad15a66ac11f7c0439f2a0204e9868c5d02eb62743f1b7cef1c60708",
+      "adapter_sha256": "87b56751b20480fe791e9ead36d2f7d7f1b887390f27d1dfb9d16a43603624b9",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
