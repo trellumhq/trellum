@@ -9,7 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Reports can use `ctx.ai.complete()` with the organization’s saved AI connection,
   without provider credentials in the build. Report spend shares the organization
-  AI budget and does not count against any user’s personal cap.
+  AI budget and does not count against any user’s personal cap. AI settings
+  distinguishes chat readiness from report-build availability.
 
 
 ### Documentation

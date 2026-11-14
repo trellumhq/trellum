@@ -401,7 +401,7 @@ add that authorization themselves. See [instance configuration](/docs/latest/ins
 Missing organization credentials never silently select a server identity.
 
 The page separates **Chat**, **Alerts**, and **Cost metering** capability checks
-from the overall saved-settings readiness and model pricing. Chat can work when
+from saved-settings chat readiness and model pricing. Chat can work when
 an endpoint cannot force an alert tool call; alerts remain unavailable in that
 case. New providers require verification for chats and alerts. Report completions
 do not require a successful Test connection. Existing native provider

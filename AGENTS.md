@@ -97,6 +97,9 @@ Then:
 - Delegate long test runs and mechanical execution to cheaper or faster
   models where your tool supports subagents. Give them exact scopes and ask
   for short reports: commit SHA, what passed, what is still open.
+- Update the relevant framework API, framework guide (including topic and bundle
+  registration), customer documentation, and changelog with every feature. State
+  explicitly when the feature needs no portal UI changes.
 - Add an `[Unreleased]` entry to `CHANGELOG.md`.
 - Commit messages, code comments and docs state product facts. Product
   strategy, roadmap reasoning and research belong in the maintainers' private
