@@ -90,6 +90,13 @@ def resolve_declared_source(sources: list, name: str) -> dict:
     raise ValueError(f"Data source '{name}' not found: not declared in report.yaml or not configured")
 
 
+def resolve_scalar_source(sources: list, name: str) -> dict:
+    """Keep inline precedence unless the host supplied an explicit runtime binding."""
+    source = resolve_declared_source(sources, name)
+    central = get_datasource(name)
+    return central if central and central.get("runtime_binding") is True else source
+
+
 def resolve_to_legacy_format(name: str) -> dict | None:
     """Convert a central config entry to the dict format that resolve_connection() expects.
 

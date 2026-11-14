@@ -10,6 +10,8 @@ Before every report build the worker calls :func:`materialize`, which
 
 Database sources keep the existing resolver contract. Scalar sources use
 ``<prefix>_VALUE`` and are injected only for the report's declared names.
+Scalar and text-file runtime bindings override local inline declarations;
+ordinary standalone configuration retains inline declaration precedence.
 No scalar value is written to the project filesystem.
 """
 from __future__ import annotations
@@ -73,6 +75,7 @@ def materialize(studio, *, report=None) -> dict[str, str]:
         if state.type in SCALAR_TYPES:
             # Values never become documents or YAML, including plain scalars.
             # Only this report's selected bindings enter its child environment.
+            entry["runtime_binding"] = True
             secret = (state.type == "secret" or fields.get("secret") is True
                       or (ds is not None and (ds.config or {}).get("secret") is True))
             entry["secret"] = secret
@@ -113,6 +116,7 @@ def materialize(studio, *, report=None) -> dict[str, str]:
                 entry["upload"] = True
             if state.type == "file" and fields.get("mode"):
                 entry["mode"] = fields["mode"]
+                entry["runtime_binding"] = True
         else:
             if declaration is not None:
                 entry.update(

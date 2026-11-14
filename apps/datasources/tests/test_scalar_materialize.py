@@ -111,7 +111,8 @@ def test_scalar_value_is_encrypted_in_database(studio_tree):
 
 @pytest.mark.heavy
 @pytest.mark.parametrize("state", ["configured", "cleared", "unlisted"])
-def test_revenue_pulse_real_build_contract(studio_tree, state):
+@pytest.mark.parametrize("inline", [False, True])
+def test_revenue_pulse_real_build_contract(studio_tree, state, inline):
     """Exercise encrypted storage -> injection -> real process -> published files."""
     import os
     from pathlib import Path
@@ -121,7 +122,8 @@ def test_revenue_pulse_real_build_contract(studio_tree, state):
     value = "synthetic-revenue-pulse-api-key" if state != "cleared" else ""
     ds = DataSource.objects.create(studio=studio_tree, name="litellm_key", type="secret",
                                    credentials={"value": value})
-    report = report_for(studio_tree, [ds.name] if state != "unlisted" else [])
+    declaration = {"name": ds.name, "type": "secret", "credentials": {"local": "UNUSED_LOCAL"}} if inline else ds.name
+    report = report_for(studio_tree, [declaration] if state != "unlisted" else [])
     directory = studio_tree.reports_dir / "revenue-pulse"
     directory.mkdir(parents=True)
     (directory / "report.yaml").write_text(yaml.safe_dump({

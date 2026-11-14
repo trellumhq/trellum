@@ -219,9 +219,39 @@ def test_inline_scalar_uses_materialized_prefix(project, monkeypatch):
     sources = project / 'data-sources'
     sources.mkdir()
     (sources / 'config.yaml').write_text(json.dumps({'sources': {'input': {
-        'type': 'secret', 'credentials': {'local': 'PORTAL_SCALAR'}}}}))
+        'type': 'secret', 'runtime_binding': True, 'credentials': {'local': 'PORTAL_SCALAR'}}}}))
     monkeypatch.setenv('PORTAL_SCALAR_VALUE', 'synthetic-portal-inline')
     assert context('secret').read_text('input') == 'synthetic-portal-inline'
+
+
+@pytest.mark.parametrize('kind,value,expected', [('secret', 'synthetic-inline-secret', 'synthetic-inline-secret'),
+    ('number', '42', 42), ('boolean', 'true', True), ('json', '{"limit": 2}', {'limit': 2})])
+def test_inline_scalar_overrides_standalone_central_source(project, monkeypatch, capsys, kind, value, expected):
+    from trellum.redaction import build_redaction
+
+    sources = project / 'data-sources'
+    sources.mkdir()
+    (sources / 'config.yaml').write_text(json.dumps({'sources': {'input': {
+        'type': 'string', 'credentials': {'local': 'CENTRAL_SCALAR'}}}}))
+    monkeypatch.setenv('CENTRAL_SCALAR_VALUE', 'central-value')
+    monkeypatch.setenv('SCALAR_TEST_VALUE', value)
+    ctx = context(kind)
+    with build_redaction(ctx.config):
+        actual = ctx.read_text('input') if kind == 'secret' else ctx.read_value('input')
+        assert actual == expected
+        print(actual)
+    if kind == 'secret':
+        assert value not in capsys.readouterr().out
+
+
+def test_inline_text_file_overrides_standalone_central_source(project):
+    sources = project / 'data-sources'
+    sources.mkdir()
+    (sources / 'config.yaml').write_text(json.dumps({'sources': {'input': {
+        'type': 'file', 'mode': 'text', 'path': 'central.txt'}}}))
+    (project / 'central.txt').write_text('central text')
+    (project / 'inline.txt').write_text('inline text')
+    assert context('file', mode='text', path='inline.txt').read_text('input') == 'inline text'
 
 
 def test_report_thread_logs_are_filtered(project, monkeypatch, capsys):
@@ -276,6 +306,36 @@ def test_oserror_filename_does_not_escape_redaction(project, monkeypatch):
         with build_redaction(context('secret')._config):
             raise OSError(2, 'unavailable', 'synthetic-error-filename')
     assert 'synthetic-error-filename' not in str(error.value)
+
+
+def test_http_error_message_does_not_escape_redaction(project, monkeypatch):
+    import traceback
+    from urllib.error import HTTPError
+
+    from trellum.redaction import build_redaction
+
+    secret = 'synthetic-http-error-key'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    with pytest.raises(HTTPError) as error:
+        with build_redaction(context('secret').config):
+            raise HTTPError('https://example.invalid/' + secret, 401, secret, None, None)
+    assert secret not in str(error.value)
+    assert secret not in ''.join(traceback.format_exception(error.value))
+    assert error.value.code == 401
+
+
+def test_process_error_binary_output_is_filtered_without_losing_exception(project, monkeypatch):
+    from subprocess import CalledProcessError
+
+    from trellum.redaction import build_redaction
+
+    secret = 'synthetic-process-error-key'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    with pytest.raises(CalledProcessError) as error:
+        with build_redaction(context('secret').config):
+            raise CalledProcessError(2, 'command', output=b'\xff' + secret.encode())
+    assert error.value.returncode == 2
+    assert error.value.output == b'\xff[REDACTED]'
 
 
 @pytest.mark.parametrize('secret', ['workspace-private<&"token', '9137'])

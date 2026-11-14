@@ -32,7 +32,9 @@ def redact(value):
     if not _secret_values():
         return value
     if isinstance(value, bytes):
-        return redact(value.decode('utf-8')).encode('utf-8')
+        pattern = b'|'.join(re.escape(part.encode('utf-8'))
+                            for part in ('[REDACTED]', *_secret_values()))
+        return re.sub(pattern, b'[REDACTED]', value)
     if isinstance(value, str):
         # One pass prevents a short secret from corrupting a replacement,
         # including when an artifact is filtered again during publication.
@@ -154,12 +156,15 @@ def secret_variants(values):
 
 
 def _secrets(config):
-    from trellum.data.datasource_config import get_datasource
+    from trellum.data.datasource_config import resolve_scalar_source
     from trellum.data.scalar import SCALAR_TYPES, scalar_value
     values = environment_secrets()
-    for entry in config.get('data_sources', []):
-        source = (get_datasource(entry) if isinstance(entry, str)
-                  else get_datasource(entry.get('name')) or entry)
+    sources = config.get('data_sources', [])
+    for entry in sources:
+        try:
+            source = resolve_scalar_source(sources, entry if isinstance(entry, str) else entry.get('name'))
+        except ValueError:
+            continue  # Missing values stay lazy and catchable by the report.
         if (source and source.get('type') in SCALAR_TYPES
                 and (source.get('type') == 'secret' or source.get('secret') is True)):
             value = scalar_value(source)
@@ -221,6 +226,11 @@ def build_redaction(config):
                 return
             seen.add(id(error))
             error.args = tuple(redact(arg) for arg in error.args)
+            # HTTPError, CalledProcessError and custom exceptions may render
+            # stored text independently of args after this context has exited.
+            for attribute, value in vars(error).items():
+                if isinstance(value, (str, bytes)):
+                    setattr(error, attribute, redact(value))
             # OSError.__str__ uses these attributes independently of args.
             if isinstance(error, OSError):
                 for attribute in ('filename', 'filename2', 'strerror'):

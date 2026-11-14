@@ -136,12 +136,9 @@ class ReportContext:
         return resolve_declared_source(self._config.get("data_sources", []), name)
 
     def _resolve_scalar_source(self, name: str) -> dict:
-        # Check membership first; portal materialization replaces local
-        # credential prefixes even for inline report.yaml declarations.
-        source = self._resolve_source(name)
-        from trellum.data.datasource_config import get_datasource
+        from trellum.data.datasource_config import resolve_scalar_source
 
-        return get_datasource(name) or source
+        return resolve_scalar_source(self._config.get("data_sources", []), name)
 
     def read_text(self, name: str) -> str:
         """Read a declared text scalar or a mode:text upload, stripped."""
