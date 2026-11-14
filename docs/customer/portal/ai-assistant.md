@@ -446,6 +446,11 @@ that call without booking a guessed charge; the next call can try again.
 If returned usage is valid but the answer is rejected, that usage still counts
 toward the organization cap.
 
+A provider may still charge for a request that times out or is stopped before
+usage is returned. Trellum cannot record that unknown charge. Use a provider-side
+limit when you need a hard billing cap, and compare the recorded totals with
+provider billing.
+
 The optional `model=` argument selects another model for one call. Saved prices
 apply only to the saved model; an override uses its own known direct-provider
 prices. Budgeted calls fail before contacting a model whose prices are unknown.
@@ -472,9 +477,11 @@ API key. Cloud providers use their own authentication and endpoint rules.
 Gateways and cloud providers do not inherit direct-provider prices from a model
 name. Enter your actual input and output prices if needed. Without prices,
 uncapped calls may run with unknown cost; unknown charges are excluded from
-recorded totals. Budgeted calls require both pricing and verified token usage.
-If a provider stops returning usage, further budgeted inference is blocked until
-metering is checked again. Compare recorded estimates with provider billing.
+recorded totals. Budgeted chat and alert calls require both pricing and verified
+token usage. If a provider stops returning usage, further budgeted chat and alert
+calls are blocked until metering is checked again. Report completions fail that
+call without booking a guessed charge or requiring a new connection test.
+Compare recorded estimates with provider billing.
 
 **Test connection** uses only synthetic prompts and harmless synthetic tools.
 It verifies streamed chat, a tool roundtrip, a forced alert tool, and token usage.
