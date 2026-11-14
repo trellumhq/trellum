@@ -332,8 +332,9 @@ class ReportContext:
         dataset_id: str = "",
     ) -> None:
         """Register a data-quality check merged into ``_validation.json`` after generate."""
+        from trellum.redaction import redact
         self._extra_validation_checks.append({
-            "id": check_id,
+            "id": redact(check_id),
             "level": level,
             "message": message,
             "component": component,

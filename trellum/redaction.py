@@ -51,28 +51,40 @@ def redact(value):
 class _Stream:
     def __init__(self, stream):
         self.stream = stream
-        self.pending = contextvars.ContextVar('redaction_pending', default='')
+        self.context = contextvars.ContextVar('redaction_stream_context', default=None)
+        self.pending = {}
+        self.lock = threading.RLock()
 
     def write(self, text):
         if not _secret_values():
             return self.stream.write(text)
-        pending = redact(self.pending.get() + text)
-        # Keep any suffix that could become a secret on a later write. This
-        # covers split writes and multiline text secrets without buffering logs.
-        keep = 0
-        for secret in _secret_values():
-            for length in range(min(len(secret) - 1, len(pending)), keep, -1):
-                if pending.endswith(secret[:length]):
-                    keep = length
-                    break
-        self.pending.set(pending[-keep:] if keep else '')
-        self.stream.write(pending[:-keep] if keep else pending)
+        key = self.context.get()
+        if key is None:
+            key = object()
+            self.context.set(key)
+        with self.lock:
+            pending = redact(self.pending.pop(key, '') + text)
+            # Retain only a suffix that could become a secret on a later write.
+            # The registry lets build cleanup drain contexts of joined workers.
+            keep = 0
+            for secret in _secret_values():
+                for length in range(min(len(secret) - 1, len(pending)), keep, -1):
+                    if pending.endswith(secret[:length]):
+                        keep = length
+                        break
+            if keep:
+                self.pending[key] = pending[-keep:]
+            self.stream.write(pending[:-keep] if keep else pending)
         return len(text)
 
-    def finish(self):
-        self.stream.write(redact(self.pending.get()))
-        self.pending.set('')
-        self.stream.flush()
+    def finish(self, *, all_contexts=False):
+        with self.lock:
+            pending = (''.join(self.pending.values()) if all_contexts
+                       else self.pending.pop(self.context.get(), ''))
+            if all_contexts:
+                self.pending.clear()
+            self.stream.write(redact(pending))
+            self.stream.flush()
 
     def flush(self):
         self.stream.flush()
@@ -225,8 +237,8 @@ def build_redaction(config):
         raise
     finally:
         with _lock:
-            sys.stdout.finish()
-            sys.stderr.finish()
+            sys.stdout.finish(all_contexts=_users == 1)
+            sys.stderr.finish(all_contexts=_users == 1)
             _users -= 1
             for secret in secrets:
                 _active[secret] -= 1

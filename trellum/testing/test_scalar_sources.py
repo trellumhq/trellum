@@ -238,6 +238,36 @@ def test_report_thread_logs_are_filtered(project, monkeypatch, capsys):
     assert 'synthetic-thread-key' not in capsys.readouterr().out
 
 
+def test_joined_worker_log_suffixes_are_not_lost(project, monkeypatch, capsys):
+    import sys
+    from threading import Thread
+
+    from trellum.redaction import build_redaction
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', 'synthetic-thread-key')
+    with build_redaction(context('secret')._config):
+        worker = Thread(target=lambda: (sys.stdout.write('ordinary syn'), sys.stderr.write('warning syn')))
+        worker.start()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+    captured = capsys.readouterr()
+    assert captured.out == 'ordinary syn'
+    assert captured.err == 'warning syn'
+
+
+def test_report_supplied_validation_identifier_is_filtered(project, monkeypatch):
+    secret = 'synthetic-check-identifier'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    def generate(self, ctx):
+        ctx.add_validation_check(ctx.read_text('input'), 'warn', 'Missing optional input')
+        ctx.set_custom_output('<html>Available</html>', {})
+    out = build(project, monkeypatch, generate)
+    for filename in ('_validation.json', '_meta.json'):
+        assert secret not in (out / filename).read_text()
+    checks = json.loads((out / '_validation.json').read_text())['checks']
+    assert any(check['id'] == '[REDACTED]' for check in checks)
+
+
 def test_oserror_filename_does_not_escape_redaction(project, monkeypatch):
     from trellum.redaction import build_redaction
 
