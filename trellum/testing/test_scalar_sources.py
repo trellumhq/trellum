@@ -362,14 +362,17 @@ def test_logging_extra_is_filtered_for_independent_handlers(project, monkeypatch
     logger = logging.getLogger('scalar-structured-logging')
     logger.addHandler(handler)
     original_factory, original_make_record = logging.getLogRecordFactory(), logging.Logger.makeRecord
+    original_format = logging.Handler.format
     try:
         with build_redaction(context('secret').config):
             with build_redaction(context('secret').config):
                 logger.warning('request failed', extra={'credential': secret, 'details': {'key': secret}})
+                logger.warning('object fields', extra={'credential': Path(secret), 'details': {'key': Path(secret)}})
         assert secret not in path.read_text()
         assert '[REDACTED]' in path.read_text()
         assert logging.getLogRecordFactory() is original_factory
         assert logging.Logger.makeRecord is original_make_record
+        assert logging.Handler.format is original_format
     finally:
         logger.removeHandler(handler)
         handler.close()

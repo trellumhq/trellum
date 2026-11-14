@@ -226,6 +226,13 @@ def build_redaction(config):
                                        exc_info, func, extra, sinfo)
             make_record.previous = old_make_record
             logging.Logger.makeRecord = make_record
+            old_format = logging.Handler.format
+            def format_record(handler, record):
+                # Formatters can stringify objects or otherwise transform
+                # fields. Filter that final text before any standard sink.
+                return redact(old_format(handler, record))
+            format_record.previous = old_format
+            logging.Handler.format = format_record
         _users += 1
     try:
         yield
@@ -272,6 +279,7 @@ def build_redaction(config):
                 sys.stdout, sys.stderr = sys.stdout.stream, sys.stderr.stream
                 logging.setLogRecordFactory(logging.getLogRecordFactory().previous)
                 logging.Logger.makeRecord = logging.Logger.makeRecord.previous
+                logging.Handler.format = logging.Handler.format.previous
         _values.reset(token)
 
 
