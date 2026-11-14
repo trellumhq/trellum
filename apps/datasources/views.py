@@ -22,6 +22,7 @@ from apps.core.form_responses import is_settings_request, settings_error, settin
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from apps.datasources.forms import DataSourceForm
+from apps.datasources.uploads import UploadChange
 from apps.datasources.materialize import (
     resolve_path,
     stored_file,
@@ -159,12 +160,20 @@ def _whole_number(raw, default: int, low: int, high: int, name: str) -> int:
 def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
     # Serialize replacements and clears so another request cannot leave an
     # unreferenced file or restore a path removed by a concurrent upload.
-    with transaction.atomic():
-        ds = DataSource.objects.select_for_update().get(pk=ds.pk)
-        return _store_upload_locked(request, ds, name)
+    try:
+        # The file guard surrounds the commit too: a failed save, audit or
+        # commit must restore the bytes as well as roll back the database.
+        with UploadChange() as change:
+            with transaction.atomic(durable=True):
+                ds = DataSource.objects.select_for_update().get(pk=ds.pk)
+                return _store_upload_locked(request, ds, name, change)
+    except FileExistsError:
+        return settings_error(request, "Another file already uses that destination. The current file was kept.", status=409)
+    except OSError:
+        return settings_error(request, "The file could not be changed. The current file was kept.", status=500)
 
 
-def _store_upload_locked(request, ds: DataSource, name: str) -> JsonResponse:
+def _store_upload_locked(request, ds: DataSource, name: str, change: UploadChange) -> JsonResponse:
     """Write one uploaded file for ``ds``. Shared by the studio and org routes.
 
     Three things this does that the bare chunk-loop it replaces did not:
@@ -179,11 +188,7 @@ def _store_upload_locked(request, ds: DataSource, name: str) -> JsonResponse:
         )
     if request.POST.get("action") == "remove":
         current = stored_file(ds)
-        try:
-            if current is not None:
-                current.unlink(missing_ok=True)
-        except OSError:
-            return settings_error(request, "The file could not be removed.", status=500)
+        change.remove(current)
         ds.config = {**(ds.config or {}), "path": ""}
         ds.last_check_at = ds.last_check_ok = None
         ds.last_check_error = ""
@@ -240,20 +245,15 @@ def _store_upload_locked(request, ds: DataSource, name: str) -> JsonResponse:
                 if cap and written > cap:
                     raise ValueError(f"upload exceeded {fmt_size(cap)}")
                 fh.write(chunk)
-        os.replace(staged, target)
     except Exception as exc:  # noqa: BLE001 - the live file must survive this
         staged.unlink(missing_ok=True)
         status = 413 if isinstance(exc, ValueError) else 500
         return JsonResponse({"ok": False, "error": str(exc)}, status=status)
 
-    # An extension change relocates the file; drop what it replaced so the
-    # storage quota does not count a file nothing points at any more.
-    if current and current.is_file() and current != target:
-        try:
-            current.unlink(missing_ok=True)
-        except OSError:
-            target.unlink(missing_ok=True)
-            return JsonResponse({"ok": False, "error": "The previous file could not be removed."}, status=500)
+    try:
+        change.replace(staged, target, current)
+    finally:
+        staged.unlink(missing_ok=True)
     ds.config = {**(ds.config or {}), "path": rel}
     ds.last_check_at = ds.last_check_ok = None
     ds.last_check_error = ""

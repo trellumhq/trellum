@@ -1127,9 +1127,42 @@ a.ui-card { display: block; color: inherit; text-decoration: none; }
     padding: 0 !important; border: 0 !important;
     opacity: 0; overflow: hidden; clip: rect(0 0 0 0);
 }
-/* File controls wrap within their row on desktop as well as mobile cards. */
-.ui-table td.ds-file-actions { white-space: normal; }
-.ds-file-actions [data-ds-filename] { display: inline-block; max-width: 180px; overflow-wrap: anywhere; vertical-align: middle; }
+/* Keep the file and its two frequent actions together; secondary actions
+   use a top-layer popover so table scrolling cannot clip them. */
+.ds-table { table-layout: fixed; }
+.ds-table th:first-child { width: 29%; }
+.ds-table th:nth-child(2) { width: 100px; }
+.ds-table th:nth-child(3) { width: 110px; }
+.ds-table th:nth-child(5) { width: 85px; }
+.ds-table th:last-child { width: 120px; }
+.ds-table td.ds-actions { white-space: normal; }
+.ds-actions > .ui-btn + .ui-btn { margin-top: 6px; }
+.ds-table td { overflow-wrap: anywhere; }
+.ds-table .ui-chip, .ds-table .ui-badge { max-width: 100%; white-space: normal; }
+.ds-table [data-ds-detail] { display: block; margin-top: 4px; }
+.ds-file { margin-top: 10px; }
+.ds-file [data-ds-filename] { display: block; overflow-wrap: anywhere; }
+.ds-file-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+body.mgmt .ds-file-controls [hidden] { display: none; }
+.ds-file-controls .ds-remove-file { background: transparent; border-color: transparent; }
+.ds-file-controls .ds-remove-file:hover { color: var(--red); border-color: var(--border); }
+.ds-file-controls label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ds-file-controls label:has(input:disabled) { opacity: 0.5; cursor: wait; }
+.ds-action-menu {
+    position: fixed; inset: auto; margin: 0; padding: 6px;
+    width: 210px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
+    overflow: auto; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--bg-card); color: var(--text); box-shadow: var(--shadow);
+    text-align: left;
+}
+.ds-action-menu:popover-open { display: grid; gap: 2px; }
+body.mgmt .ds-action-menu form.inline { display: block; }
+.ds-action-menu .ui-btn { width: 100%; border-color: transparent; justify-content: flex-start; }
+.ds-action-menu .ui-btn:hover { background: var(--bg-hover); }
+.ds-action-menu .ui-btn.danger:hover { background: var(--red); }
+@media (max-width: 767px) {
+    .ds-file-controls .ui-btn, .ds-action-menu .ui-btn { min-height: 44px; }
+}
 .ds-progress { margin-top: 6px; min-width: 140px; }
 .ds-progress-bar {
     height: 6px; border-radius: var(--r-sm);
@@ -1189,7 +1222,7 @@ body.mgmt label { display: block; font-size: var(--fs-sm); color: var(--text2); 
 /* Exception: a label that IS a button (it wraps a hidden file input so the
    picker opens with no script). The block rule above would stretch it across
    its cell and push the buttons beside it onto their own line. */
-body.mgmt label.ui-btn { display: inline-flex; margin: 0; }
+body.mgmt label.ui-btn { display: inline-flex; margin: 0; font: 500 var(--fs-base)/1.4 var(--font); }
 body.mgmt label.ui-check-row { display: flex; gap: 8px; align-items: center; }
 body.mgmt form.inline {
     display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0;

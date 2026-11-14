@@ -9,7 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
-- Uploaded data-source files can be replaced with another file type or removed without deleting the source. Changes take effect on the next build.
+- Uploaded data-source files can be replaced with another file type or removed without deleting the source. Changes take effect on the next build. Failed saves restore the previous file, destination collisions preserve other files, and secondary row actions are grouped under More.
 
 ### Documentation
 
