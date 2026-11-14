@@ -975,6 +975,13 @@ def _editor(request, name, studio=None):
     form_kwargs = dict(allow_secret_reference=request.org_roles.is_org_admin, instance=state.binding, studio=studio, org=request.org,
                        fixed_scope="org" if org_page else "studio")
     scalar_initial = {"name": name, "type": state.type, **{k: v for k, v in (state.declaration.config or {}).items() if k not in {"value", "secret_reference"}}} if scalar and state.declaration else {}
+    if scalar and state.declared and (
+        state.type == "secret" or scalar_initial.get("secret")
+        or (state.binding and (state.binding.type == "secret" or (state.binding.config or {}).get("secret")))
+    ):
+        # A declaration may strengthen protection, but cannot silently remove
+        # the saved binding's classification during an ordinary editor save.
+        scalar_initial["secret"] = True
     form = DataSourceForm(request.POST if request.method == "POST" else None, initial=scalar_initial, **form_kwargs)
     if scalar and state.declared:
         form.initial.update(scalar_initial)

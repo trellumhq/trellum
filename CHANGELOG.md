@@ -26,6 +26,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   native and subprocess build logs, including local `.env` builds.
 - Keep cleared scalar values empty after later editor saves, preserve multiline
   secret replacements, and show scalar status and controls appropriate to each type.
+- Preserve declared scalar types and secret protection when editing existing
+  source bindings, including description-only saves.
 
 ## [0.10.1] — 2026-11-08
 

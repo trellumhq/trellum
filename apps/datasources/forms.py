@@ -115,7 +115,7 @@ class DataSourceForm(forms.Form):
         self, *args, instance: DataSource | None = None, studio=None, org=None,
         allow_secret_reference: bool = False, allow_org_scope: bool = False, fixed_scope: str | None = None, **kwargs,
     ):
-        initial = kwargs.pop("initial", {}) or {}
+        initial = dict(kwargs.pop("initial", {}) or {})
         if instance is not None:
             initial.update(
                 {

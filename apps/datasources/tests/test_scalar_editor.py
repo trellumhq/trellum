@@ -302,3 +302,35 @@ def test_secret_declaration_upgrade_never_renders_old_plain_binding(login, org_a
     assert response.status_code == 200
     assert "previously-visible-fixture" not in response.content.decode()
     assert response.context["form"]["value"].field.widget.input_type == "password"
+
+
+@pytest.mark.parametrize("binding_type,binding_config,declaration_type,declaration_config", [
+    ("string", {"secret": True}, "string", {"secret": False}),
+    ("string", {}, "string", {"secret": True}),
+    ("string", {}, "secret", {}),
+    ("secret", {}, "string", {"secret": False}),
+])
+def test_declared_editor_preserves_secret_protection_on_description_save(
+    login, org_admin, studio_tree, binding_type, binding_config, declaration_type, declaration_config,
+):
+    value = "saved-classification-fixture"
+    ds = DataSource.objects.create(studio=studio_tree, name="gateway", type=binding_type,
+                                   config=binding_config, credentials={"value": value})
+    RepoDataSource.objects.create(studio=studio_tree, name=ds.name, type=declaration_type,
+                                 config=declaration_config)
+    client = login(org_admin)
+    url = f"/s/{studio_tree.org.slug}/{studio_tree.slug}/settings/datasources/gateway/edit"
+    response = client.get(url)
+    assert value not in response.content.decode()
+    form = response.context["form"]
+    assert form.initial["type"] == declaration_type
+    assert form.initial["secret"] is True
+    assert form.fields["secret"].disabled
+    response = client.post(url, {"action": "save", "description": "Updated description", "value": ""},
+                           HTTP_X_TRELLUM_FORM="1")
+    assert response.status_code == 200
+    assert value not in response.content.decode()
+    ds.refresh_from_db()
+    assert ds.type == declaration_type
+    assert ds.config["secret"] is True
+    assert ds.credentials["value"] == value
