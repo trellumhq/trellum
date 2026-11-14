@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Reports can use `ctx.ai.complete()` with the organization’s saved AI connection,
+  without provider credentials in the build. Report spend shares the organization
+  AI budget and does not count against any user’s personal cap.
+
+
 ### Documentation
 
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data

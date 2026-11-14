@@ -40,6 +40,7 @@ TOPICS: dict[str, str] = {
     "queries": "Writing queries: what belongs in SQL and what belongs in pandas",
     "format": "Long vs wide format, and why charts need long",
     "generator": "The step-by-step process for writing generator.py",
+    "ai": "Portal-hosted AI completions using the organization saved connection",
     "components": "The component library and the reuse policy",
     "header": "Automatic freshness strip and optional report metadata",
     "metrics": "metrics.yaml business metrics, and claiming them by id in KPIs",

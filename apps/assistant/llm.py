@@ -19,7 +19,7 @@ import hashlib
 import logging
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Callable, Generator
 from urllib.parse import urlsplit
@@ -232,7 +232,7 @@ def is_available(org, purpose="chat") -> tuple[bool, str]:
             "to enforce budgets, or leave both budgets blank."
         )
     checks = config.connection_check.get("checks", {}) if config.connection_check.get("revision") == config.config_revision else {}
-    required = ["chat"] + (["alerts"] if purpose == "alert" else []) + (["usage"] if config.budgeted else [])
+    required = [] if purpose == "report" else ["chat"] + (["alerts"] if purpose == "alert" else []) + (["usage"] if config.budgeted else [])
     for name in required:
         check = checks.get(name)
         if check is not None and not check.get("ok"):
@@ -631,6 +631,75 @@ def stream_turn(
                 yield {"type": "source_wait", **state["_source_pending"]}
                 return
     yield _turn_limit(max_turns)
+
+
+def complete_once(config, *, system, user, max_tokens=DEFAULT_MAX_TOKENS,
+                  response_format=None, model=None, timeout=90, purpose="report"):
+    """One completion, using saved credentials, with no tools or session state.
+
+    SDK timeouts and the retry deadline bound requests; the broker additionally
+    owns process isolation to terminate providers that ignore network timeouts.
+    """
+    from trellum.ai import CompletionResult, ReportAIError, validate_request
+    from .transport import complete_request, normalize_error
+
+    validate_request(system=system, user=user, max_tokens=max_tokens,
+                     response_format=response_format, model=model, timeout=timeout)
+    if config is None:
+        raise ReportAIError("disabled", "AI is disabled for this organization.")
+    if model is not None:
+        config = replace(config, model=model)
+    deadline = time.monotonic() + timeout
+    try:
+        _validate_credentials(config)
+        if config.provider not in SUPPORTED_PROVIDERS or not config.model:
+            raise ReportAIError("invalid_request", "Select a supported provider and model in AI settings.")
+        if config.budgeted and config.price() is None:
+            raise ReportAIError("budget", "Set model input and output prices in AI settings to enforce budgets.")
+        from .provider_registry import workload_allowed
+        if config.auth_mode == "workload" and not workload_allowed(config.provider, config.org_id):
+            raise ReportAIError("provider", "Workload identity is not authorized for this organization.")
+        for attempt in range(RETRY_MAX_ATTEMPTS):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ReportAIError("timeout", "The AI request timed out.")
+            try:
+                response = complete_request(config, system=system, user=user,
+                    max_tokens=max_tokens, response_format=response_format,
+                    timeout=remaining, purpose=purpose)
+                break
+            except Exception as error:
+                safe = normalize_error(error)
+                if safe.kind not in ("rate_limit", "server") or attempt == RETRY_MAX_ATTEMPTS - 1:
+                    raise
+                delay = min(RETRY_BASE_DELAY * 2 ** attempt, RETRY_MAX_DELAY)
+                if deadline - time.monotonic() <= delay:
+                    raise ReportAIError("timeout", "The AI request timed out.") from None
+                time.sleep(delay)
+        usage = _valid_usage(response.get("usage"))
+        cost = _normalized_cost(config, usage)
+        if config.budgeted and (usage is None or cost is None):
+            raise ReportAIError("provider", "The provider omitted usage required to enforce the organization budget.")
+        text, finish = response.get("text"), response.get("finish_reason")
+        invalid = not isinstance(text, str) or not isinstance(finish, str)
+        if not invalid and response_format == "json":
+            try:
+                json.loads(text, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+            except (ValueError, TypeError, RecursionError):
+                invalid = True
+        if invalid:
+            error = ReportAIError("invalid_response", "The provider returned an invalid completion.")
+            error.usage, error.cost_usd = usage, cost
+            raise error
+        return CompletionResult(text=text, finish_reason=finish, model=config.model,
+                                usage=usage, cost_usd=cost)
+    except ReportAIError:
+        raise
+    except Exception as error:
+        safe = normalize_error(error)
+        logger.warning("assistant: report completion failed (%s)", safe.kind)
+        code = "timeout" if isinstance(error, TimeoutError) or "Timeout" in type(error).__name__ else "provider"
+        raise ReportAIError(code, error_detail(safe, config.base_url)) from None
 
 
 def _adapter(provider):

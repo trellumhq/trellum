@@ -225,11 +225,52 @@ class LlmUsage(models.Model):
         total = cls.objects.filter(org=org, month=month_start(when)).aggregate(
             total=Sum("cost_usd")
         )["total"]
-        return total or Decimal("0")
+        return (total or Decimal("0")) + ReportLlmUsage.month_total(org, when=when)
 
     @classmethod
     def user_month_total(cls, org, user, when=None) -> Decimal:
         total = cls.objects.filter(org=org, user=user, month=month_start(when)).aggregate(
+            total=Sum("cost_usd")
+        )["total"]
+        return total or Decimal("0")
+
+
+class ReportLlmUsage(models.Model):
+    """Organization-only report spend in the shared LLM budget ledger.
+
+    A separate monthly row keeps report spend independent of every user's cap,
+    including manual builds, and gives unattended charges a non-null unique key.
+    """
+
+    org = models.ForeignKey(
+        "orgs.Organization", on_delete=models.CASCADE, related_name="report_llm_usage"
+    )
+    month = models.DateField(help_text="First day of the month this spend is booked to.")
+    cost_usd = models.DecimalField(max_digits=11, decimal_places=6, default=Decimal("0"))
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["org", "month"], name="uniq_report_llm_usage_month")
+        ]
+
+    @classmethod
+    def add_cost(cls, org, usd, when=None) -> Decimal:
+        """Atomically accumulate metered report spend, without attributing a user."""
+        amount = Decimal(str(usd or 0)).quantize(CENT, rounding=ROUND_HALF_UP)
+        if amount <= 0:
+            return cls.month_total(org, when=when)
+        with transaction.atomic():
+            row, _ = cls.objects.select_for_update().get_or_create(
+                org=org, month=month_start(when), defaults={"cost_usd": Decimal("0")}
+            )
+            row.cost_usd += amount
+            row.save(update_fields=["cost_usd", "updated_at"])
+        return row.cost_usd
+
+    @classmethod
+    def month_total(cls, org, when=None) -> Decimal:
+        total = cls.objects.filter(org=org, month=month_start(when)).aggregate(
             total=Sum("cost_usd")
         )["total"]
         return total or Decimal("0")

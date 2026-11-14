@@ -37,6 +37,13 @@ class TestChildEnv:
             "SESSION_SECRET_KEY",
             "SECRET_ENCRYPTION_KEY",
             "ANTHROPIC_API_KEY",
+            "LITELLM_API_KEY",
+            "OPENAI_API_KEY",
+            "AWS_SECRET_ACCESS_KEY",
+            "Authorization",
+            "LITELLM_BASE_URL",
+            "TRELLUM_AI_TOKEN",
+            "TRELLUM_AI_SOCKET",
             "POSTGRES_PASSWORD",
             "EMAIL_URL",
         ):
@@ -47,6 +54,13 @@ class TestChildEnv:
             "SESSION_SECRET_KEY",
             "SECRET_ENCRYPTION_KEY",
             "ANTHROPIC_API_KEY",
+            "LITELLM_API_KEY",
+            "OPENAI_API_KEY",
+            "AWS_SECRET_ACCESS_KEY",
+            "Authorization",
+            "LITELLM_BASE_URL",
+            "TRELLUM_AI_TOKEN",
+            "TRELLUM_AI_SOCKET",
             "POSTGRES_PASSWORD",
             "EMAIL_URL",
         ):
@@ -142,6 +156,10 @@ class TestSpawn:
         assert ex.start_run(queued_run) is True
 
         proc = fake_popen["procs"][0]
+        broker = ex._procs[queued_run.pk].ai_broker
+        assert proc.kwargs["env"]["TRELLUM_AI_SOCKET"] == broker.path
+        assert proc.kwargs["env"]["TRELLUM_AI_TOKEN"] == broker.child_env["TRELLUM_AI_TOKEN"]
+        assert broker.child_env["TRELLUM_AI_TOKEN"] not in proc.kwargs["env"]["FW_EXTENSIONS_JSON"]
         # cwd = repo root, so the bundled source wins sys.path.
         assert proc.kwargs["cwd"] == str(settings.BASE_DIR)
         # python -m trellum.run <sandbox>/reports/<slug> --no-serve
@@ -220,6 +238,26 @@ class TestSpawn:
         settings.DEBUG = False
         Executor("w1").start_run(queued_run)
         assert "--production" in fake_popen["procs"][-1].cmd
+
+    def test_spawn_failure_closes_ai_listener(self, fake_popen, queued_run, monkeypatch):
+        from apps.runner.ai_broker import AIBroker
+
+        brokers = []
+        start = AIBroker.start
+
+        def capture(broker):
+            brokers.append(broker)
+            return start(broker)
+
+        def fail(*args, **kwargs):
+            raise OSError("synthetic spawn failure")
+
+        monkeypatch.setattr(AIBroker, "start", capture)
+        monkeypatch.setattr(executor_mod.subprocess, "Popen", fail)
+        assert not Executor("test-ai").start_run(queued_run)
+        assert len(brokers) == 1
+        assert not brokers[0]._thread.is_alive()
+        assert not Path(brokers[0].path).exists()
 
     def test_missing_report_dir_fails_cleanly(self, fake_popen, report_row, studio_tree):
         import shutil
@@ -451,6 +489,7 @@ class TestCompletionAndTimeouts:
 
         ex.tick()  # over budget -> SIGTERM
         assert rp.timed_out is True
+        assert not Path(rp.ai_broker.path).exists()
         assert signal.SIGTERM in proc.signals
         assert not proc.killed
 
@@ -473,7 +512,9 @@ class TestCompletionAndTimeouts:
     def test_stop_request_marks_stopped(self, fake_popen, queued_run, caplog):
         ex, proc = self._start(fake_popen, queued_run)
         Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+        broker = ex._procs[queued_run.pk].ai_broker
         ex.tick()  # picks up the flag -> SIGTERM
+        assert not Path(broker.path).exists()
         assert signal.SIGTERM in proc.signals
         stop = next(r for r in caplog.records if getattr(r, "signal", None) == "SIGTERM")
         assert stop.reason == "stop requested"

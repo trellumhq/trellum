@@ -26,11 +26,23 @@ def normalize_error(error):
         return error
     names = {cls.__name__ for cls in type(error).__mro__}
     status = getattr(error, "status_code", None)
+    body = getattr(error, "body", None)
+    response = getattr(error, "response", None)
+    if status is None and isinstance(response, dict):
+        status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    overload = any(name.lower() in ("overloadederror", "overloaderror", "overloaded_error") for name in names)
+    if isinstance(body, dict):
+        detail = body.get("error", body)
+        overload = overload or (isinstance(detail, dict) and (
+            detail.get("type") == "overloaded_error" or detail.get("code") in (529, "529", "overloaded_error")
+            or detail.get("status_code") in (529, "529") or detail.get("status") in (529, "529")))
+    if overload or status in (529, "529"):
+        return TransportError("server", "The provider is temporarily unavailable.")
     if status in (401, 403) or "AuthenticationError" in names:
         return TransportError("authentication", "The provider rejected the credentials.")
     if status == 429 or "RateLimitError" in names:
         return TransportError("rate_limit", "The provider is rate limiting requests.")
-    if status and 500 <= status < 600:
+    if isinstance(status, int) and 500 <= status < 600:
         return TransportError("server", "The provider is temporarily unavailable.")
     if names & {"APIConnectionError", "APITimeoutError", "TimeoutError", "ConnectionError"}:
         return TransportError("connection", "Could not reach the model provider.")
@@ -229,3 +241,85 @@ def stream_anthropic(config, messages, system_blocks, schemas, *, max_tokens,
                 native.append(safe)
         yield {"type": "response", "blocks": visible, "stop_reason": response.stop_reason,
                "usage": _usage(response.usage), "provider_data": {"blocks": native} if has_private else None}
+
+
+def complete_request(config, *, system, user, max_tokens, response_format=None,
+                     timeout=90, purpose="report"):
+    """Non-streaming counterpart using the same credential-owning clients.
+
+    Cloud JSON mode deliberately uses prompting; no tool schemas are sent.
+    The caller validates JSON and owns retries, metering and the hard deadline.
+    """
+    from . import llm
+
+    if response_format == "json":
+        system += "\n\nReturn only valid JSON. Do not include Markdown fences or explanatory text."
+    if config.provider in ("openai", "litellm", "openrouter", "deepseek", "azure", "custom"):
+        sdk = llm._openai_client(config, timeout=timeout) if config.provider == "azure" else llm._openai_client(config)
+        with closing_client(sdk) as client:
+            kwargs = {"model": config.model, "messages": [{"role": "system", "content": system},
+                      {"role": "user", "content": user}], "stream": False, "timeout": timeout}
+            token_key = "max_completion_tokens" if config.provider == "azure" or (config.provider == "openai" and not config.custom_endpoint) else "max_tokens"
+            kwargs[token_key] = max_tokens
+            if response_format == "json":
+                kwargs["response_format"] = {"type": "json_object"}
+            response = client.chat.completions.create(**kwargs)
+            choices = _value(response, "choices", [])
+            if not choices:
+                raise TransportError("protocol", "The provider returned no completion.")
+            choice = choices[0]
+            message = _value(choice, "message")
+            if _value(message, "tool_calls"):
+                raise TransportError("protocol", "The provider returned an unexpected tool call.")
+            return {"text": _value(message, "content"), "finish_reason": _value(choice, "finish_reason"),
+                    "usage": _usage(_value(response, "usage"), openai=True)}
+    if config.provider == "anthropic":
+        with closing_client(llm._anthropic_client(config)) as client:
+            response = client.messages.create(model=config.model, system=system,
+                messages=[{"role": "user", "content": user}], max_tokens=max_tokens, timeout=timeout)
+            blocks = _value(response, "content", [])
+            if any(_value(block, "type") == "tool_use" for block in blocks):
+                raise TransportError("protocol", "The provider returned an unexpected tool call.")
+            return {"text": "".join(_value(block, "text", "") for block in blocks if _value(block, "type") == "text"),
+                    "finish_reason": _value(response, "stop_reason"), "usage": _usage(_value(response, "usage"))}
+    from . import cloud
+    client = None
+    try:
+        if config.provider == "bedrock":
+            client = cloud._aws_client(config, "bedrock-runtime", timeout)
+            response = client.converse(modelId=config.model, system=[{"text": system}],
+                messages=[{"role": "user", "content": [{"text": user}]}], inferenceConfig={"maxTokens": max_tokens})
+            blocks = response.get("output", {}).get("message", {}).get("content", [])
+            if any("toolUse" in block for block in blocks):
+                raise TransportError("protocol", "The provider returned an unexpected tool call.")
+            raw = response.get("usage", {})
+            usage = cloud._usage_counts(raw.get("inputTokens"), raw.get("outputTokens"),
+                                       raw.get("cacheReadInputTokens", 0), raw.get("cacheWriteInputTokens", 0))
+            return {"text": "".join(block.get("text", "") for block in blocks),
+                    "finish_reason": response.get("stopReason"), "usage": usage}
+        if config.provider == "vertex":
+            from google.genai import types
+            client = cloud._vertex_client(config, timeout)
+            response = client.models.generate_content(model=config.model,
+                contents=[{"role": "user", "parts": [{"text": user}]}],
+                config=types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens,
+                                                   automatic_function_calling={"disable": True}))
+            candidates = _value(response, "candidates", []) or []
+            if not candidates:
+                raise TransportError("protocol", "The provider returned no completion.")
+            candidate = candidates[0]
+            parts = _value(_value(candidate, "content"), "parts", []) or []
+            if any(_value(part, "function_call") for part in parts):
+                raise TransportError("protocol", "The provider returned an unexpected tool call.")
+            raw = _value(response, "usage_metadata")
+            inputs, outputs = _value(raw, "prompt_token_count"), _value(raw, "candidates_token_count")
+            cache = _value(raw, "cached_content_token_count", 0) or 0
+            usage = cloud._usage_counts(inputs - cache, outputs + (_value(raw, "thoughts_token_count", 0) or 0), cache) if isinstance(inputs, int) and isinstance(outputs, int) else None
+            finish = _value(candidate, "finish_reason")
+            return {"text": "".join(_value(part, "text", "") or "" for part in parts if not _value(part, "thought")),
+                    "finish_reason": str(getattr(finish, "value", finish)).lower() if finish else None, "usage": usage}
+        raise TransportError("unsupported", "Unsupported LLM provider.")
+    except Exception as error:
+        raise cloud._failure(error) from None
+    finally:
+        cloud._close(client)

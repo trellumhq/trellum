@@ -13,7 +13,7 @@ trellum checks             every validator check id and its level
 trellum validate <dir>     the current validation state of a built report
 ```
 
-`trellum guide` topics: `answer`, `queries`, `format`, `generator`,
+`trellum guide` topics: `answer`, `queries`, `format`, `generator`, `ai`,
 `components`, `header`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
 `report-yaml`, `themes`, `review`, `portal`, `analysis`.
 
@@ -351,6 +351,55 @@ The `report-description-weak` validator check WARNs on short descriptions.
 Descriptive column names in DataSources matter for the same reason — the
 assistant reads them from data.json to decide which dataset answers a
 question.
+
+<!-- topic: ai -->
+## AI completions during a portal build
+
+Use the organization's saved **Organization settings → AI settings** connection.
+Never put provider keys, copied endpoints, vendor SDKs or key files in a report.
+
+```python
+from trellum.ai import ReportAIError
+
+try:
+    result = ctx.ai.complete(
+        system="Return a short diagnosis using only the supplied evidence.",
+        user=evidence,
+        max_tokens=8000,
+        response_format="json",  # optional; omit for text
+        model=None,              # optional override; saved model by default
+        timeout=90,
+    )
+    diagnosis = result.text
+except ReportAIError as exc:
+    diagnosis = f"Diagnosis unavailable ({exc.code})."
+```
+
+Always catch `ReportAIError` if the report should still publish. An uncaught
+error fails the build like any other generator exception. Codes include
+`unavailable`, `disabled`, `budget`, `provider`, `invalid_request`,
+`invalid_response` and `timeout`. Local builds without a portal broker return
+`unavailable`; there is no environment-key fallback.
+
+This is one blocking completion, with no tools or streaming. Results expose
+`text`, `finish_reason`, `model`, and optional `usage` / `cost_usd`. The worker
+loads the saved connection on every call, so model and endpoint edits apply to
+the next call. A successful **Test connection** is optional verification, not
+a prerequisite for report completions. Chat and alert readiness is unchanged.
+The sandbox receives no provider credentials or endpoint.
+
+Every report completion shares the monthly organization AI cap. Report spend
+never counts toward a user's personal cap, including manually requested builds.
+There is no per-build call-count cap; the organization budget stops later calls.
+A build allows one in-flight request at a time; concurrent calls are rejected
+with `invalid_request`, so call sequentially. Prompts together are limited to 256 KiB UTF-8; `max_tokens` defaults to 4096 and accepts 1–16384;
+`timeout` defaults to 90 seconds and accepts up to 120 seconds.
+
+`response_format="json"` uses native JSON response format for OpenAI-protocol
+providers. Anthropic, Bedrock and Vertex receive a best-effort JSON instruction
+in the prompt. All providers' JSON output is parsed; invalid JSON raises
+`ReportAIError(code="invalid_response")`. Parse `result.text` and validate your
+own schema before using it; syntactically valid JSON does not prove its facts.
 
 <!-- topic: components -->
 ## Component Reuse Policy
