@@ -16,6 +16,7 @@ import threading
 import time
 
 from trellum.redaction import environment_secrets, secret_variants
+from trellum.secret_prefix import SecretPrefixes
 
 _CHUNK_BYTES = 65536
 _DRAIN_SECONDS = 2
@@ -31,20 +32,13 @@ class SecretFilter:
         if any(secret in self.replacement for secret in self.secrets):
             self.replacement = b''
         self.pending = b''
+        self.prefixes = SecretPrefixes(self.secrets)
 
     def feed(self, chunk: bytes, *, final=False) -> bytes:
         if self.pattern is None:
             return chunk
         data = self.pending + chunk
-        keep = 0
-        if not final:
-            for secret in self.secrets:
-                start = data.find(secret[:1], max(0, len(data) - len(secret) + 1))
-                while start >= 0 and len(data) - start > keep:
-                    if secret.startswith(data[start:]):
-                        keep = len(data) - start
-                        break
-                    start = data.find(secret[:1], start + 1)
+        keep = 0 if final else self.prefixes.retained_length(data)
         boundary = len(data) - keep
         if keep:
             # Do not split a complete match when a longer secret also has a

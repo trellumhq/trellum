@@ -324,6 +324,54 @@ def test_http_error_message_does_not_escape_redaction(project, monkeypatch):
     assert error.value.code == 401
 
 
+def test_syntax_error_diagnostic_is_filtered_after_build_cleanup(project, monkeypatch):
+    import traceback
+
+    from trellum.redaction import build_redaction
+
+    secret = 'synthetic-syntax-error-key'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    with pytest.raises(SyntaxError) as error:
+        with build_redaction(context('secret').config):
+            raise SyntaxError(secret, ('generated.py', 1, 1, secret))
+    assert secret not in ''.join(traceback.format_exception(error.value))
+    assert error.value.msg == error.value.text == '[REDACTED]'
+    assert error.value.lineno == 1
+
+
+def test_immutable_exception_groups_remain_catchable_and_filtered(project, monkeypatch):
+    import traceback
+
+    from trellum.redaction import build_redaction
+
+    secret = 'synthetic-group-error-key'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    child = ValueError(secret)
+    with pytest.raises(ExceptionGroup) as error:
+        with build_redaction(context('secret').config):
+            raise ExceptionGroup(secret, [child, child, SyntaxError(secret)])
+    assert secret not in ''.join(traceback.format_exception(error.value))
+    assert error.value.message == '[REDACTED]'
+    assert error.value.exceptions[0] is error.value.exceptions[1]
+    assert isinstance(error.value.exceptions[2], SyntaxError)
+    assert error.value.__context__ is None
+
+
+def test_implicit_exception_context_remains_visible_and_filtered(project, monkeypatch):
+    from trellum.redaction import build_redaction
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', 'synthetic-context-key')
+    with pytest.raises(ValueError) as error:
+        with build_redaction(context('secret').config):
+            try:
+                raise RuntimeError('synthetic-context-key')
+            except RuntimeError:
+                raise ValueError('outer error')
+    assert error.value.__suppress_context__ is False
+    assert isinstance(error.value.__context__, RuntimeError)
+    assert str(error.value.__context__) == '[REDACTED]'
+
+
 def test_process_error_binary_output_is_filtered_without_losing_exception(project, monkeypatch):
     from subprocess import CalledProcessError
 

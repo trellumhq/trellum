@@ -12,7 +12,10 @@ import re
 import sys
 import threading
 import traceback
+import types
 from urllib.parse import quote
+
+from trellum.secret_prefix import SecretPrefixes
 
 _values = contextvars.ContextVar('trellum_scalar_secrets', default=())
 _lock = threading.RLock()
@@ -56,6 +59,7 @@ class _Stream:
         self.context = contextvars.ContextVar('redaction_stream_context', default=None)
         self.pending = {}
         self.lock = threading.RLock()
+        self.prefixes = None
 
     def write(self, text):
         if not _secret_values():
@@ -68,12 +72,10 @@ class _Stream:
             pending = redact(self.pending.pop(key, '') + text)
             # Retain only a suffix that could become a secret on a later write.
             # The registry lets build cleanup drain contexts of joined workers.
-            keep = 0
-            for secret in _secret_values():
-                for length in range(min(len(secret) - 1, len(pending)), keep, -1):
-                    if pending.endswith(secret[:length]):
-                        keep = length
-                        break
+            secrets = _secret_values()
+            if self.prefixes is None or self.prefixes.secrets != secrets:
+                self.prefixes = SecretPrefixes(secrets)
+            keep = self.prefixes.retained_length(pending)
             if keep:
                 self.pending[key] = pending[-keep:]
             self.stream.write(pending[:-keep] if keep else pending)
@@ -193,6 +195,40 @@ def _secrets(config):
     return secret_variants(values)
 
 
+def _scrub_exception(error, seen):
+    """Filter ordinary attributes and built-in slots, retaining exception types."""
+    if error is None or id(error) in seen:
+        return seen.get(id(error))
+    seen[id(error)] = None  # Break cycles while an immutable group is rebuilt.
+    group = isinstance(error, BaseExceptionGroup)
+    if group:
+        children = [_scrub_exception(child, seen) for child in error.exceptions]
+        safe = BaseExceptionGroup.__new__(type(error), redact(error.message), children)
+        safe.__dict__.update(vars(error))
+        safe.__traceback__ = error.__traceback__
+    else:
+        safe = error
+        safe.args = tuple(_scrub_exception(arg, seen) if isinstance(arg, BaseException)
+                          else redact(arg) for arg in error.args)
+    seen[id(error)] = safe
+    attributes = dict(vars(error))
+    for cls in type(error).__mro__:
+        for name, descriptor in vars(cls).items():
+            if isinstance(descriptor, types.MemberDescriptorType):
+                attributes[name] = getattr(error, name, None)
+    for attribute, value in attributes.items():
+        # Group message/children are immutable and already rebuilt above.
+        if group and attribute in {'message', 'exceptions'}:
+            continue
+        if isinstance(value, (str, bytes, list, tuple, dict)):
+            setattr(safe, attribute, redact(value))
+    cause, context, suppress = error.__cause__, error.__context__, error.__suppress_context__
+    safe.__cause__ = _scrub_exception(cause, seen)
+    safe.__context__ = _scrub_exception(context, seen)
+    safe.__suppress_context__ = suppress
+    return safe
+
+
 @contextlib.contextmanager
 def build_redaction(config):
     global _users, _thread_secrets
@@ -237,34 +273,17 @@ def build_redaction(config):
     try:
         yield
     except BaseException as exc:
-        # Preserve the exception type for callers, remove unsafe exception chains.
-        seen = set()
-        def scrub(error):
-            if error is None or id(error) in seen:
-                return
-            seen.add(id(error))
-            error.args = tuple(redact(arg) for arg in error.args)
-            # HTTPError, CalledProcessError and custom exceptions may render
-            # stored text independently of args after this context has exited.
-            for attribute, value in vars(error).items():
-                if isinstance(value, (str, bytes, list, tuple, dict)):
-                    setattr(error, attribute, redact(value))
-            if isinstance(error, SystemExit) and not isinstance(error.code, int):
-                error.code = redact(error.code)
-            # OSError.__str__ uses these attributes independently of args.
-            if isinstance(error, OSError):
-                for attribute in ('filename', 'filename2', 'strerror'):
-                    value = getattr(error, attribute, None)
-                    if isinstance(value, (str, bytes)):
-                        setattr(error, attribute, redact(value))
-            if getattr(error, '__notes__', None):
-                error.__notes__ = [redact(note) for note in error.__notes__]
-            scrub(error.__cause__)
-            scrub(error.__context__)
-            for child in getattr(error, 'exceptions', ()):
-                scrub(child)
-        scrub(exc)
-        raise
+        if not _secret_values():
+            raise
+        safe = _scrub_exception(exc, {})
+        if safe is exc:
+            raise
+        context = safe.__context__
+        try:
+            raise safe
+        finally:
+            # Python attaches the original group while raising its replacement.
+            safe.__context__ = context
     finally:
         with _lock:
             sys.stdout.finish(all_contexts=_users == 1)
