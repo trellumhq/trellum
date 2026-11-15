@@ -111,7 +111,8 @@ def metadata(value):
               'framework_version', 'framework_license', 'framework_source_url',
               'metrics_workspace', 'metric_execution_build'}
     result = {key: child if key in public else validation(child) if key == 'validation'
-              else record(child) for key, child in value.items()}
+              else record(child) if key in {'details', 'generation_timings'}
+              else redact(child) for key, child in value.items()}
     if isinstance(value.get('metrics_used'), list):
         # These three fields identify registry definitions to the host; labels
         # and arbitrary extra metadata still go through content filtering.

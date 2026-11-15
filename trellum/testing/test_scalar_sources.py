@@ -251,6 +251,24 @@ def test_custom_data_protocol_names_do_not_bypass_filtering(project, monkeypatch
     assert document['_freshness']['generated_at']
 
 
+@pytest.mark.parametrize('secret,value', [('9137', 9137), ('1', 1), ('true', True)])
+def test_custom_metadata_filters_typed_values_and_protocol_named_keys(project, monkeypatch, secret, value):
+    from trellum.meta import META_SCHEMA_VERSION, read_meta, write_meta
+    from trellum.redaction import build_redaction
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    with build_redaction(context('secret').config):
+        write_meta(str(project / 'output'), {'custom_metadata': {
+            'credential': value, 'version': value, 'nested': [value]},
+            'version': '1.0.0', 'last_status': 'success'})
+    document = read_meta(str(project / 'output'))
+    assert document['custom_metadata'] == {
+        'credential': '[REDACTED]', 'version': '[REDACTED]', 'nested': ['[REDACTED]']}
+    assert document['schema_version'] == META_SCHEMA_VERSION
+    assert document['version'] == '1.0.0'
+    assert document['last_status'] == 'success'
+
+
 def test_multiline_and_split_log_writes(project, capsys, monkeypatch):
     import sys
 
