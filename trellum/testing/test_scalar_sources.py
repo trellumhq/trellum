@@ -61,6 +61,59 @@ def test_dotenv_and_membership(project):
         context('string')._resolve_source('hidden')
 
 
+def test_existing_dataframe_reader_keeps_central_fallback(project):
+    sources = project / 'data-sources'
+    sources.mkdir()
+    (sources / 'config.yaml').write_text(
+        'sources:\n  rows:\n    type: file\n    path: rows.csv\n')
+    (project / 'rows.csv').write_text('amount\n42\n')
+    ctx = ReportContext({}, 'test', str(project))
+    assert ctx.read_source('rows')['amount'].tolist() == [42]
+
+
+@pytest.mark.parametrize('central', [False, True])
+def test_existing_database_reader_keeps_resolution_paths(project, monkeypatch, central):
+    import sqlite3
+
+    from trellum.data import connections
+
+    config = {}
+    if central:
+        sources = project / 'data-sources'
+        sources.mkdir()
+        (sources / 'config.yaml').write_text(
+            'sources:\n  warehouse:\n    type: sqlite\n    path: warehouse.db\n')
+        with sqlite3.connect(project / 'warehouse.db') as db:
+            db.execute('CREATE TABLE amounts (amount INTEGER)')
+            db.execute('INSERT INTO amounts VALUES (42)')
+        config = {'data_sources': ['warehouse']}
+    else:
+        db = sqlite3.connect(':memory:')
+        db.execute('CREATE TABLE amounts (amount INTEGER)')
+        db.execute('INSERT INTO amounts VALUES (42)')
+        monkeypatch.setattr(connections, '_resolve_legacy', lambda: db)
+    ctx = ReportContext(config, 'test', str(project))
+    conn = ctx.get_connection('warehouse')
+    try:
+        assert conn.execute('SELECT amount FROM amounts').fetchone()[0] == 42
+        assert ctx.get_connection('warehouse') is conn
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('kind', ['string', 'secret', 'text', 'number', 'boolean', 'json'])
+def test_legacy_fallback_does_not_expose_unlisted_scalars(project, monkeypatch, kind):
+    sources = project / 'data-sources'
+    sources.mkdir()
+    (sources / 'config.yaml').write_text(
+        f'sources:\n  hidden:\n    type: {kind}\n    credentials:\n      local: SCALAR_TEST\n')
+    monkeypatch.setenv('SCALAR_TEST_VALUE', 'synthetic-private-value')
+    ctx = ReportContext({}, 'test', str(project))
+    for reader in (ctx.read_text, ctx.read_value, ctx.read_source):
+        with pytest.raises(ValueError, match='not declared'):
+            reader('hidden')
+
+
 @pytest.mark.parametrize('extension', ['txt', 'json', 'yaml', 'yml'])
 def test_text_upload(project, extension):
     path = project / f'notes.{extension}'

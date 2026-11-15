@@ -72,12 +72,13 @@ def get_datasource(name: str) -> dict | None:
     return load_datasource_config().get(name)
 
 
-def resolve_declared_source(sources: list, name: str) -> dict:
+def resolve_declared_source(sources: list, name: str, *, allow_legacy: bool = False) -> dict:
     """Resolve inline or central configuration through a report's declarations.
 
     Declarations are checked in order. An inline dict supplies its own
     configuration; a string refers to the central configuration by name.
-    Undeclared central sources remain inaccessible to the report.
+    Scalar readers require membership. Existing dataframe readers may retain
+    their central-config fallback for non-scalar sources.
     """
     for source in sources:
         if isinstance(source, dict) and source.get("name") == name:
@@ -86,6 +87,12 @@ def resolve_declared_source(sources: list, name: str) -> dict:
             central = get_datasource(source)
             if central is not None:
                 return central
+
+    if allow_legacy:
+        from trellum.data.scalar import SCALAR_TYPES
+        central = get_datasource(name)
+        if central is not None and central.get('type') not in SCALAR_TYPES:
+            return central
 
     raise ValueError(f"Data source '{name}' not found: not declared in report.yaml or not configured")
 

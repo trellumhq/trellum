@@ -130,10 +130,10 @@ class ReportContext:
     # ── Data access ──────────────────────────────────────────
 
     def _resolve_source(self, name: str) -> dict:
-        """Resolve a source only when this report declares its name."""
+        """Resolve a dataframe source, preserving its central-config fallback."""
         from trellum.data.datasource_config import resolve_declared_source
 
-        return resolve_declared_source(self._config.get("data_sources", []), name)
+        return resolve_declared_source(self._config.get("data_sources", []), name, allow_legacy=True)
 
     def _resolve_scalar_source(self, name: str) -> dict:
         from trellum.data.datasource_config import resolve_scalar_source
@@ -157,7 +157,6 @@ class ReportContext:
         ``trellum.data.resolvers``) using the data_sources section in
         report.yaml or central config.
         """
-        self._resolve_source(name)
         if name in self._connections:
             return self._connections[name]
 
