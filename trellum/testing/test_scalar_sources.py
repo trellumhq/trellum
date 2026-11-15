@@ -217,6 +217,40 @@ def test_normal_render_filters_escaped_html_and_json(project, monkeypatch, capsy
     assert '[REDACTED]' in (out / 'data.json').read_text()
 
 
+@pytest.mark.parametrize('origin', ['raw_html', 'renderer_data'])
+@pytest.mark.parametrize('shape', ['scalar', 'object', 'list', 'numpy'])
+def test_custom_data_protocol_names_do_not_bypass_filtering(project, monkeypatch, origin, shape):
+    import numpy as np
+
+    from trellum.components import RawHTML
+
+    secret = '789123456789'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    value = {'scalar': secret, 'object': {'timestamp': secret},
+             'list': [secret], 'numpy': np.array([int(secret)])}[shape]
+    keys = ['timestamp', 'version', 'schema_version', 'page', '_metrics_workspace']
+    if origin == 'renderer_data':
+        from trellum.rendering.html_builder import render_report
+        def render_with_data(*args, **kwargs):
+            kwargs['data'] = {**(kwargs.get('data') or {}), **dict.fromkeys(keys, value)}
+            return render_report(*args, **kwargs)
+        monkeypatch.setattr('trellum.runner.execute.render_report', render_with_data)
+    def generate(self, ctx):
+        ctx.read_text('input')
+        ctx.add_section('Public', [RawHTML(html='<p>Public</p>')])
+        if origin == 'raw_html':
+            for key in keys:
+                ctx.add_section('Public', [RawHTML(html='<p>Public</p>', data_key=key, data=value)])
+    out = build(project, monkeypatch, generate)
+    document = json.loads((out / 'data.json').read_text())
+    expected = {'scalar': '[REDACTED]', 'object': {'timestamp': '[REDACTED]'},
+                'list': ['[REDACTED]'], 'numpy': ['[REDACTED]']}[shape]
+    for key in keys:
+        assert document[key] == expected
+    assert secret not in (out / 'data.json').read_text()
+    assert document['_freshness']['generated_at']
+
+
 def test_multiline_and_split_log_writes(project, capsys, monkeypatch):
     import sys
 

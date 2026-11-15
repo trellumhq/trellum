@@ -26,6 +26,19 @@ _PROTOCOL_FIELDS = frozenset("""
     _content_kind _metrics_workspace _metric_execution
 """.split())
 _CONTENT_FIELDS = frozenset({'value', 'values', 'data', 'rows', 'labels', 'forecast', 'delta'})
+_PAYLOAD_PROTOCOL_FIELDS = frozenset('''
+    defaultScope _scopeFiles _chunk_manifests _freshness _framework_version
+    _content_kind _metrics_workspace _metric_execution
+'''.split())
+
+
+def content(value):
+    """Filter report-authored data before it joins framework-owned envelopes."""
+    if not _secret_values():
+        return value
+    normalized = orjson.loads(orjson.dumps(
+        value, option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS))
+    return redact(normalized)
 
 
 def record(value):
@@ -63,7 +76,7 @@ def payload(value):
             result['_ds_' + redact(key[4:])] = dataset(child)
         elif key == '_metrics':
             result[key] = {name: record(config) for name, config in child.items()}
-        elif key in _PROTOCOL_FIELDS:
+        elif key in _PAYLOAD_PROTOCOL_FIELDS:
             result[key] = child
         elif key == '_header_meta':
             result[key] = record(child)

@@ -24,6 +24,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Preserve existing database and dataframe source resolution while requiring
   report declarations for the new scalar readers.
+- Filter custom report data before merging it with framework metadata, including
+  data whose keys match protocol field names.
 - Redact scalar secrets from paginated Metrics workspace artifacts and from
   native and subprocess build logs, including local `.env` builds.
 - Keep cleared scalar values empty after later editor saves, preserve multiline

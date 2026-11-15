@@ -38,7 +38,7 @@ from trellum.rendering.artifacts import (
 )
 from trellum.rendering.cdn import build_cdn_tags
 from trellum.rendering.js_runtime import generate_js_runtime, host_flag_scripts
-from trellum.rendering.redaction import component_output, html_content
+from trellum.rendering.redaction import component_output, content, html_content
 from trellum.rendering.redaction import json_bytes as artifact_json
 from trellum.rendering.report_assets import collect_report_assets
 from trellum.rendering.sections import _inject_nav, _render_section_list
@@ -321,7 +321,7 @@ def render_report(
                 ))
 
         # Main data.json carries the default scope's components
-        report_data = data or {}
+        report_data = content(data) if data else {}
         report_data["components"] = scope_data_map.get(default_scope, {})
         report_data["defaultScope"] = default_scope
         report_data["_scopeFiles"] = scope_files
@@ -335,7 +335,7 @@ def render_report(
         ctx.mark("render_sections", time.time() - t0)
         raw_js_collected = list(render_ctx.raw_js_blocks)
 
-        report_data = data or {}
+        report_data = content(data) if data else {}
         report_data["components"] = render_ctx.component_data
         for rk, rv in render_ctx.raw_data_blocks.items():
             report_data[rk] = rv
