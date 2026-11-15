@@ -263,6 +263,28 @@ def test_multiline_and_split_log_writes(project, capsys, monkeypatch):
     assert capsys.readouterr().out == '[REDACTED]\n'
 
 
+def test_nested_builds_preserve_outer_secret_protection(project, monkeypatch, capsys, caplog):
+    from trellum.redaction import build_redaction, redact, safe_json_bytes
+
+    outer, inner = 'outer-private-input', 'inner-private-input'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', outer)
+    with build_redaction(context('secret').config):
+        monkeypatch.setenv('SCALAR_TEST_VALUE', inner)
+        with pytest.raises(ValueError) as error:
+            with build_redaction(context('secret').config):
+                print(outer, inner)
+                logging.warning('inputs: %s %s', outer, inner)
+                assert json.loads(safe_json_bytes([outer, inner])) == ['[REDACTED]', '[REDACTED]']
+                raise ValueError(f'{outer} {inner}')
+        assert str(error.value) == '[REDACTED] [REDACTED]'
+        assert redact(outer) == '[REDACTED]'
+        assert redact(inner) == inner
+    assert redact(outer) == outer
+    captured = capsys.readouterr()
+    for secret in (outer, inner):
+        assert secret not in captured.out + captured.err + caplog.text
+
+
 def test_numeric_secret_keeps_valid_json(project, monkeypatch):
     monkeypatch.setenv('SCALAR_TEST_VALUE', '12')
     def generate(self, ctx):

@@ -233,7 +233,8 @@ def _scrub_exception(error, seen):
 def build_redaction(config):
     global _users, _thread_secrets
     secrets = _secrets(config)
-    token = _values.set(secrets)
+    inherited = set(_values.get())
+    token = _values.set(tuple(sorted(inherited.union(secrets), key=len, reverse=True)))
     with _lock:
         for secret in secrets:
             _active[secret] = _active.get(secret, 0) + 1
