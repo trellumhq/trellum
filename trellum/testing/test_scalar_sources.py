@@ -448,6 +448,27 @@ def test_syntax_error_diagnostic_is_filtered_after_build_cleanup(project, monkey
     assert error.value.lineno == 1
 
 
+@pytest.mark.parametrize('nested', [False, True])
+def test_stringifiable_exception_values_are_safe_after_cleanup(project, monkeypatch, nested):
+    import traceback
+
+    from trellum.redaction import build_redaction
+
+    secret = 'synthetic-path-error-key'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    value = Path(secret)
+    argument = {'path': [value]} if nested else value
+    with pytest.raises(RuntimeError) as error:
+        with build_redaction(context('secret').config):
+            failure = RuntimeError(argument)
+            failure.filename = value
+            raise failure
+    assert secret not in str(error.value)
+    assert secret not in repr(error.value.args)
+    assert secret not in ''.join(traceback.format_exception(error.value))
+    assert error.value.filename == '[REDACTED]'
+
+
 def test_immutable_exception_groups_remain_catchable_and_filtered(project, monkeypatch):
     import traceback
 

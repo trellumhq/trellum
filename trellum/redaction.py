@@ -195,6 +195,36 @@ def _secrets(config):
     return secret_variants(values)
 
 
+def _exception_value(value, seen):
+    """Filter values that exception formatters may stringify after cleanup."""
+    if isinstance(value, BaseException):
+        return _scrub_exception(value, seen)
+    if isinstance(value, (dict, list, tuple)):
+        if id(value) in seen:
+            return seen[id(value)]
+        result = {} if isinstance(value, dict) else []
+        seen[id(value)] = result
+        if isinstance(value, dict):
+            result.update((_exception_value(k, seen), _exception_value(v, seen))
+                          for k, v in value.items())
+        else:
+            result.extend(_exception_value(child, seen) for child in value)
+        if isinstance(value, tuple):
+            result = seen[id(value)] = tuple(result)
+        return result
+    if isinstance(value, (str, bytes, int, float)) or value is None:
+        return redact(value)
+    for formatter in (str, repr):
+        try:
+            text = formatter(value)
+        except Exception:
+            continue
+        filtered = redact(text)
+        if filtered != text:
+            return filtered
+    return value
+
+
 def _scrub_exception(error, seen):
     """Filter ordinary attributes and built-in slots, retaining exception types."""
     if error is None or id(error) in seen:
@@ -208,8 +238,7 @@ def _scrub_exception(error, seen):
         safe.__traceback__ = error.__traceback__
     else:
         safe = error
-        safe.args = tuple(_scrub_exception(arg, seen) if isinstance(arg, BaseException)
-                          else redact(arg) for arg in error.args)
+        safe.args = tuple(_exception_value(arg, seen) for arg in error.args)
     seen[id(error)] = safe
     attributes = dict(vars(error))
     for cls in type(error).__mro__:
@@ -220,8 +249,8 @@ def _scrub_exception(error, seen):
         # Group message/children are immutable and already rebuilt above.
         if group and attribute in {'message', 'exceptions'}:
             continue
-        if isinstance(value, (str, bytes, list, tuple, dict)):
-            setattr(safe, attribute, redact(value))
+        if not isinstance(value, (int, float, bool, type(None))):
+            setattr(safe, attribute, _exception_value(value, seen))
     cause, context, suppress = error.__cause__, error.__context__, error.__suppress_context__
     safe.__cause__ = _scrub_exception(cause, seen)
     safe.__context__ = _scrub_exception(context, seen)
