@@ -45,7 +45,9 @@ def redact(value):
         return re.sub(pattern, '[REDACTED]', value)
     if isinstance(value, dict):
         return {redact(k): redact(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, tuple):
+        return tuple(redact(v) for v in value)
+    if isinstance(value, list):
         return [redact(v) for v in value]
     if isinstance(value, (int, float)) and (str(value) in _secret_values()
             or json.dumps(value) in _secret_values()):

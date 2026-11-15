@@ -303,6 +303,19 @@ def test_nested_builds_preserve_outer_secret_protection(project, monkeypatch, ca
         assert secret not in captured.out + captured.err + caplog.text
 
 
+@pytest.mark.parametrize('nested', [False, True])
+def test_structured_logging_preserves_hashable_tuple_keys(project, monkeypatch, caplog, nested):
+    from trellum.redaction import build_redaction
+
+    secret = 'tuple-key-private-input'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    key = (('region', secret), 'metric') if nested else ('region', secret)
+    expected = (('region', '[REDACTED]'), 'metric') if nested else ('region', '[REDACTED]')
+    with build_redaction(context('secret').config):
+        logging.warning('data', extra={'details': {key: secret}})
+    assert caplog.records[-1].details == {expected: '[REDACTED]'}
+
+
 def test_numeric_secret_keeps_valid_json(project, monkeypatch):
     monkeypatch.setenv('SCALAR_TEST_VALUE', '12')
     def generate(self, ctx):
