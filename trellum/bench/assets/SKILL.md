@@ -71,4 +71,18 @@ failure and its cause.
 `--no-serve` exits when the build is done; without it the command starts a
 preview server and never returns.
 
-A report is not finished until the validator reports no FAILs.
+A report is not finished until the validator reports no FAILs and the person
+can review it. Creating or updating a report includes opening it automatically;
+do not wait for another request to launch it or hand over only an output path.
+
+After building and checking validation, run
+`{py} -m trellum review start reports/<slug>`, open the printed report URL in
+the user's browser, verify it loads, and share a clickable link. On a remote
+or headless host, use the agent's browser integration; if opening is unavailable,
+explain the limitation and provide a working link. Follow
+`{py} -m trellum guide review`, keeping the report-scoped feedback poll active
+and rebuilding before replying. Build changed source first with `--no-serve`
+or pass `--rebuild` to review start.
+
+Explicit build-only/source-only requests, CI and unattended publication skip
+interactive review. Honor requests for a plain preview or no browser.

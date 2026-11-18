@@ -1,15 +1,18 @@
 # Refine reports in your browser
 
-Once a report is open locally, you can request a focused change from the
-report itself. Trellum relays that feedback to the coding agent working in
-your repository; the agent edits the source, rebuilds, and the preview reloads.
+When you ask a coding agent to create or update a report, Trellum's project
+guidance includes opening it for review and listening for feedback. You can
+request a focused change from the report itself. Trellum relays that feedback
+to the coding agent working in your repository; the agent edits the source,
+rebuilds, and the preview reloads.
 
 ## The live review loop
 
-1. **Build and open a report locally.** Follow [Try Trellum locally](../install/try-it.md)
-   for the sample project, or open your own report's local preview.
-2. **Ask your coding agent to start review and keep listening.** The review
-   session is a relay between your browser and an active external agent.
+1. **Ask your coding agent to create or update a report.** It builds and
+   validates the result, opens the local review, and gives you a clickable link.
+2. **Inspect the report while the agent listens.** Review starts as part of
+   the report request. If the agent cannot open your browser, it explains the
+   limitation and provides a link. Explicit build-only requests skip this step.
 3. **Select a chart or table, or type a general request, and send it.** Both
    an element selection and an element-free message are supported.
 4. **Let the agent edit and rebuild.** It changes the report definition or its
@@ -18,7 +21,8 @@ your repository; the agent edits the source, rebuilds, and the preview reloads.
 5. **Repeat, then inspect the source diff.** Keep the resulting source in
    your normal Git review and publishing process.
 
-Use this prompt with your coding agent:
+To start a new review of an existing report without requesting an edit first,
+you can use this prompt with your coding agent:
 
 > Start a live review of reports/store-health. Keep listening for my browser
 > feedback, update and rebuild the report, and reply in the review panel.

@@ -34,11 +34,16 @@ reports than any amount of prompting.
 
 ## Refine a local preview
 
-After the first build, keep your coding agent listening while you inspect the
-report in a browser. In review mode you can select a chart or table, or send a
-general change request. The agent edits the report definition or source files
-in your repository, rebuilds, and the preview reloads. See
-[Refine reports in your browser](refine-reports.md) for the prompt and command loop.
+When you ask your coding agent to create or update a report, Trellum's project
+guidance tells it to build, validate and open the report for browser review
+automatically. You do not need a separate launch prompt or a personal agent
+rule. The agent should provide a clickable link and keep listening for feedback.
+
+In review mode you can select a chart or table, or send a general change
+request. The agent edits the report source in your repository, rebuilds, and
+the preview reloads. See [Refine reports in your browser](refine-reports.md)
+for the review controls and command loop. Ask explicitly for build-only work
+if you do not want an interactive preview.
 
 This local source-editing loop is separate from the portal assistant. The
 assistant answers questions about portal reports and never edits your Git
