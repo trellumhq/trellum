@@ -11,10 +11,10 @@ fakesnow==0.12.1
 # fakesnow still imports snowflake.connector.converter, removed in connector 5.
 # This emulator-only environment uses connector 4; product images and the
 # connector compatibility suite use 5.1+. Never apply product constraints here.
-snowflake-connector-python<5
+snowflake-connector-python<6
 
 # pymysql's caching_sha2_password auth plugin (MySQL 8's default) needs
 # this. Today it only rides in transitively via snowflake-connector-python
 # -- pinned explicitly here so the itest venv doesn't depend on that
 # staying true.
-cryptography>=42
+cryptography>=50.0.2
