@@ -20,7 +20,7 @@ isolation enabled. Configure that setup before any build-and-start command.
 
 ## Option A: Pull the published images
 
-Use the matching v0.10.2 source tag, which includes
+Use the matching v0.11.0 source tag, which includes
 `docker-compose.release.yml`. The matching source checkout also supplies backup and upgrade
 scripts and the other files needed to operate the installation. This path
 requires Docker Compose v2.24 or newer.

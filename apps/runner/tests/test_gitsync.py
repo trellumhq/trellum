@@ -1811,8 +1811,9 @@ class TestPublishedFilesRestoration:
         assert not _sync(studio_repo)["restored"]
 
     @pytest.mark.parametrize("failure_stage", ["copy", "registry"])
+    @pytest.mark.parametrize("recovery", ["restore", "publish"])
     def test_restore_discards_reports_from_a_partially_failed_publish(
-        self, studio_repo, studio_tree, upstream, monkeypatch, failure_stage,
+        self, studio_repo, studio_tree, upstream, monkeypatch, failure_stage, recovery,
     ):
         from apps.reports import scan
 
@@ -1839,12 +1840,21 @@ class TestPublishedFilesRestoration:
             patch.setattr(target, attribute, fail_after_write)
             assert not _sync(studio_repo)["ok"]
         assert (studio_tree.reports_dir / "beta" / "report.yaml").is_file()
+        if recovery == "publish":
+            upstream["delete_report"]("beta")
+            upstream["write_report"]("gamma")
+            upstream["push"]("publish a different report")
+            published = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=upstream["work"], text=True,
+            ).strip()
+            _set(studio_repo, publish_requested=True, publish_requested_to=published)
         result = _sync(studio_repo)
         assert result["ok"] and result["restored"], result
         assert _fresh_repo(studio_repo).last_synced_sha == published
         assert not (studio_tree.reports_dir / "beta").exists()
         assert not Report.objects.filter(studio=studio_tree, slug="beta", present_in_scan=True).exists()
         assert Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
+        assert Report.objects.filter(studio=studio_tree, slug="gamma", present_in_scan=True).exists() == (recovery == "publish")
         assert portal_file.read_text() == "portal-owned"
         assert Run.objects.count() == 0
 

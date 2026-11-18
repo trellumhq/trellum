@@ -865,6 +865,33 @@ class StudioGitSync:
             return warn(self._yaml_problem(exc))
         return ""
 
+    def _reconcile_report_tree(self) -> None:
+        """Verify copied manifests and remove directories outside the checked-out tree."""
+        source_reports = Path(self.cache_dir) / self.repo.path
+        retained = set()
+        if source_reports.is_dir():
+            for source in source_reports.iterdir():
+                if not source.is_dir():
+                    continue
+                retained.add(source.name)
+                if (source / "report.yaml").is_file():
+                    directory = self.studio.reports_dir / source.name
+                    try:
+                        _checked_path(directory, directory=True)
+                        _checked_path(directory / "report.yaml", directory=False)
+                    except (OSError, ValueError) as exc:
+                        raise RuntimeError("Published report files could not be restored.") from exc
+        # A failed publish may have copied or registered reports outside the
+        # approved tree. Only reports/ is Git-owned; preserve portal files elsewhere.
+        stale = []
+        if self.studio.reports_dir.is_dir():
+            stale = [path for path in self.studio.reports_dir.iterdir()
+                     if path.name not in retained and (path.is_dir() or path.is_symlink())]
+        for path in stale:
+            _checked_path(path, directory=True)
+        for path in stale:
+            shutil.rmtree(path)
+
     def _restore_published(self) -> None:
         """Materialize the published commit without consuming pending review.
 
@@ -894,30 +921,10 @@ class StudioGitSync:
             rc, _, err = self._run_git("checkout", "--force", "--detach", sha)
             if rc:
                 raise RuntimeError(f"Restore checkout failed: {err}")
-            source_reports = Path(self.cache_dir) / self.repo.path
-            entries = scan_report_configs(str(source_reports), include_hidden=True, include_disabled=True)
+            scan_report_configs(os.path.join(self.cache_dir, self.repo.path))
             self._copy_root_files()
             self._copy_reports()
-            # A failed publish may already have copied or registered new reports.
-            # Validate against the published tree, not that partly updated registry.
-            for entry in entries:
-                directory = self.studio.reports_dir / Path(entry["dir"]).name
-                try:
-                    _checked_path(directory, directory=True)
-                    _checked_path(directory / "report.yaml", directory=False)
-                except (OSError, ValueError) as exc:
-                    raise RuntimeError("Published report files could not be restored.") from exc
-            # Only reports/ is Git-owned. Keep uploads, generated source bindings
-            # and other portal-owned project files outside this subtree intact.
-            retained = set(os.listdir(source_reports)) if source_reports.is_dir() else set()
-            stale = []
-            if self.studio.reports_dir.is_dir():
-                stale = [path for path in self.studio.reports_dir.iterdir()
-                         if path.name not in retained and (path.is_dir() or path.is_symlink())]
-            for path in stale:
-                _checked_path(path, directory=True)
-            for path in stale:
-                shutil.rmtree(path)
+            self._reconcile_report_tree()
             if self.repo.last_error.startswith(("Studio files missing.", "Studio files need restoring.")):
                 self.repo.last_error = ""
             warning = self._sync_repo_datasources(sha)
@@ -1000,9 +1007,7 @@ class StudioGitSync:
             self._copy_root_files()
         full = initial or bool(pending.get("full_listing"))
         self._copy_reports(only_slugs=None if full or restoring else added | modified | removed)
-        if restoring and removed:
-            # A full materialization also has to apply known deletions.
-            self._copy_reports(only_slugs=removed)
+        self._reconcile_report_tree()
 
         warnings: list[str] = []
         try:
