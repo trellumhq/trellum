@@ -144,7 +144,7 @@ class ReportContext:
         return resolve_scalar_source(self._config.get("data_sources", []), name)
 
     def read_text(self, name: str) -> str:
-        """Read a declared text scalar or a mode:text upload, stripped."""
+        """Read a declared text scalar or text-mode upload, preserving whitespace."""
         from trellum.data.scalar import read_text
         return read_text(self._resolve_scalar_source(name), name)
 
