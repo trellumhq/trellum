@@ -29,8 +29,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   browsers.
 
 
+### Changed
+
+- Check for newer stable releases from the CLI overview used at agent session
+  start, sharing the existing daily cache and offline/CI opt-outs with builds
+  and `doctor`. Generated project instructions surface available upgrades.
+
 ### Documentation
 
+- Introduce Trellum consistently in installed agent instructions and clarify
+  the workflows for data questions, interactive reports, analysis articles and
+  presentations, including source knowledge and the optional portal.
+- Clarify viewer read access and developer report authoring, build and publish
+  permissions in agent guidance and the customer workflow.
+- Make browser review part of report creation and updates by default in the
+  agent guide, CLI overview, generated project instructions and prototype
+  skill, including remote browser handoff and explicit build-only exceptions.
+  Update the customer workflow to describe this automatic handoff.
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
   and document a proposed README visual sequence for review. Use closer
   captures for sparse settings and reports within a consistent 1280 × 720 frame.

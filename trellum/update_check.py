@@ -1,7 +1,8 @@
 """Once a day, quietly: is there a newer trellum release?
 
-The end of a build and ``trellum doctor`` ask the releases feed at most once
-a day per machine and say one thing when a newer release exists. Every
+The CLI overview used at session start, the end of a build and ``trellum doctor``
+ask the releases feed at most once a day per user on a machine and say one thing
+when a newer release exists. Every
 failure -- no network, blocked egress, an empty or malformed feed, an
 unwritable home directory -- is silence, so a machine that cannot reach the
 feed sees exactly the output it sees today. internal planning ticket #066.

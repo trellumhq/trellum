@@ -1,7 +1,25 @@
-# BI Report Framework -- Agent Workflow Guide
+# Trellum -- Agent Workflow Guide
 
-This is the **workflow guide** for AI assistants (Claude Code, Cursor, Codex)
-building reports with this framework. It is the only document you need resident.
+Trellum is a Python toolkit for exploring data, building interactive reports
+and dashboards, and writing analysis articles or presentations with captured
+evidence. Sources can be databases, spreadsheets, files or APIs; SQL is optional.
+Reports use reusable charts, tables, KPIs, filters and themes and build to HTML
+and JSON. They can run locally or be published to a static host. The optional
+Trellum portal adds shared access, scheduled builds and team workflows; local
+report authoring and browser review do not require it.
+
+This guide helps coding agents choose the result the user needs, use the
+project's data and metric definitions, and deliver a validated result they can
+review. Read `context/README.md` and existing source/metric notes when present;
+retain useful investigations in `analysis/` and reports in `reports/<slug>/`.
+
+When acting for a portal user, follow that user's role. **Viewers ask questions
+and read permitted reports and data; they cannot create, edit, build or publish
+reports.** Report authoring is for developers and administrators with repository
+access. A viewer's request for a new or changed report needs a developer;
+continue helping with permitted data questions. Read `trellum guide portal`
+for tool permissions. Standalone local work uses the repository's own access
+rules and does not require a portal account.
 
 `README.md` is written for people, and it is long. **Do not load it wholesale.**
 Ask for the part you need instead:
@@ -17,10 +35,13 @@ trellum validate <dir>     the current validation state of a built report
 `components`, `header`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
 `report-yaml`, `themes`, `review`, `portal`, `analysis`.
 
-**Why this shape.** Your whole context is re-read on every API round-trip, so a
-large always-loaded reference is paid for dozens of times per task. A command is
-paid for once, when it is actually needed. Reach for `trellum guide` freely —
-it is cheaper than it looks, and far cheaper than guessing.
+The installed commands expose the version's component APIs and guides. Fetch
+the topics relevant to the task; one `guide` command accepts several topics.
+At the start of a new chat in a Trellum project, run `python -m trellum` with
+the project's interpreter. Its version line checks for updates at most once
+per local calendar day and reuses that day's result. If a newer release is
+available, tell the user and include the upgrade command; continue their task
+without upgrading automatically. Offline, CI and opted-out checks stay quiet.
 
 ## Where to look, by question
 
@@ -46,34 +67,29 @@ The data rules are not guessable from the API, and
 getting them wrong produces a report that builds cleanly and displays nothing
 useful.
 
-## When to use the framework
+## Choose the result
 
 | Goal | Where it goes |
 |---|---|
 | Recurring, interactive report — served standalone, on a schedule, or embedded in another application | `reports/{slug}/` (the framework) |
-| Publish a written finding with fixed evidence | `trellum analysis new <slug>`; Markdown in `reports/{slug}/content.md`, `kind: analysis` in `report.yaml`. See `trellum guide analysis` |
+| Write an article or presentation with fixed evidence | `trellum analysis new <slug> [--format presentation]`; `content.md` or `slides.yaml` in `reports/{slug}/`, `kind: analysis` in `report.yaml`. Use `trellum analysis session` for evidence capture and review. See `trellum guide analysis` |
 | A number or an answer — "what was X yesterday", a one-off check, quick exploration | `trellum query "SELECT ..."` or `from trellum import query` in Python, against the configured source by name. No report. See `trellum guide answer` |
 | Unsure | Answer first. Promote to a report when it needs a schedule, more than one reader, a consequential number that should be reviewed, or the same question comes back a third time |
 
 Scaffold a new report: `python3 -m trellum.new my-report --studio my-studio --category Revenue`. Build it: `python3 -m trellum.run reports/my-report --no-serve`.
 
-**Always pass `--no-serve` unless you have been asked to open the report in a
-browser.** Without it the command starts a preview server on :8050 and never
-exits — the build itself finishes in under a second, but the process stays in
-the foreground until it is killed. Build first, then serve as a separate step
-if a human is going to look at it.
+**Build with `--no-serve`, then open the report for review.** Creating or
+updating a report for a person includes the browser handoff automatically;
+do not wait for a separate request to launch it. After building and checking
+validation, run `python -m trellum review start reports/<slug>`, open its
+printed URL in the user's browser, and share a clickable link. Follow
+`trellum guide review` and keep the report-scoped feedback poll active.
+A folder path alone is not a completed handoff. Only explicitly requested
+build-only/source-only work, CI or unattended publication stops after the
+build; honor a request for a plain preview or no browser.
 
-**Read files with your file-reading tool, not with `cat`, `ls` or `grep` in a
-shell.** Every shell command starts a process; your native read, glob and search
-tools do not. On the machine these runs were measured on a bare `ls` cost about
-twelve seconds and an identical `Read` cost none — that gap is environment-
-specific, but its direction never is.
-
-The trap is that batching looks cheaper: `cat a.py; cat b.py; cat c.py` is one
-command where three reads are three calls. Under a per-command cost that
-reasoning is right, and here it is exactly backwards — three native reads are
-free and the one shell command is not. Use the shell for things that genuinely
-need it: running the build, the validator, git.
+`--no-serve` keeps the build process from blocking on a foreground server.
+It is an iteration option, not a reason to omit the browser handoff.
 
 When you do serve, two things are not guessable and both have cost real time:
 
@@ -1031,6 +1047,12 @@ suppression.
 <!-- topic: review -->
 ## The live review loop
 
+Start this loop automatically when creating or updating a local report for
+a person. The report request includes opening it for review; no separate
+launch request is needed. Explicit build-only/source-only requests, CI and
+unattended publication do not start a local session. Honor requests for a
+plain preview or no browser.
+
 Review mode turns a served report into a feedback surface: the user clicks
 elements in the browser, types change requests, queues them with one optional
 chat message, and hits **Send** — you receive the batch in the terminal with
@@ -1041,8 +1063,14 @@ The loop, from your seat:
 
 1. `python -m trellum review start reports/<slug>` — builds if output is
    missing (`--rebuild` to force), starts or reuses the background server,
-   enables review mode, and opens the browser. Share its printed URL. If a
-   server predating review mode holds the port, rerun with `--restart-server`.
+   enables review mode, and attempts to open the host browser. Build changed
+   source first with `--no-serve`, or pass `--rebuild`, so existing output
+   cannot hide your edits. On a remote/headless host, use `--no-browser` and
+   open the printed report URL through the agent's browser integration.
+   Verify the intended report loads in the browser available to the user,
+   and share a clickable link before waiting for feedback. If browser access
+   is unavailable, say so and provide a working link; do not claim it opened.
+   If a server predating review mode holds the port, rerun with `--restart-server`.
 2. `python -m trellum review poll --report <slug>` — **BLOCKS** until the user sends
    feedback. From an agent harness, run it with a generous timeout or as a
    tracked background task; if it gets killed, just rerun it — queued
@@ -1203,8 +1231,15 @@ the portal's own assistant has, under the key owner's role. The key is
 `TRELLUM_API_KEY` in `.env`; the config files only reference it. Never paste
 it anywhere else, and never put a password, key or token into a tool call.
 
-The loop, in order. Local work first — nothing on the portal changes until
-the repository does:
+**Viewers have read-only access**, including permitted report data and any
+source reads their grants and available tools allow. They cannot create, edit,
+build or publish reports, even with a write-scoped API key. For a viewer's
+report request, explain that a developer must author it and continue helping
+with the permitted data question.
+
+The authoring and publishing loop below is for **developers and administrators
+with repository access**. The portal tools do not author report source.
+Local work comes first:
 
 1. **Edit** `reports/<slug>/` and build it:
    `python -m trellum.run reports/<slug> --no-serve`.
@@ -1234,12 +1269,14 @@ the repository does:
    changes one. The portal's own agent decides at each run whether to alert.
 
 Scope: `check_repo_changes`, `list_reports`, `get_report_details`,
-`query_report_data` and `read_doc` work on a `read` key.
+`query_report_data` and `read_doc` work on a `read` key;
+`check_repo_changes` also requires developer access.
 `publish_repo_changes`, `run_report`, `test_data_source`,
 `configure_data_source`, `create_alert` and `update_alert` need `write` scope
 *and* the organization's actions switch on; the harness asks before each
-call, and every call is audited under the key. A viewer gets the read tools
-whatever the key's scope; `check_repo_changes` needs the developer role.
+call, and every call is audited under the key. These actions require developer
+access or higher; `configure_data_source` requires a studio administrator.
+`run_report` starts a build of an existing report; it does not author one.
 
 The portal never edits the repository, and neither should you through it:
 a fix that belongs in `report.yaml`, a suppression or `metrics.yaml` is a
@@ -1256,13 +1293,17 @@ A report task is **not done** until you have:
 2. Surfaced every **FAIL** and **WARN** to the user with check ID, affected component/section, and a concrete fix.
 3. **Fixed every FAIL.** WARNs should be fixed unless intentionally accepted (then suppress in `report.yaml` under `validation.suppress` with a one-line reason for why).
 4. If the report has zero FAILs and zero WARNs, said so explicitly.
-5. **Human review handoff.** When a person is reviewing a local report,
-   start it with `python -m trellum review start reports/<slug>` and share the
-   printed URL. Keep `python -m trellum review poll --report <slug>` active;
+5. **Automatic review handoff.** Creating or updating a local report for a
+   person includes launching it: run `python -m trellum review start
+   reports/<slug>`, open the printed URL in the user's browser, verify the
+   intended report loads, and share a clickable link. Follow `trellum guide
+   review` for remote/headless hosts. A folder path alone is not a completed
+   handoff. Keep `python -m trellum review poll --report <slug>` active;
    after changes, rebuild with `python -m trellum.run reports/<slug>
    --no-serve`, then reply through the scoped poll and continue until the user
    ends review. End the session with `python -m trellum review end` when the
-   user asks you to wrap up. Build-only and CI work stops after the build;
+   user asks you to wrap up. Explicit build-only/source-only requests, CI and
+   unattended publication stop after the build. Honor a no-browser request;
    use `python -m trellum serve --background` only for an explicitly requested
    plain preview without review feedback.
 

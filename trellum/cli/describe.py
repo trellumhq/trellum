@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from trellum import update_check
 from trellum.agent import agentdoc
 
 
@@ -10,41 +11,43 @@ def _describe() -> str:
     fails = sum(1 for _, lvl in checks if lvl == "FAIL")
     comps = agentdoc.components()
     lines = [
-        f"trellum {agentdoc.version()} -- build themed, interactive reports as "
-        f"self-contained HTML + JSON.",
+        f"Trellum {agentdoc.version()}{update_check.doctor_detail()} -- explore data, build interactive reports "
+        "and dashboards, write analyses.",
+        "Use databases, spreadsheets, files or APIs. Reports build to HTML + JSON.",
+        "Local authoring and browser review work without the optional Trellum portal.",
+        "Portal viewers: ask questions and read permitted reports/data through available tools.",
+        "For portal users, creating/editing/building/publishing needs developer/admin access.",
+        "For portal role, key-scope and action requirements: `python -m trellum guide portal`.",
         "",
         # The routing decision comes before anything else on this page: most
         # asks want a number, and a number is one call, not a report.
-        "A user's ask has two shapes. Route by it:",
+        "Choose the result the user needs:",
         "  A NUMBER or answer (\"what was revenue yesterday?\") -> no report.",
         "    Check `python -m trellum metrics` for a defined metric, use its SQL,",
         "    query the configured source BY NAME (local dbs open read-only):",
         "      python -m trellum query \"SELECT ...\"",
         "      from trellum import query; query(\"<source>\", \"SELECT ...\")",
         "    Reply with the number, the source name, the as-of date, the SQL.",
-        "  A REPORT (a schedule, readers beyond the asker, interactive filters)",
-        "    -> reports/<slug>/, below. Unsure? Answer first, promote later:",
-        "    python -m trellum guide answer",
+        "  A REPORT or DASHBOARD -> reports/<slug>/; use Trellum components.",
+        "  An ARTICLE or PRESENTATION -> `python -m trellum guide analysis`.",
+        "    Use content.md or slides.yaml with captured evidence; no generator.",
+        "Read context/ and analysis/ notes; retain verified source and metric knowledge.",
         "",
         "A report is a directory under reports/<slug>/ containing:",
         "  report.yaml    identity, schedule, theme, data_sources",
-        "  queries.py     SQL, parameterised",
+        "  queries.py     parameterised SQL when using a database source",
         "  generator.py   a BaseReport subclass whose generate(ctx) adds sections",
-        "Articles: report.yaml kind: analysis + content.md + evidence/; builds offline.",
-        "  trellum analysis new <slug>                 scaffold an article",
-        "  trellum analysis import <report-dir> <capture-file> [--name <safe-name>]",
+        "Articles/presentations: report.yaml kind: analysis + authored text + evidence/.",
+        "  python -m trellum analysis new <slug> [--format presentation]",
+        "  python -m trellum analysis session reports/<slug>    capture and review",
         "",
         "Build (exits when done -- use this one):",
         "  python -m trellum.run reports/<slug> --no-serve",
         "  python -m trellum.new <slug>              scaffold a new one",
         "  python -m trellum.demo                    install the demo project",
         "",
-        "Serve, only when a human is going to look (BLOCKS until killed):",
-        "  python -m trellum.run reports/<slug>      one report, served at /",
-        "  python -m trellum.run --all --serve       every report, index at /",
-        "  A single report is at / -- NOT at /<slug>, which 404s. Run it in the",
-        "  background, then wait for its 'Serving at' line before opening the",
-        "  URL: it rebuilds before it binds.",
+        "Without --no-serve, trellum.run BLOCKS on a foreground server.",
+        "For the browser handoff, use review start below; see `trellum guide review`.",
         "",
         "THE TWO RULES THAT ARE NOT GUESSABLE FROM THE API:",
         "  1. Aggregate in the generator with pandas, NOT in SQL. Queries return",
@@ -81,13 +84,15 @@ def _describe() -> str:
         "  python -m trellum metrics                defined business metrics --",
         "                                             claim by id, don't re-derive",
         "",
-        "When opening a local report for a person, start a review session:",
+        "Creating/updating a report for a person includes opening it automatically:",
         "  python -m trellum review start reports/<slug>   builds, serves, opens",
+        "  open the printed URL in the user's browser, verify it, and share the link",
         "  python -m trellum review poll --report <slug>   keep listening",
         "  edit the report, then rebuild with --no-serve before replying",
         "  reply with the feedback session returned by the poll, then keep listening",
         "  repeat until the user ends review; use `review end` if asked to wrap up",
-        "Build-only work stops at --no-serve. Use plain `serve` only when",
+        "Explicit build-only/source-only work, CI and unattended publication stop at",
+        "--no-serve; honor no-browser requests. Use plain `serve` only when",
         "someone explicitly asks for a preview without review feedback.",
         "",
         f"Themes ({len(agentdoc.themes())}):",
@@ -98,10 +103,8 @@ def _describe() -> str:
         "  python -m trellum checks                 list them",
         "  python -m trellum checks <id>            what one means, verbatim",
         "",
-        "Depth on demand. Ask for several at once -- each command re-reads your",
-        "whole context, so one call for four topics beats four calls. Anything",
-        "over ~24KB is held back and named, so ask freely; nothing is truncated:",
-        "  python -m trellum guide report           the whole authoring contract",
+        "Ask for relevant guide topics together. Larger responses name deferred topics:",
+        "  python -m trellum guide report           report-building topics",
         "  python -m trellum guide <a> <b> <c>      any combination",
         "  topics: " + ", ".join(agentdoc.TOPICS),
     ]
