@@ -84,7 +84,7 @@ class StoreHealthReport(BaseReport):
                                  prior["kept_margin"].sum(), "currency"),
                 self._delta_card("Refunded", current["refunded"].sum(),
                                  prior["refunded"].sum(), "currency"),
-            ], columns=4, card=False),
+            ], columns=4, min_width=270, card=False),
         ])
 
         # ── The trend, with the sale annotated ───────────────────────

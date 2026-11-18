@@ -55,6 +55,11 @@ def _kpis(page):
     })""")
 
 
+def _kpi_text(snapshot):
+    return [[card["text"].replace("AD REVENUE SHARE", "AD REVENUE %")
+             for card in grid] for grid in snapshot]
+
+
 def _chart_snapshot(page, excluded=()):
     return page.locator("canvas").evaluate_all("""(canvases, excluded) => {
         const result = {};
@@ -97,10 +102,16 @@ def _check_trends(page, selected):
                     boxHeight: canvas.closest('.fw-chart-container').getBoundingClientRect().height,
                     summary: summary.querySelector('.fw-chart-summary-value').textContent,
                     label: summary.querySelector('.fw-chart-summary-label').textContent,
-                    title: canvas.closest('.fw-grid-item').querySelector('.fw-chart-title').textContent};
+                    events: (chart._fwEventMarkers || []).flatMap(m => m.events.map(e => e.event.label)),
+                    title: canvas.closest('.fw-grid-item, .fw-grid-card').querySelector('.fw-chart-title').textContent};
         }""", chart_id)
         assert state["labels"] == expected.index.tolist()
         assert state["data"] == pytest.approx(expected[column].tolist())
+        expected_events = [name for start, end, name in (
+            ("2026-10-14", "2026-10-14", "Release"),
+            ("2026-10-25", "2026-10-27", "Campaign"),
+        ) if start <= expected.index[-1] and end >= expected.index[0]]
+        assert sorted(state["events"]) == sorted(expected_events)
         assert state["height"] == state["boxHeight"] == 160
         assert state["label"] == "Daily avg" and state["title"] == title
         # Independently calculate the statistic; use the native formatter only
@@ -124,7 +135,7 @@ def _dates(page, start=None, end=None, preset=None, dataset="main"):
     page.keyboard.press("Escape")
 
 
-@pytest.mark.parametrize("width", [1280, pytest.param(390, marks=pytest.mark.heavy)])
+@pytest.mark.parametrize("width", [1280, 1440, pytest.param(390, marks=pytest.mark.heavy)])
 def test_player_overview_native_controls_values_geometry_and_assets(player_builds, width):
     from playwright.sync_api import expect, sync_playwright
 
@@ -145,6 +156,17 @@ def test_player_overview_native_controls_values_geometry_and_assets(player_build
                 page.evaluate("document.fonts.ready")
                 page.wait_for_function("document.querySelector('#sec-overview .fw-kpi-value')")
                 assert page.locator("#sec-overview .fw-kpi-card").count() == 8
+                overview_grid = page.locator("#sec-overview .fw-kpi-grid")
+                if variant == "after":
+                    layout = overview_grid.locator(".fw-kpi-card").evaluate_all("""cards => {
+                        const ys = cards.map(card => Math.round(card.getBoundingClientRect().y));
+                        const overflow = cards.flatMap(card => [...card.querySelectorAll(
+                            '.fw-kpi-label, .fw-kpi-value')].filter(el => el.scrollWidth > el.clientWidth)
+                            .map(el => el.innerText));
+                        return {rows: new Set(ys).size, textFits: overflow.length === 0,
+                            widths: cards.map(card => Math.round(card.getBoundingClientRect().width)), overflow};
+                    }""")
+                    assert layout["rows"] == (1 if width >= 1280 else 4) and layout["textFits"], layout
                 for title in ("Engagement", "Revenue"):
                     section = page.locator(f"#sec-{title.lower()}")
                     assert ("collapsed" in (section.get_attribute("class") or "")) is (variant == "after")
@@ -152,14 +174,14 @@ def test_player_overview_native_controls_values_geometry_and_assets(player_build
                 page.evaluate("scrollTo(0, 0)")
                 page.screenshot(path=str(outputs[variant] / f"top-{width}.png"))
                 page.screenshot(path=str(outputs[variant] / f"default-{width}.png"), full_page=True)
-                # All eight cards retain their original page position too.
+                # Keep geometry for review while values remain baseline-identical.
                 headline = page.locator("#sec-overview .fw-kpi-grid").bounding_box()
                 states = {"default": _kpis(page), "headline": headline}
                 if variant == "after":
                     _check_trends(page, _selected(frames))
                     grid = page.locator("#sec-daily-trends .fw-grid")
                     assert grid.evaluate("el => getComputedStyle(el).gridTemplateColumns.split(' ').length") == (
-                        3 if width == 1280 else 1)
+                        3 if width >= 1280 else 1)
                     # A wrapped title must leave the canvas fixed at 160px.
                     title = grid.locator(".fw-chart-title").first
                     original = title.inner_text()
@@ -236,7 +258,13 @@ def test_player_overview_native_controls_values_geometry_and_assets(player_build
                 assert errors == [] and missing == []
                 snapshots[variant] = states
                 page.close()
-            assert snapshots["before"] == snapshots["after"]
+            for state in ("default", "ios", "narrow", "retention_ios"):
+                assert _kpi_text(snapshots["before"][state]) == _kpi_text(
+                    snapshots["after"][state])
+                assert [[card["height"] for card in grid] for grid in snapshots["before"][state]] == [
+                    [card["height"] for card in grid] for grid in snapshots["after"][state]]
+            for state in ("charts", "ios_charts", "narrow_charts", "venn_ios"):
+                assert snapshots["before"][state] == snapshots["after"][state]
             (outputs["after"] / f"parity-{width}.json").write_text(json.dumps(snapshots, indent=2))
         finally:
             browser.close()

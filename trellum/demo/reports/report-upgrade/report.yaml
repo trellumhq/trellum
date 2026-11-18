@@ -11,8 +11,7 @@ category: Components
 tags: [upgrade, examples, components, charts, tables]
 theme: trellum dark
 data_sources: []
-annotations:
-  enabled: false
+annotations: false
 display:
   icon: panels-top-left
   priority: 1

@@ -32,3 +32,7 @@ display:
   icon: dollar-sign
   color: "#59a14f"
   priority: 4
+
+# Keep operational events visible; readers can enable the busier overlays.
+annotations:
+  default_visible: [release, incident]
