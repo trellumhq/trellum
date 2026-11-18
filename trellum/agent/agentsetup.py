@@ -54,6 +54,11 @@ Local authoring and browser review work without the optional Trellum portal.
 **Ask the installed Trellum version for its commands, components and guides**
 before choosing an API or copying an example.
 
+At the start of each new chat in this project, run `{py} -m trellum`.
+It checks for newer releases at most once per local calendar day. If an update
+is available, tell the user and include the upgrade command; continue the task
+without upgrading automatically. Offline and opted-out checks stay quiet.
+
 Use this exact interpreter, **run from the repository root**:
 
 ```
@@ -321,8 +326,11 @@ def verify_hook(root: str | os.PathLike[str]) -> tuple[bool, str]:
         argv[0] = str((Path(root) / exe).resolve())
 
     try:
+        # Doctor already checks the version. This child only verifies that
+        # the hook runs; avoid a second network probe or cache write here.
         proc = subprocess.run(argv, cwd=str(root),
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, timeout=30,
+                              env={**os.environ, "FW_UPDATE_CHECK": "0"})
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"{cmd!r} could not run: {exc}"
     if proc.returncode != 0:
@@ -356,6 +364,10 @@ Ask the installed version for its API. Run from the repository root:
 {py} -m trellum                  what it is, the components, the commands
 {py} -m trellum guide <topic>... depth on demand, several topics at once
 ```
+
+Run `{py} -m trellum` at the start of each new chat. It checks for updates
+at most once per local calendar day; tell the user when one is available and
+include the upgrade command. Continue the task without upgrading automatically.
 
 Read `context/README.md` and source/metric notes first; use `analysis/README.md` for findings.
 Keep exports in `analysis/results/`; update verified context and preserve questions.

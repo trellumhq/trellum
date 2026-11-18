@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from trellum import update_check
 from trellum.agent import agentdoc
 
 
@@ -10,7 +11,7 @@ def _describe() -> str:
     fails = sum(1 for _, lvl in checks if lvl == "FAIL")
     comps = agentdoc.components()
     lines = [
-        f"Trellum {agentdoc.version()} -- explore data, build interactive reports "
+        f"Trellum {agentdoc.version()}{update_check.doctor_detail()} -- explore data, build interactive reports "
         "and dashboards, write analyses.",
         "Use databases, spreadsheets, files or APIs. Reports build to HTML + JSON.",
         "Local authoring and browser review work without the optional Trellum portal.",

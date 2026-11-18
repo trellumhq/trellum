@@ -68,6 +68,14 @@ Configured sources are usually enough — see
 
 ## Point agents at Trellum, check it, take it out
 
+The startup overview (`python -m trellum`) checks for a newer stable release
+at most once per local calendar day and reuses that day's result. Claude's
+session-start hook runs this overview; generated project instructions tell
+other coding agents to run it when a new chat starts. The agent should mention
+an available update and its upgrade command. Trellum does not upgrade itself.
+Offline checks stay quiet, as do CI runs and projects with `update_check: false`
+in `config.yaml` or `FW_UPDATE_CHECK=0` in the environment.
+
 `trellum init` does this for a new project; for an existing one run it
 yourself, from the repository root:
 

@@ -37,6 +37,11 @@ trellum validate <dir>     the current validation state of a built report
 
 The installed commands expose the version's component APIs and guides. Fetch
 the topics relevant to the task; one `guide` command accepts several topics.
+At the start of a new chat in a Trellum project, run `python -m trellum` with
+the project's interpreter. Its version line checks for updates at most once
+per local calendar day and reuses that day's result. If a newer release is
+available, tell the user and include the upgrade command; continue their task
+without upgrading automatically. Offline, CI and opted-out checks stay quiet.
 
 ## Where to look, by question
 

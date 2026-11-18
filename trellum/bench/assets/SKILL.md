@@ -38,6 +38,9 @@ Use this exact interpreter, run from the repository root:
 ```
 
 Use the interpreter shown above so commands use this project's Trellum version.
+Run `{py} -m trellum` at the start of each new chat. It checks for updates at
+most once per local calendar day. Tell the user when an update is available,
+include the upgrade command, and continue without upgrading automatically.
 
 ## Start with the question and project knowledge
 

@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Check for newer stable releases from the CLI overview used at agent session
+  start, sharing the existing daily cache and offline/CI opt-outs with builds
+  and `doctor`. Generated project instructions surface available upgrades.
+
 ### Documentation
 
 - Introduce Trellum consistently in installed agent instructions and clarify
