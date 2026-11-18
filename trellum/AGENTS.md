@@ -13,6 +13,14 @@ project's data and metric definitions, and deliver a validated result they can
 review. Read `context/README.md` and existing source/metric notes when present;
 retain useful investigations in `analysis/` and reports in `reports/<slug>/`.
 
+When acting for a portal user, follow that user's role. **Viewers ask questions
+and read permitted reports and data; they cannot create, edit, build or publish
+reports.** Report authoring is for developers and administrators with repository
+access. A viewer's request for a new or changed report needs a developer;
+continue helping with permitted data questions. Read `trellum guide portal`
+for tool permissions. Standalone local work uses the repository's own access
+rules and does not require a portal account.
+
 `README.md` is written for people, and it is long. **Do not load it wholesale.**
 Ask for the part you need instead:
 
@@ -1162,8 +1170,15 @@ the portal's own assistant has, under the key owner's role. The key is
 `TRELLUM_API_KEY` in `.env`; the config files only reference it. Never paste
 it anywhere else, and never put a password, key or token into a tool call.
 
-The loop, in order. Local work first — nothing on the portal changes until
-the repository does:
+**Viewers have read-only access**, including permitted report data and any
+source reads their grants and available tools allow. They cannot create, edit,
+build or publish reports, even with a write-scoped API key. For a viewer's
+report request, explain that a developer must author it and continue helping
+with the permitted data question.
+
+The authoring and publishing loop below is for **developers and administrators
+with repository access**. The portal tools do not author report source.
+Local work comes first:
 
 1. **Edit** `reports/<slug>/` and build it:
    `python -m trellum.run reports/<slug> --no-serve`.
@@ -1193,12 +1208,14 @@ the repository does:
    changes one. The portal's own agent decides at each run whether to alert.
 
 Scope: `check_repo_changes`, `list_reports`, `get_report_details`,
-`query_report_data` and `read_doc` work on a `read` key.
+`query_report_data` and `read_doc` work on a `read` key;
+`check_repo_changes` also requires developer access.
 `publish_repo_changes`, `run_report`, `test_data_source`,
 `configure_data_source`, `create_alert` and `update_alert` need `write` scope
 *and* the organization's actions switch on; the harness asks before each
-call, and every call is audited under the key. A viewer gets the read tools
-whatever the key's scope; `check_repo_changes` needs the developer role.
+call, and every call is audited under the key. These actions require developer
+access or higher; `configure_data_source` requires a studio administrator.
+`run_report` starts a build of an existing report; it does not author one.
 
 The portal never edits the repository, and neither should you through it:
 a fix that belongs in `report.yaml`, a suppression or `metrics.yaml` is a

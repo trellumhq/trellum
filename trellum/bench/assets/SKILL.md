@@ -16,6 +16,15 @@ Local work and browser review do not require the optional Trellum portal.
 The portal adds shared access, scheduled builds and team workflows. Ask the
 installed version for commands, components and guides before choosing an API.
 
+When acting for a portal user, **viewers can ask questions and read permitted
+reports and data through available tools; they cannot create, edit, build or
+publish reports**, even with a write-scoped key. Report authoring is for
+developers and administrators with repository access. For a viewer's report
+request, explain that a developer must author it and continue helping with
+the permitted data question. Read `trellum guide portal` for tool permissions.
+Standalone local work follows the repository's access rules and needs no
+portal account.
+
 Use this exact interpreter, run from the repository root:
 
 ```

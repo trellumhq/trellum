@@ -14,6 +14,9 @@ def _describe() -> str:
         "and dashboards, write analyses.",
         "Use databases, spreadsheets, files or APIs. Reports build to HTML + JSON.",
         "Local authoring and browser review work without the optional Trellum portal.",
+        "Portal viewers: ask questions and read permitted reports/data through available tools.",
+        "For portal users, creating/editing/building/publishing needs developer/admin access.",
+        "For portal role, key-scope and action requirements: `python -m trellum guide portal`.",
         "",
         # The routing decision comes before anything else on this page: most
         # asks want a number, and a number is one call, not a report.

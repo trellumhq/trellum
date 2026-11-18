@@ -47,7 +47,10 @@ if you do not want an interactive preview.
 
 This local source-editing loop is separate from the portal assistant. The
 assistant answers questions about portal reports and never edits your Git
-repository.
+repository. Viewers can ask questions and retrieve reports and data they are
+allowed to access. Creating or editing reports requires a developer or
+administrator with repository access; viewers cannot start builds or publish,
+even with a write-scoped API key.
 
 ## Give it real data access
 
@@ -213,9 +216,9 @@ stored — so a credential never lands in your agent's context or transcript.
 
 ## Publish and configure from your agent
 
-Once wired, the agent that edits reports can also take them to the portal
-and back. `trellum guide portal` prints this loop to the agent; here it is
-for you.
+For developers and administrators with repository access, the agent that edits
+reports can also take them to the portal and back. `trellum guide portal`
+prints this loop to the agent; here it is for you.
 
 1. **Edit and build locally.** `python -m trellum.run reports/<slug> --no-serve`.
 2. **Validate.** `python -m trellum validate reports/<slug>` — a report is
@@ -242,9 +245,13 @@ for you.
    the portal's own agent, see [Alerts](/docs/latest/portal/alerts/);
    `update_alert` changes it.
 
-Steps 4 and 6 read, and work on a `read` key. Steps 5, 7 and 8 need
-`read,write` and the organization's actions switch; your harness asks before
-each call, and every call is in the audit log under your key.
+Checking repository changes needs developer access and a `read` key. Reading
+build results needs only permitted read access; starting the build is a
+developer action. Publishing, starting builds, testing sources and managing
+alerts need developer access or higher, `read,write` and the organization's
+actions switch. Configuring source credentials needs a studio administrator.
+Your harness asks before each action, and every call is in the audit log
+under your key.
 
 ## A good first prompt
 

@@ -66,6 +66,7 @@ Use this exact interpreter, **run from the repository root**:
 Read `context/README.md` and source/metric notes first; use `analysis/README.md` for findings.
 Keep exports in `analysis/results/`; update verified context and preserve questions.
 
+{portal}
 ## Choose the result the user needs
 
 - **A number or an investigation:** inspect configured sources and existing
@@ -151,7 +152,7 @@ up. Only explicitly requested build-only/source-only work, CI or unattended
 publication stops after `--no-serve`; honor a request for no browser.
 For an explicitly requested plain preview without feedback, use
 `{py} -m trellum serve --background` and share its printed URL.
-{portal}
+
 A report is complete when it is validated and the user can review the result.
 """
 
@@ -170,16 +171,18 @@ directory` — naming the interpreter, not your command. If one dies that way,
 MCP_ENV_VAR = "TRELLUM_API_KEY"
 
 #: Added to both pointers only when `.mcp.json` names a `trellum` server, so a
-#: repository with no portal never reads about one. Under ten lines: the loop
-#: itself lives behind `guide portal`, fetched when relevant.
+#: repository with no portal never reads about one. Role boundaries precede
+#: authoring instructions; the full loop lives behind `guide portal`.
 PORTAL_SECTION = """
-## Portal
+## Portal roles
 
-The portal this repository publishes to is reachable as MCP server `trellum`
-(see .mcp.json). Use its tools to check what changed since the last publish,
-publish, run a report, read build status and errors, test or configure a
-data source, and manage alerts. `{py} -m trellum guide portal` walks the
-loop. The key is TRELLUM_API_KEY in .env; never paste it anywhere else.
+MCP server `trellum` (see .mcp.json) acts under the API key owner's role.
+Viewers ask questions and read permitted reports/data through available tools.
+They cannot create, edit, build or publish reports, even with a write-scoped key.
+Report authoring needs a developer/admin with repository access. Help viewers
+with permitted data questions; refer report requests to a developer.
+`{py} -m trellum guide portal` covers role, scope and action requirements.
+The key is TRELLUM_API_KEY in .env; never paste it anywhere else.
 """
 
 
@@ -358,6 +361,7 @@ Read `context/README.md` and source/metric notes first; use `analysis/README.md`
 Keep exports in `analysis/results/`; update verified context and preserve questions.
 
 `trellum` alone is not on PATH, so name the interpreter as shown.
+{portal}
 
 For a number or investigation, read `trellum guide answer` and check
 `trellum metrics`. For a report/dashboard, read `trellum guide queries format
@@ -379,7 +383,7 @@ review. Follow `{py} -m trellum guide review` for the full loop. Only explicitly
 requested build-only/source-only work, CI or unattended publication stops after
 the build. Honor a no-browser request;
 use plain preview only when explicitly requested.
-{portal}{end}
+{end}
 """
 
 

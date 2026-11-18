@@ -12,6 +12,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Introduce Trellum consistently in installed agent instructions and clarify
   the workflows for data questions, interactive reports, analysis articles and
   presentations, including source knowledge and the optional portal.
+- Clarify viewer read access and developer report authoring, build and publish
+  permissions in agent guidance and the customer workflow.
 - Make browser review part of report creation and updates by default in the
   agent guide, CLI overview, generated project instructions and prototype
   skill, including remote browser handoff and explicit build-only exceptions.
