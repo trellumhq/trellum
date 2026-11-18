@@ -827,3 +827,17 @@ def test_custom_component_markup_and_assets_keep_secret_filtering(project, monke
     assert 'window.assetKey="[REDACTED]"' in output
     assert 'content:"[REDACTED]"' in output
     assert 'window.rawKey="[REDACTED]"' in output
+
+
+@pytest.mark.parametrize('secret', ['[REDACTED]private-token', '[REDACTED][REDACTED]suffix'])
+def test_marker_prefixed_secrets_are_filtered_at_publication_boundaries(monkeypatch, secret):
+    from trellum.redaction import build_redaction, redact
+    from trellum.rendering.redaction import html_content, json_bytes
+
+    monkeypatch.setenv('TRELLUM_SCALAR_SECRETS', json.dumps([secret, 'REDACTED']))
+    with build_redaction({}):
+        assert redact(secret) == '[REDACTED]'
+        assert redact(secret.encode()) == b'[REDACTED]'
+        assert redact(redact(secret)) == '[REDACTED]'
+        assert json.loads(json_bytes({'value': secret})) == {'value': '[REDACTED]'}
+        assert html_content('<p>' + secret + '</p>') == '<p>[REDACTED]</p>'

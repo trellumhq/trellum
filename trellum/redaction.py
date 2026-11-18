@@ -36,12 +36,12 @@ def redact(value):
         return value
     if isinstance(value, bytes):
         pattern = b'|'.join(re.escape(part.encode('utf-8'))
-                            for part in ('[REDACTED]', *_secret_values()))
+                            for part in sorted({'[REDACTED]', *_secret_values()}, key=len, reverse=True))
         return re.sub(pattern, b'[REDACTED]', value)
     if isinstance(value, str):
         # One pass prevents a short secret from corrupting a replacement,
         # including when an artifact is filtered again during publication.
-        pattern = '|'.join(re.escape(part) for part in ('[REDACTED]', *_secret_values()))
+        pattern = '|'.join(re.escape(part) for part in sorted({'[REDACTED]', *_secret_values()}, key=len, reverse=True))
         return re.sub(pattern, '[REDACTED]', value)
     if isinstance(value, dict):
         return {redact(k): redact(v) for k, v in value.items()}
