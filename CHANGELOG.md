@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Guide local analysis through unpublished report evidence, scaffold next steps
+  and a combined browser workspace with destination-scoped feedback.
+
 - Detect missing studio checkouts and report files on page load and portal startup,
   and restore published files during sync even when the commit is unchanged.
 

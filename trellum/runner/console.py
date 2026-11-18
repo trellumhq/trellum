@@ -32,6 +32,7 @@ def _closing_move() -> None:
     """Point a finished local build toward review, not a plain server."""
     print("\nFor a human review: python -m trellum review start reports/<slug> "
           "(share the printed URL)", flush=True)
+    print("For an analysis: python -m trellum analysis session reports/<slug>", flush=True)
     print("Keep review poll --report <slug> active; rebuild with --no-serve "
           "before replying with the feedback session.", flush=True)
     print("Build-only work ends here. Use serve --background only for an "

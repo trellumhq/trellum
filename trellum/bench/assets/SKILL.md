@@ -111,3 +111,32 @@ evidence workspace. Apply the same browser handoff and report-scoped feedback lo
 
 Explicit build-only/source-only requests, CI and unattended publication skip
 interactive review. Honor requests for a plain preview or no browser.
+
+## Local analysis from reports
+
+When asked to create an analysis, default to local review even without an
+explicit preview request. Eligible reports under
+`reports/` are sources even if they have not been published. A source report
+may query a configured remote data source; raw files need an explicit reader or
+local report before they can be used as report evidence. Create an article by
+default (or a presentation when requested), then start the combined local
+workspace:
+
+```
+{py} -m trellum analysis new <analysis-slug>
+{py} -m trellum.run reports/<source-slug> --no-serve
+{py} -m trellum analysis session reports/<analysis-slug> --source <source-slug>
+{py} -m trellum review poll --report <analysis-slug>
+```
+
+Build the chosen source before handing over the workspace. If another source
+is missing or stale, use its Build report or Rebuild report action. The workspace's
+Reports page selects source charts or sections as evidence for the analysis;
+the Analysis page selects authored content to edit. Use one listener scoped to
+the destination analysis for all feedback. Import captures, update the article
+or slides, rebuild changed reports and the analysis, reply with the original
+polled session or feedback identity (see `guide review`), then poll again
+until the user ends review. Keep the feedback loop active instead of returning
+a final response after starting the workspace. This is local review: it does
+not publish reports or the analysis, and does not push the repository. Preserve
+explicit build-only, CI, and plain-preview requests.

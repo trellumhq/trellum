@@ -72,7 +72,7 @@ useful.
 | Goal | Where it goes |
 |---|---|
 | Recurring, interactive report — served standalone, on a schedule, or embedded in another application | `reports/{slug}/` (the framework) |
-| Write an article or presentation with fixed evidence | `trellum analysis new <slug> [--format presentation]`; `content.md` or `slides.yaml` in `reports/{slug}/`, `kind: analysis` in `report.yaml`. Use `trellum analysis session` for evidence capture and review. See `trellum guide analysis` |
+| Write an article or presentation with fixed evidence | `trellum analysis new <slug> [--format presentation]`; `content.md` or `slides.yaml` in `reports/{slug}/`, `kind: analysis` in `report.yaml`. Use `trellum analysis session` for local evidence capture and review, including unpublished source reports. See `trellum guide analysis` |
 | A number or an answer — "what was X yesterday", a one-off check, quick exploration | `trellum query "SELECT ..."` or `from trellum import query` in Python, against the configured source by name. No report. See `trellum guide answer` |
 | Unsure | Answer first. Promote to a report when it needs a schedule, more than one reader, a consequential number that should be reviewed, or the same question comes back a third time |
 
@@ -1159,16 +1159,24 @@ serve` server — review endpoints live under `/_fw/review/`, loopback-only,
 and the on-disk HTML is never modified (the overlay is injected into the
 served copy only).
 
-### Building an analysis from a report
+### Building an analysis from local report evidence
+
+Analysis is local-first. Eligible report manifests under this project's
+`reports/` directory are available as sources whether or not they have been
+published. A report may query a remote configured data source; that does not
+publish the report or analysis. Raw files need an explicit reader or report
+before they can serve as report evidence. Creating and reviewing an analysis
+does not publish or push anything.
 
 When asked to make an analysis from a source report, keep the source report
 slug, destination analysis slug, requested format, and reporting period and
 filters explicit throughout the session. If the source is missing or
 ambiguous, offer the visible report titles and ask which one to open. Default
-to an article unless a presentation is requested. The analysis workspace can
-build a missing or stale source asynchronously; no separate source build or
-second preview server is needed. Start it with the source preselected when
-known:
+to an article unless a presentation is requested. Build the chosen source with
+`python -m trellum.run reports/<source-slug> --no-serve` before handing over
+the workspace. In the workspace, missing or stale sources need an explicit
+**Build report** or **Rebuild report** action; selection alone does not run them.
+Start the workspace with the source preselected when known:
 
 ```
 python -m trellum analysis session reports/<analysis-slug> --source <source-slug>
@@ -1305,7 +1313,9 @@ A report task is **not done** until you have:
    user asks you to wrap up. Explicit build-only/source-only requests, CI and
    unattended publication stop after the build. Honor a no-browser request;
    use `python -m trellum serve --background` only for an explicitly requested
-   plain preview without review feedback.
+   plain preview without review feedback. For an analysis, use the combined
+   local workspace and destination-scoped poll described in `guide analysis`.
+   Keep its feedback poll active.
 
 Severity:
 
