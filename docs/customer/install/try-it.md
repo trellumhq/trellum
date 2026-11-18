@@ -103,7 +103,7 @@ cd trellum
 On Windows PowerShell:
 
 ```powershell
-$env:TRELLUM_VERSION = 'v0.10.2'
+$env:TRELLUM_VERSION = 'v0.11.0'
 git clone --depth 1 --branch $env:TRELLUM_VERSION https://github.com/trellumhq/trellum.git
 cd trellum
 .\scripts\demo.ps1
