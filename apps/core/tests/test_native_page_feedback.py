@@ -71,13 +71,14 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             expect(page.locator('#neighbor input')).to_have_value('keep this draft')
             page.once('dialog', lambda dialog: dialog.accept())
             state = page.evaluate("""() => {
-                const started = performance.now();
                 document.querySelector('.ui-pager a:last-child').click();
-                return {ms:performance.now()-started,
-                    oldVisibility:getComputedStyle(document.querySelector('#analyticsTable')).visibility,
-                    observedAt:performance.now()};
+                const main = document.querySelector('main');
+                return {busy:main.getAttribute('aria-busy'), inert:main.inert,
+                    starts:nativeEvents.filter(event => event[0] === 'console:native-start').length};
             }""")
-            assert state['ms'] < 100
+            # Acknowledgment must happen before click() returns. Wall-clock
+            # timing also measures the confirmation dialog's protocol round trip.
+            assert state == {'busy': 'true', 'inert': True, 'starts': 1}
             for _ in range(500):
                 if feedback_samples: break
                 page.wait_for_timeout(10)
