@@ -1302,8 +1302,8 @@ A report task is **not done** until you have:
 3. **Fixed every FAIL.** WARNs should be fixed unless intentionally accepted (then suppress in `report.yaml` under `validation.suppress` with a one-line reason for why).
 4. If the report has zero FAILs and zero WARNs, said so explicitly.
 5. **Automatic review handoff.** Creating or updating a local report for a
-   person includes launching it: run `python -m trellum review start
-   reports/<slug>`, open the printed URL in the user's browser, verify the
+   person includes launching it: run
+   `python -m trellum review start reports/<slug>`, open the printed URL in the user's browser, verify the
    intended report loads, and share a clickable link. Follow `trellum guide
    review` for remote/headless hosts. A folder path alone is not a completed
    handoff. Keep `python -m trellum review poll --report <slug>` active;

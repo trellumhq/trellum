@@ -28,8 +28,8 @@ def context(kind, **extra):
 
 
 @pytest.mark.parametrize('kind,raw,expected', [
-    ('string', ' hello \n', 'hello'), ('secret', ' token ', 'token'),
-    ('text', '\nhello\nworld\n', 'hello\nworld'),
+    ('string', ' hello \n', ' hello \n'), ('secret', ' token ', ' token '),
+    ('text', '\nhello\nworld\n', '\nhello\nworld\n'),
     ('number', '12.5', 12.5), ('number', '0', 0),
     ('boolean', 'false', False), ('boolean', 'true', True),
     ('json', '{"a": [1, true]}', {'a': [1, True]}),
@@ -118,7 +118,7 @@ def test_legacy_fallback_does_not_expose_unlisted_scalars(project, monkeypatch, 
 def test_text_upload(project, extension):
     path = project / f'notes.{extension}'
     path.write_text('  {"hello": "world"}\n')
-    assert context('file', mode='text', path=path.name).read_text('input') == '{"hello": "world"}'
+    assert context('file', mode='text', path=path.name).read_text('input') == '  {"hello": "world"}\n'
 
 
 @pytest.mark.parametrize('raw', [None, '', '  \n'])

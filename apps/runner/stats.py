@@ -32,7 +32,7 @@ class Percentile(Aggregate):
     """``PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY expr)`` — Postgres only."""
 
     function = "PERCENTILE_CONT"
-    template = "%(function)s(%(percentile)s) WITHIN GROUP (ORDER BY %(expressions)s)"
+    template = "%(function)s(%(percentile)s) WITHIN GROUP (ORDER BY %(expressions)s)%(filter)s"
 
     def __init__(self, expression, percentile: float, **extra):
         super().__init__(expression, percentile=percentile, output_field=FloatField(), **extra)

@@ -43,7 +43,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and refuse occupied replacement destinations.
 - Preserve existing database and dataframe readers alongside scalar sources.
   Keep saved scalar types and secret classification intact, including cleared
-  and multiline values. Filter secrets from report artifacts and build logs
+  and multiline values and significant whitespace. Filter secrets from report artifacts and build logs
   while preserving framework markup and identities.
 - Detect missing studio checkouts and report files on page load and startup,
   then restore published files during sync even when the commit is unchanged.
@@ -51,6 +51,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and preserve visible events in the Player Overview trends. Give A/B comparison
   intervals more space and simplify the visual-upgrade guide's navigation.
 - Handle missing CSS color components and alpha in image and PDF captures.
+- Keep run-statistics filters and inline email previews compatible with the
+  updated Django release. Register file removal in the audit event taxonomy.
 - Price report AI model overrides separately, retain known usage when rejecting
   an answer, retry confirmed overload responses, and isolate broker cleanup
   failures from report termination and other runs.

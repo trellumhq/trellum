@@ -22,7 +22,7 @@ def _required(source: dict, name: str) -> str:
     value = scalar_value(source)
     if value is None or not value.strip():
         raise ValueError(f"Data source '{name}' has no value configured")
-    return value.strip()
+    return value
 
 
 def read_text(source: dict, name: str) -> str:
@@ -35,10 +35,10 @@ def read_text(source: dict, name: str) -> str:
         if path.suffix.lower() not in {'.txt', '.json', '.yaml', '.yml'}:
             raise ValueError(f"Data source '{name}' requires a .txt, .json, .yaml or .yml text file")
         try:
-            value = path.read_text(encoding='utf-8').strip()
+            value = path.read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             raise ValueError(f"Data source '{name}' text file is unavailable or invalid UTF-8") from None
-        if not value:
+        if not value.strip():
             raise ValueError(f"Data source '{name}' has no value configured")
         return value
     raise ValueError(f"Data source '{name}' does not support read_text")

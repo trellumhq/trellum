@@ -104,7 +104,7 @@ class DataSourceForm(forms.Form):
         for kind, label in DataSource.TYPES
     ])
     description = forms.CharField(max_length=400, required=False)
-    value = forms.CharField(required=False, max_length=16384, strip=True)
+    value = forms.CharField(required=False, max_length=16384, strip=False)
     clear_value = forms.BooleanField(required=False, label="Clear saved value")
     scope = forms.ChoiceField(
         choices=[("studio", "This studio only"), ("org", "Entire organization")],
@@ -175,6 +175,9 @@ class DataSourceForm(forms.Form):
                 f"“{ds_type}” sources cannot be shared across an organization."
             )
         value = cleaned.get("value", "")
+        if ds_type in {"number", "boolean", "json"} or not value.strip():
+            value = value.strip()
+            cleaned["value"] = value
         if ds_type in SCALAR_TYPES and len(value.encode("utf-8")) > 16384:
             self.add_error("value", "The value must be at most 16 KiB.")
         if ds_type in SCALAR_TYPES and value and not cleaned.get("clear_value"):

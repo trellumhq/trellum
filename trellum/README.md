@@ -401,7 +401,7 @@ sources:
 ```
 
 Set `API_TOKEN_VALUE`, `THRESHOLD_VALUE` and `OPTIONS_VALUE` in `.env`.
-`ctx.read_text("api_token")` returns stripped text for `string`, `secret` and
+`ctx.read_text("api_token")` preserves whitespace for `string`, `secret` and
 `text` scalars. It also reads UTF-8 `file` sources with `mode: text` and a
 `.txt`, `.json`, `.yaml` or `.yml` extension. Structured files remain text.
 `ctx.read_value("threshold")` returns a finite number; `boolean` accepts JSON

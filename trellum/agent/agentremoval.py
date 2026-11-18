@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from trellum.agent import agentsetup as setup
+from trellum.agent import legacy_guidance
 
 #: What each outcome means. ``deleted`` and ``removed`` both changed the
 #: project; ``kept`` and ``unreadable`` mean part of the integration is still
@@ -57,10 +58,11 @@ _PY = "\x00py\x00"
 
 #: How the pointer file ``setup`` creates begins. A file that starts this way
 #: but is not an exact pointer was ours once and has been edited since.
-_POINTER_HEAD = setup.POINTER[:setup.POINTER.index("{py}")]
+_POINTER_HEADS = tuple(template[:template.index("{py}")]
+                       for template in (setup.POINTER, legacy_guidance.POINTER))
 
 
-def _pointer_patterns(template: str = setup.POINTER) -> list[re.Pattern[str]]:
+def _pointer_patterns(template: str = setup.POINTER, portal_section: str = setup.PORTAL_SECTION) -> list[re.Pattern[str]]:
     """The pointer ``setup`` writes, once per variant it can take.
 
     The cwd note and the Portal section are conditional, and the interpreter is
@@ -69,7 +71,7 @@ def _pointer_patterns(template: str = setup.POINTER) -> list[re.Pattern[str]]:
     """
     patterns = []
     for note in ("", setup.RELATIVE_INTERPRETER_NOTE):
-        for portal in ("", setup.PORTAL_SECTION.format(py=_PY)):
+        for portal in ("", portal_section.format(py=_PY)):
             text = template.format(py=_PY, cwd_note=note, portal=portal)
             first, *rest = text.split(_PY)
             parts = [re.escape(first), r"(?P<py>[^\n]+?)", re.escape(rest[0])]
@@ -85,7 +87,10 @@ _CONTEXT_PARAGRAPH = (
     "Read `context/README.md` and source/metric notes first; use `analysis/README.md` for findings.\n"
     "Keep exports in `analysis/results/`; update verified context and preserve questions.\n\n"
 )
-_POINTERS = _pointer_patterns() + _pointer_patterns(setup.POINTER.replace(_CONTEXT_PARAGRAPH, "", 1))
+_POINTERS = _pointer_patterns()
+for _template in (legacy_guidance.POINTER, legacy_guidance.POINTER.replace(_CONTEXT_PARAGRAPH, "", 1)):
+    for _portal in (legacy_guidance.PORTAL_SECTION, setup.PORTAL_SECTION):
+        _POINTERS.extend(_pointer_patterns(_template, _portal))
 
 
 def is_written_pointer(text: str) -> bool:
@@ -142,7 +147,7 @@ def _remove_guidance(path: Path, name: str) -> Row:
     if stripped is not None:
         setup.write_exact(path, stripped)
         return Row(name, "removed")
-    if remainder.replace("\r\n", "\n").startswith(_POINTER_HEAD):
+    if remainder.replace("\r\n", "\n").startswith(_POINTER_HEADS):
         return Row(name, "kept", "was created by setup but has been edited since, so it also "
                                  "holds your words; delete the Trellum section by hand")
     return Row(name, "nothing")

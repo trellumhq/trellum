@@ -19,6 +19,32 @@ def report_for(studio, names):
     return SimpleNamespace(studio=studio, config={"data_sources": names})
 
 
+@pytest.mark.parametrize("kind,value", [
+    ("string", "  configured value  "),
+    ("secret", "  synthetic-secret-token  "),
+    ("text", "\n  indented text\nsecond line\n"),
+])
+def test_saved_text_reaches_report_without_whitespace_changes(studio_tree, monkeypatch, kind, value):
+    from apps.datasources.forms import DataSourceForm
+
+    form = DataSourceForm({"name": "input", "type": kind, "value": value},
+                          studio=studio_tree, fixed_scope="studio")
+    assert form.is_valid(), form.errors
+    source = form.save()
+    source.refresh_from_db()
+    assert source.credentials["value"] == value
+    report = report_for(studio_tree, [source.name])
+    for name, raw in materialize(studio_tree, report=report).items():
+        monkeypatch.setenv(name, raw)
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(studio_tree.project_root))
+    datasource_config.invalidate_datasource_cache()
+    try:
+        ctx = ReportContext(report.config, "example", str(studio_tree.output_dir))
+        assert ctx.read_text(source.name) == value
+    finally:
+        datasource_config.invalidate_datasource_cache()
+
+
 def test_only_selected_report_receives_secret_and_replacement(studio_tree):
     value = "synthetic-scalar-contract-value"
     ds = DataSource.objects.create(studio=studio_tree, name="litellm_key", type="secret",

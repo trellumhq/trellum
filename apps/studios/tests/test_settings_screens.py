@@ -382,7 +382,8 @@ class TestDataSourceScreen:
         # Only the portal-only source can be deleted; declared ones cannot.
         assert page.count('class="ui-btn danger"') == 1
         assert f'href="{prefix}/settings/datasources/{portal_only.name}/edit"' in page
-        assert "Repo-declared fields (type, host, port, database, path) are read-only" in page
+        assert "Repo-declared connection settings are read-only here" in page
+        assert "Uploaded files can be replaced or removed here" in page
         assert "Declared by your repository" in page
 
     def test_banner_counts_sources_and_waiting_reports(self, html, prefix, studio_tree):

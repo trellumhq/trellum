@@ -323,7 +323,7 @@ data_sources:
 
 ```python
 try:
-    key = ctx.read_text("litellm_key")  # stripped str, only available in this build
+    key = ctx.read_text("litellm_key")  # original text, only available in this build
 except ValueError:
     key = None  # optional input; the report can still publish
 ```

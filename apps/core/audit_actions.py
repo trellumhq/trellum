@@ -159,6 +159,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "assistant.source_grant.update": _m(CATEGORY_AUTHZ, "AI assistant source access updated"),
     "share_link.export_download": _a(CATEGORY_ACCESS, "Share link export downloaded"),
     "datasource.upload": _m(CATEGORY_ACCESS, "Data source file uploaded"),
+    "datasource.remove_file": _m(CATEGORY_ACCESS, "Data source file removed"),
     "datasource.create": _m(CATEGORY_ACCESS, "Data source created"),
     "datasource.update": _m(CATEGORY_ACCESS, "Data source updated"),
     "datasource.delete": _m(CATEGORY_ACCESS, "Data source deleted"),
