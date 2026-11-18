@@ -200,6 +200,9 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
         reports = (row.summary or {}).get("reports") or {}
         row.reports_changed = sum(len(v) for v in reports.values())
     pending = (repo.pending_changes or {}) if repo else {}
+    from apps.runner.studio_files import check_studio_files
+
+    studio_files = check_studio_files(repo)
     commits = pending.get("commits") or ()
     for commit in commits:
         # git's %aI is a string; the template wants a datetime for timesince.
@@ -224,6 +227,7 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
             "audience_form": audience_form,
             "audience_block_reason": selected_report_access_block_reason(),
             "repo": repo,
+            "studio_files": studio_files,
             "webhook_url": webhook_url,
             "pending": pending,
             "ahead": pending.get("commits_total") or len(commits),

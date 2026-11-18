@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Detect missing studio checkouts and report files on page load and portal startup,
+  and restore published files during sync even when the commit is unchanged.
+
 ### Added
 
 - Configure string, secret, text, number, boolean and JSON data sources in the

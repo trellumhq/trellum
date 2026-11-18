@@ -5,6 +5,9 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 SERVER_LOG_CAPTURE_ENABLED = False
+# Import-only startup probes must not inspect the development database before
+# pytest creates its isolated test database. Startup behavior has explicit tests.
+CHECK_STUDIO_FILES_AT_STARTUP = False
 SECRET_KEY = "test-secret-key"
 SECRET_ENCRYPTION_KEY = "5oyYd0zpeq5F1zqLBTXCzCUJ9WQ0P84qBcNPXuMUsUE="
 ALLOWED_HOSTS = ["*"]
