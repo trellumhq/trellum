@@ -43,6 +43,17 @@ def pg_source(studio_tree):
     )
 
 
+@pytest.fixture
+def framework_project(studio_tree, monkeypatch):
+    """Read materialized sources through the framework's environment contract."""
+    from trellum.data.datasource_config import invalidate_datasource_cache
+
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(studio_tree.project_root))
+    invalidate_datasource_cache()
+    yield
+    invalidate_datasource_cache()
+
+
 class TestListApi:
     def test_status_shapes(self, login, viewer, prefix, file_source, pg_source, studio_tree):
         body = login(viewer).get(f"{prefix}/api/datasources").json()
@@ -208,16 +219,15 @@ class TestUpload:
         (".xlsx", ".csv"), (".csv", ".xlsx"), (".csv", ".csv"),
     ])
     def test_replace_updates_path_and_next_build_reads_new_bytes(
-        self, login, developer, prefix, file_source, studio_tree, monkeypatch,
+        self, login, developer, prefix, file_source, studio_tree, framework_project,
         old_extension, new_extension,
     ):
         from io import BytesIO
 
-        from django.core.files.uploadedfile import SimpleUploadedFile
         import pandas as pd
+        from django.core.files.uploadedfile import SimpleUploadedFile
 
         from apps.datasources.materialize import materialize
-        from trellum.data import datasource_config
         from trellum.report import ReportContext
 
         file_source.config["path"] = f"data-sources/files/litellm_key{old_extension}"
@@ -251,9 +261,6 @@ class TestUpload:
         assert not any(path.read_bytes() == old_bytes for path in new_path.parent.iterdir() if path.is_file())
 
         materialize(studio_tree)
-        monkeypatch.setattr("trellum.project.get_project_root", lambda: str(studio_tree.project_root))
-        monkeypatch.setattr(datasource_config, "get_project_root", lambda: str(studio_tree.project_root))
-        monkeypatch.setattr(datasource_config, "_cache", None)
         ctx = ReportContext(config={"data_sources": ["budget"]}, slug="test", output_dir=str(studio_tree.project_root))
         assert ctx.read_source("budget")["value"].tolist() == ["replacement"]
         inline = ReportContext(config={"data_sources": [{"name": "budget", "type": "file",
@@ -263,13 +270,12 @@ class TestUpload:
 
     @pytest.mark.parametrize("declared", [False, True])
     def test_remove_keeps_source_empty_and_next_build_cannot_read_old_file(
-        self, login, developer, prefix, file_source, studio_tree, monkeypatch, declared,
+        self, login, developer, prefix, file_source, studio_tree, framework_project, declared,
     ):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from apps.datasources.materialize import materialize
         from apps.datasources.models import RepoDataSource
-        from trellum.data import datasource_config
         from trellum.report import ReportContext
 
         if declared:
@@ -293,9 +299,6 @@ class TestUpload:
         assert client.get(f"{prefix}/api/datasources/budget/download").status_code == 404
 
         materialize(studio_tree)
-        monkeypatch.setattr("trellum.project.get_project_root", lambda: str(studio_tree.project_root))
-        monkeypatch.setattr(datasource_config, "get_project_root", lambda: str(studio_tree.project_root))
-        monkeypatch.setattr(datasource_config, "_cache", None)
         ctx = ReportContext(config={"data_sources": ["budget"]}, slug="test", output_dir=str(studio_tree.project_root))
         with pytest.raises(ValueError, match="no 'path' configured|not found in report.yaml"):
             ctx.read_source("budget")
@@ -463,11 +466,11 @@ class TestOrgUpload:
     def test_org_admin_replaces_and_removes_shared_file(
         self, login, org_admin, org_prefix, org_file, studio_tree,
     ):
+        import yaml
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from apps.datasources.materialize import materialize, stored_file
         from apps.datasources.models import RepoDataSource
-        import yaml
 
         RepoDataSource.objects.create(studio=studio_tree, name="shared", type="file",
                                       config={"upload": True, "path": "baseline.xlsx"})

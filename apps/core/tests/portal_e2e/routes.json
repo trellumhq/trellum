@@ -8244,8 +8244,10 @@
       "verification": "pending",
       "verified_node_ids": [],
       "source_sha256": "6d567406dc7a18024fb6606677adcfffbf455ec71d80c3ad22ef6791d5368e2f",
-      "request_conditions": [],
-      "adapter_sha256": "febd1cf2fbc23c753598be41ea0154b08d4dde2e5c227db4f5aa225fcd996de0",
+      "request_conditions": [
+        "Include current studio-file health in the rendered page without changing the existing viewer/developer/admin route gate or adding a mutation action."
+      ],
+      "adapter_sha256": "a6e1493d817b30d5ddac7298715b21115f15fbeb67882659c3565847ce6542f4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8306,8 +8308,10 @@
       "verification": "pending",
       "verified_node_ids": [],
       "source_sha256": "ae1c01599eb0de6ae9077239868dc425de9da49578e2fdbebd06d43882a05261",
-      "request_conditions": [],
-      "adapter_sha256": "e5de75cf4ff395380f5ba352f691f9964472d4d2e4eb5bcb5798e3115a6f2b86",
+      "request_conditions": [
+        "Include current studio-file health in the rendered page without changing the existing viewer/developer/admin route gate or adding a mutation action."
+      ],
+      "adapter_sha256": "919e672f6d58b5a4211b610e4f7a022be40078bfdd77f0d9fa465add33fba2af",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8570,8 +8574,10 @@
       "verification": "pending",
       "verified_node_ids": [],
       "source_sha256": "bd1571eda476d720243d0e842614abe3843baec7922755e9ad741510357b64b7",
-      "request_conditions": [],
-      "adapter_sha256": "80a8e076e5ac101694de03db5115774b22d7a9bd53660912ea6e3e6f728168cc",
+      "request_conditions": [
+        "Include current studio-file health in the rendered page without changing the existing viewer/developer/admin route gate or adding a mutation action."
+      ],
+      "adapter_sha256": "82d3eea1df56f7989837c13bb88d50293cda2ab64e51090cae1695c6006fbc73",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10075,7 +10081,7 @@
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "5e9ac8de0f70e8a50e9f4227cb2a1287bd95e87118a6bbfa1d27af571932d866",
+      "adapter_sha256": "b5f1b3f43c457877a724e2e3232fd5e30afaa535ab813108579478b8f272b43b",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10132,13 +10138,49 @@
           "action": null,
           "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_route[166-POST]",
           "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=remove",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_action[route-166-action-remove]",
+          "verification": "pending",
+          "allowed_roles": [
+            "developer",
+            "group-admin",
+            "operator",
+            "org-admin",
+            "studio-admin"
+          ],
+          "denied_roles": [
+            "anonymous",
+            "cross-org",
+            "group-member",
+            "group-selected",
+            "inactive",
+            "private-viewer",
+            "revoked",
+            "viewer",
+            "viewer-full"
+          ],
+          "conditional_roles": {
+            "impersonated": {
+              "condition": "Use an active operator impersonation session targeting the seeded alpha organization member with no studio grant or organization-admin role; removal is denied using the effective target permissions.",
+              "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_action[route-166-action-remove]",
+              "verification": "pending"
+            }
+          }
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "9bfd00ecd9c25708b624800b596dc2ddf4a20eec1c7185bb0ab178332a677ac6",
-      "request_conditions": [],
-      "adapter_sha256": "c41a3cf3aacb0c830427f823f22ea88304ef729f6fd26f9e4f03bc28b2d2d0ed",
+      "source_sha256": "bd25984c62ae765cf3a93e8ef40da0eacf66f45b44cf0daecb93459a25b09fe0",
+      "request_conditions": [
+        "Upload and action=remove require upload=true; false returns 403 without changing the file. Studio writes require a developer; organization writes require an organization admin.",
+        "Studio upload/removal refuses an organization-owned source with 404; shared bytes are changed only through the organization route.",
+        "Removal clears the saved path and connection-check state, keeps the source binding, records datasource.remove_file, and makes the next materialized build unable to read the old file. Repeated removal remains successful and a later upload restores the source.",
+        "Shared binding/repository/normalized/symlink aliases and concurrent file-scope changes return 409 without modifying either source. Save/audit/commit failure rolls back the database and file; failed restoration returns an unconfirmed 500 and retains administrator recovery contents."
+      ],
+      "adapter_sha256": "f7cc0e9280791cd40b4130ff23d9d5f72d7d931b1b5c0250494b7207e66f2488",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -14573,7 +14615,7 @@
       "id": "route-231",
       "pattern": "accounts/login/",
       "name": "account_login",
-      "view": "allauth.account.views.LoginView",
+      "view": "allauth.account.views._login.LoginView",
       "first_party": false,
       "case": "C02",
       "shard": "L1",
@@ -14631,7 +14673,7 @@
       "id": "route-232",
       "pattern": "accounts/logout/",
       "name": "account_logout",
-      "view": "allauth.account.views.LogoutView",
+      "view": "allauth.account.views._logout.LogoutView",
       "first_party": false,
       "case": "C02",
       "shard": "L1",
@@ -14689,7 +14731,7 @@
       "id": "route-233",
       "pattern": "accounts/inactive/",
       "name": "account_inactive",
-      "view": "allauth.account.views.AccountInactiveView",
+      "view": "allauth.account.views._account.AccountInactiveView",
       "first_party": false,
       "case": "C02",
       "shard": "L1",
@@ -16664,9 +16706,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "dd1c847bd8ec1f12e67aa20db773ed547a40fbff73503103a2a19e5cbedbc024",
-      "request_conditions": [],
-      "adapter_sha256": "0de2b329032808245eb8488fc0f9b29ab2b5e91c5bdb3c148e441ac163868029",
+      "source_sha256": "cee81c26a39783ed2a9300886e1eafad610b7b3ed2c276fc977317c0cbf2782e",
+      "request_conditions": [
+        "Scalar values use the existing admin create/save actions; only organization admins may select organization secret references. Saved secret values are not returned in form responses or rendered into fields.",
+        "A repository-declared scalar keeps its declared name/type and cannot lose saved secret classification through an ordinary editor save. Scalars have no separate connection credentials to configure or remove.",
+        "POST file changes share the upload/repository scope lock. Busy enhanced saves return 409 without persisting; source edits/deletion preserve files still referenced by another source."
+      ],
+      "adapter_sha256": "bf26e7246844aa1bd5d03f1ce5e1f18a6dbcbd83418a32b01dbda5cc58a1f028",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -16741,9 +16787,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "39b02c570c4dfe38a3289650391f48ad89633ed348c121aaf6dd96dc6281f88e",
-      "request_conditions": [],
-      "adapter_sha256": "da0f4c1347fb3f017e7fc5358052726dd2acb009b514ccd736415aac4a4b3c43",
+      "source_sha256": "6177329b585980d3f78faab326478d5272d1acbe7edc1be73a25402d88f6ee33",
+      "request_conditions": [
+        "Scalar values use the existing admin create/save actions; only organization admins may select organization secret references. Saved secret values are not returned in form responses or rendered into fields.",
+        "A repository-declared scalar keeps its declared name/type and cannot lose saved secret classification through an ordinary editor save. Scalars have no separate connection credentials to configure or remove.",
+        "POST file changes share the upload/repository scope lock. Busy enhanced saves return 409 without persisting; source edits/deletion preserve files still referenced by another source."
+      ],
+      "adapter_sha256": "0a6ceddd2f216b33c88553d2260fa16c5194b472088208fc294ff95faba6be10",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -16839,9 +16889,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "ca8aa087f8a9e2324350b686659d4e3ca72216b1456d59eb2b589ce54bfd9ef0",
-      "request_conditions": [],
-      "adapter_sha256": "671aa4da609fd56587128c80830afe1f0699947b453c5e89d6a6d90b1c696a3a",
+      "source_sha256": "38f8e16345b3044cf160e49ced17ae430f5194eefc68574fec3f103966375129",
+      "request_conditions": [
+        "Scalar values use the existing admin create/save actions; only organization admins may select organization secret references. Saved secret values are not returned in form responses or rendered into fields.",
+        "A repository-declared scalar keeps its declared name/type and cannot lose saved secret classification through an ordinary editor save. Scalars have no separate connection credentials to configure or remove.",
+        "POST file changes share the upload/repository scope lock. Busy enhanced saves return 409 without persisting; source edits/deletion preserve files still referenced by another source."
+      ],
+      "adapter_sha256": "300554cef40c2ab1e44ed2d875c5e94922fea9e0c923a72fc345b47279ecb8ef",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -16983,13 +17037,49 @@
           "action": null,
           "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_route[264-POST]",
           "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=remove",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_action[route-264-action-remove]",
+          "verification": "pending",
+          "allowed_roles": [
+            "group-admin",
+            "operator",
+            "org-admin"
+          ],
+          "denied_roles": [
+            "anonymous",
+            "cross-org",
+            "developer",
+            "group-member",
+            "group-selected",
+            "inactive",
+            "private-viewer",
+            "revoked",
+            "studio-admin",
+            "viewer",
+            "viewer-full"
+          ],
+          "conditional_roles": {
+            "impersonated": {
+              "condition": "Use an active operator impersonation session targeting the seeded alpha organization member with no studio grant or organization-admin role; removal is denied using the effective target permissions.",
+              "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_action[route-264-action-remove]",
+              "verification": "pending"
+            }
+          }
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "8199800a6c404c032d1ad6107e083896cff4bcd9d88ffbd2591f9d2122cc8b5e",
-      "request_conditions": [],
-      "adapter_sha256": "cb4559ab1e17fe31501bdf3f9428445f13791327c2cdeab70798b401cd0147de",
+      "source_sha256": "38ed8a708c9af653225249c05b72a4db7092317858e4bb10db5370650518a939",
+      "request_conditions": [
+        "Upload and action=remove require upload=true; false returns 403 without changing the file. Studio writes require a developer; organization writes require an organization admin.",
+        "Studio upload/removal refuses an organization-owned source with 404; shared bytes are changed only through the organization route.",
+        "Removal clears the saved path and connection-check state, keeps the source binding, records datasource.remove_file, and makes the next materialized build unable to read the old file. Repeated removal remains successful and a later upload restores the source.",
+        "Shared binding/repository/normalized/symlink aliases and concurrent file-scope changes return 409 without modifying either source. Save/audit/commit failure rolls back the database and file; failed restoration returns an unconfirmed 500 and retains administrator recovery contents."
+      ],
+      "adapter_sha256": "8c42ef0c3e9c2ff642bdd493ff1ed6f1c5ba17f6136deed377c6af631ff460f8",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21191,9 +21281,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "2d104910957b89af66ba257caaceb1de37eea38b98eab5fcc40dde54b0fd572a",
-      "request_conditions": [],
-      "adapter_sha256": "2d104910957b89af66ba257caaceb1de37eea38b98eab5fcc40dde54b0fd572a",
+      "source_sha256": "dd39c1965aaad7a800f3c47c7933864fc34722003353b668ae3a14057d894626",
+      "request_conditions": [
+        "Include current studio-file health in the rendered page without changing the existing viewer/developer/admin route gate or adding a mutation action."
+      ],
+      "adapter_sha256": "dd39c1965aaad7a800f3c47c7933864fc34722003353b668ae3a14057d894626",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21271,9 +21363,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a06841b4cb370b2eb1a05fcffc10e35e6fc722c0cf09709ab7d4f2ce3d549cb5",
-      "request_conditions": [],
-      "adapter_sha256": "bca718aaa4eefc8863a6f12c41d6cc50fe8f2102903d3a8e17475c8509e2bec8",
+      "source_sha256": "8835928556140ce8053d26d7ebbed6da0f2e28f6b415ee48d226322dc3659382",
+      "request_conditions": [
+        "Scalar values use the existing admin create/save actions; only organization admins may select organization secret references. Saved secret values are not returned in form responses or rendered into fields.",
+        "A repository-declared scalar keeps its declared name/type and cannot lose saved secret classification through an ordinary editor save. Scalars have no separate connection credentials to configure or remove.",
+        "POST file changes share the upload/repository scope lock. Busy enhanced saves return 409 without persisting; source edits/deletion preserve files still referenced by another source."
+      ],
+      "adapter_sha256": "7fc59f4e92b6220d5f674eefe26659e83f956ac3c5372bd6696c87eb0717e7ca",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21372,9 +21468,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1dcfb76ed16a3e7e901994a9d7431e3327b36d8b1e6e2b8f4d382b4c852c1bba",
-      "request_conditions": [],
-      "adapter_sha256": "061b093ee9d050958f7235eeb18389da71d5538e03c07892ae4bfd9adb827ef5",
+      "source_sha256": "38beb465907df4e5775d7d99ef51dda8b839ea2ae4812999d6eced105b0a2c65",
+      "request_conditions": [
+        "Scalar values use the existing admin create/save actions; only organization admins may select organization secret references. Saved secret values are not returned in form responses or rendered into fields.",
+        "A repository-declared scalar keeps its declared name/type and cannot lose saved secret classification through an ordinary editor save. Scalars have no separate connection credentials to configure or remove.",
+        "POST file changes share the upload/repository scope lock. Busy enhanced saves return 409 without persisting; source edits/deletion preserve files still referenced by another source."
+      ],
+      "adapter_sha256": "2edf7faa730de8ff4d224a455af3f68ea56fba7585dbd24c735ad67ae2e4dd5e",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21470,9 +21570,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a7ba87e11b68135de1b6eca08e779beabaee96d5fe590d7c2062e5114cb5ba33",
-      "request_conditions": [],
-      "adapter_sha256": "87e047a3982f78e32bdff42fa0fc23705f7582cebd95af2cd0b183fd6eb22b74",
+      "source_sha256": "dd68c3241f7695fda3ebab8e7f241d8d2029d2a39eb4798a72b72c0364ec0722",
+      "request_conditions": [
+        "Scalar values use the existing admin create/save actions; only organization admins may select organization secret references. Saved secret values are not returned in form responses or rendered into fields.",
+        "A repository-declared scalar keeps its declared name/type and cannot lose saved secret classification through an ordinary editor save. Scalars have no separate connection credentials to configure or remove.",
+        "POST file changes share the upload/repository scope lock. Busy enhanced saves return 409 without persisting; source edits/deletion preserve files still referenced by another source."
+      ],
+      "adapter_sha256": "0cd004e0819749e7ce83401caf7b35c7beb95b750b2993c4d2e9b4c3908e95de",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
