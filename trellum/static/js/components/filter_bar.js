@@ -28,6 +28,13 @@ window._fwRenderers['filter_bar'] = function(id, cfg) {
     // Clone to strip accumulated event listeners from the previous scope,
     // then fall through to full re-wiring for the current scope.
     if (el._fwWiredDsId && el._fwWiredDsId !== cfg.dataset_id) {
+        // Dispose enhanced controls while their instance references still
+        // exist. Cloning first would copy their generated DOM but lose the
+        // owners needed to remove it and unsubscribe the previous scope.
+        var oldTypes = window._fwFilterTypes || {};
+        Object.keys(oldTypes).forEach(function(t) {
+            if (oldTypes[t].disposeControls) oldTypes[t].disposeControls(el);
+        });
         var fresh = el.cloneNode(true);
         el.parentNode.replaceChild(fresh, el);
         el = fresh;

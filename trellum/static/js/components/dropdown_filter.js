@@ -3,6 +3,12 @@ window._fwFilterTypes['dropdown'] = {
     _ssInstances: {},
     _batchMode: false,
 
+    disposeControls: function(el) {
+        var disposers = el._fwDropdownDisposers || [];
+        el._fwDropdownDisposers = [];
+        disposers.forEach(function(dispose) { dispose(); });
+    },
+
     init: function(el, fc, dsId, h) {
         var self = window._fwFilterTypes['dropdown'];
         var urlVal = h.urlLookup(fc.column);
@@ -22,8 +28,11 @@ window._fwFilterTypes['dropdown'] = {
     wireControls: function(el, cfg, dsId, h) {
         var self = window._fwFilterTypes['dropdown'];
         if (typeof SlimSelect === 'undefined') return;
+        var disposers = el._fwDropdownDisposers = [];
 
         el.querySelectorAll('select.fw-dropdown').forEach(function(sel) {
+            var disposed = false;
+            var unsubscribe = null;
             var fid = sel.dataset.filterId;
             var fc = h.findFc(fid);
             var opts = (fc && fc.options || []).map(function(o) {
@@ -51,7 +60,7 @@ window._fwFilterTypes['dropdown'] = {
                 },
                 events: {
                     afterChange: function(newVal) {
-                        if (self._batchMode) return;
+                        if (disposed || self._batchMode) return;
                         // Single-select mode (fc.multi === false, live-bound
                         // dropdowns): SlimSelect hands back one object (or
                         // none), not an array -- normalize to the same
@@ -69,10 +78,22 @@ window._fwFilterTypes['dropdown'] = {
             // SlimSelect copies aria-labelledby to its visible combobox. Its
             // search input lives in a portal outside the filter bar.
             var label = document.getElementById(sel.getAttribute('aria-labelledby'));
+            var focusControl = function() { ss.render.main.main.focus(); };
             if (label) {
                 ss.render.content.search.input.setAttribute('aria-label', 'Search ' + label.textContent.trim());
-                label.addEventListener('click', function() { ss.render.main.main.focus(); });
+                label.addEventListener('click', focusControl);
             }
+            disposers.push(function() {
+                if (disposed) return;
+                disposed = true;
+                if (unsubscribe) unsubscribe();
+                if (label) label.removeEventListener('click', focusControl);
+                if (self._ssInstances[fid] === ss) delete self._ssInstances[fid];
+                delete sel._fwSlimSelect;
+                // Includes the body-level popup and SlimSelect's global
+                // listeners, and restores the native select before cloning.
+                ss.destroy();
+            });
             if (fc && fc._urlValues && fc._urlValues.length) {
                 ss.setSelected(fc._urlValues);
             } else if (fc && fc.default_empty) {
@@ -102,7 +123,7 @@ window._fwFilterTypes['dropdown'] = {
                 var lastParentSig = null;
                 var lastOptionList = null;
                 var recompute = function() {
-                    if (!window._fwFilterEngine.isReady(dsId)) return;
+                    if (disposed || !window._fwFilterEngine.isReady(dsId)) return;
                     // Cheap parent-signature check: only do the heavy
                     // scan + setData when a parent's selection changed.
                     var state = window._fwFilterEngine.getFilterState
@@ -174,8 +195,10 @@ window._fwFilterTypes['dropdown'] = {
                     }
                 };
                 window._fwFilterEngine.onReady(dsId, function() {
+                    // Readiness can arrive after this scope was replaced.
+                    if (disposed) return;
                     recompute();
-                    window._fwFilterEngine.subscribe(
+                    unsubscribe = window._fwFilterEngine.subscribe(
                         dsId, 'cascade_' + fid, function() { recompute(); }
                     );
                 });

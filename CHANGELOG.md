@@ -51,6 +51,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   redacting short scalar secrets, while filtering report content and custom
   component output.
 
+
+### Fixed
+
+- Dispose FilterBar dropdown widgets and their cascading-filter subscriptions
+  before switching report scopes, so visible choices match the active dataset
+  without duplicated SlimSelect controls. Late readiness callbacks from a
+  previous scope no longer reconnect its dropdowns.
+
+### Upgrade notes
+
+- Rebuild affected reports with 0.11.0 to include the corrected runtime. Existing
+  generated HTML does not change when the framework package is upgraded.
+- After rebuilding, remove any report-local `fw-dropdowns-ready` workaround
+  that deletes stale SlimSelect wrappers. The framework now owns that cleanup.
+- Report definitions, filter settings and public component APIs are unchanged.
+
 ## [0.10.1] — 2026-11-08
 
 This recovery release includes the [report components, visual improvements and
