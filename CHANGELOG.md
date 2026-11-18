@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Protect files referenced by multiple data sources during upload replacement,
+  removal and source edits. Preserve recovery contents and report an unconfirmed
+  file change if filesystem rollback fails.
+
 ## [0.11.0] — 2026-11-18
 
 ### Added

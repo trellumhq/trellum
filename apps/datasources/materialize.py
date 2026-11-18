@@ -244,6 +244,55 @@ def stored_file(ds) -> Path | None:
         return None
 
 
+UPLOAD_ALIAS_LIMIT = 500
+
+
+def file_mutation_problem(ds, path: Path | None, *, ignore_own_declaration=True) -> str:
+    """Fail closed on aliases or a scope too large to inspect in one request.
+
+    Callers hold the storage-scope and studio sync locks through commit and
+    filesystem compensation. Relative, absolute and symlink aliases resolve
+    against the same root as materialization. Storage roots themselves must
+    remain distinct, as required by the studio/organization disk layout.
+    """
+    if path is None:
+        return ""
+    from django.db.models.fields.json import KT
+    from django.db.models.functions import Substr
+
+    from apps.datasources.models import DataSource, RepoDataSource
+
+    bindings = DataSource.objects.filter(
+        org_id=ds.org_id, studio_id=ds.studio_id, type__in=INLINE_TYPES,
+    ).exclude(pk=ds.pk).order_by("pk")
+    declarations = (
+        RepoDataSource.objects.filter(studio_id=ds.studio_id, present=True, type__in=INLINE_TYPES).order_by("pk")
+        if ds.studio_id else RepoDataSource.objects.none()
+    )
+    if ignore_own_declaration:
+        # Uploads override their own declaration, including an explicit clear.
+        # Source deletion/renaming may expose it again, so cleanup checks it.
+        declarations = declarations.exclude(name=ds.name)
+    for rows in (bindings, declarations):
+        paths = list(rows.annotate(
+            upload_alias=Substr(KT("config__path"), 1, 4097),
+        ).values_list("upload_alias", flat=True)[:UPLOAD_ALIAS_LIMIT + 1])
+        if len(paths) > UPLOAD_ALIAS_LIMIT:
+            return "This storage scope has too many file sources to safely change this file. The current file was kept."
+        for rel in paths:
+            if rel is None or not rel.strip():
+                continue
+            if len(rel) > 4096:
+                return "A file source path is too long to safely check for shared files. The current file was kept."
+            try:
+                alias = resolve_path(ds, rel.strip())
+            except ValueError:
+                continue
+            if alias == path:
+                return "Another data source uses this file. Change its path before replacing or removing this file. The current file was kept."
+    return ""
+
+
 def upload_rel_path(ds, filename: str = "") -> str:
     """Where an upload of ``filename`` lands, relative to :func:`storage_root`.
 
