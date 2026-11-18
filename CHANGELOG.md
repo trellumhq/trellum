@@ -47,7 +47,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Preserve existing database and dataframe readers alongside scalar sources.
   Keep saved scalar types and secret classification intact, including cleared
   and multiline values and significant whitespace. Filter secrets from report
-  artifacts and build logs while preserving framework markup and identities.
+  artifacts and build logs, including Python string and byte representations,
+  while preserving framework markup and identities.
 - Retain saved secret protection when repository scalar declarations change,
   and discard older connection-test results after switching to a scalar type.
 - Detect missing studio checkouts and report files on page load and startup,

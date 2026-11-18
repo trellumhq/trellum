@@ -155,6 +155,8 @@ def secret_variants(values):
         if value:
             variants.update((value, html.escape(value), html.escape(value, quote=False),
                              json.dumps(value)[1:-1], json.dumps(value, ensure_ascii=False)[1:-1],
+                             repr(value)[1:-1], ascii(value)[1:-1],
+                             repr(value.encode('utf-8'))[2:-1],
                              quote(value, safe='')))
     return tuple(sorted(variants, key=len, reverse=True))
 
