@@ -41,10 +41,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Replace uploaded files across supported file types or remove their contents
   without deleting the data source. Preserve original bytes on failed saves
   and refuse occupied replacement destinations.
+- Protect files referenced by multiple data sources during upload replacement,
+  removal and source edits. Preserve recovery contents and report an unconfirmed
+  file change if filesystem rollback fails.
 - Preserve existing database and dataframe readers alongside scalar sources.
   Keep saved scalar types and secret classification intact, including cleared
-  and multiline values and significant whitespace. Filter secrets from report artifacts and build logs
-  while preserving framework markup and identities.
+  and multiline values and significant whitespace. Filter secrets from report
+  artifacts and build logs while preserving framework markup and identities.
 - Detect missing studio checkouts and report files on page load and startup,
   then restore published files during sync even when the commit is unchanged.
 - Keep long filter bars usable on phones, improve demo card and table spacing,

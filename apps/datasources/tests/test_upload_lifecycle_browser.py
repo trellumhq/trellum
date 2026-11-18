@@ -147,6 +147,20 @@ def test_rendered_file_replace_and_clear(login, org_admin, studio_tree, width, m
         no_clipping()
         capture('replaced')
 
+        alias = DataSource.objects.create(studio=studio_tree, name="alias", type="file",
+                                          config={"path": ds.config["path"]})
+        file_input.set_input_files({'name': 'shared.csv', 'mimeType': 'text/csv', 'buffer': b'value\nchanged\n'})
+        expect(row.locator('[data-ds-result]')).to_contain_text('Another data source uses this file')
+        expect(file_input).to_be_enabled()
+        expect(name).to_have_text('litellm_key.csv')
+        assert replacement.read_bytes() == b'value\nsynthetic CSV upload\n'
+        remove.click()
+        expect(row.locator('[data-settings-dirty-status]')).to_contain_text('Another data source uses this file')
+        expect(remove).to_be_enabled()
+        assert replacement.read_bytes() == b'value\nsynthetic CSV upload\n'
+        capture('shared-error')
+        alias.delete()
+
         # An existing destination must not be overwritten by replacement.
         original.write_bytes(workbook.getvalue())
         file_input.set_input_files({'name': 'collision.xlsx', 'mimeType': 'application/octet-stream', 'buffer': workbook.getvalue()})

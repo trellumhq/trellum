@@ -1,9 +1,48 @@
 """Reversible file changes for a data-source database transaction."""
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 import uuid
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
+
+from django.db import connection
+
+logger = logging.getLogger(__name__)
+
+
+class UploadRecoveryError(OSError):
+    """Rollback could not restore the original path; its recovery link remains."""
+
+
+@contextmanager
+def file_scope_lock(*, studio=None, org=None):
+    """Nonblocking cross-process guard, held through commit and file rollback.
+
+    Share the worker's studio lock so repository declaration mirroring cannot
+    introduce an alias during mutation. All portal file-setting writers use
+    this guard too. The second lock serializes the actual storage root,
+    including organization sources, without locking every source row.
+    """
+    from apps.runner.gitsync import studio_sync_lock
+
+    with ExitStack() as stack:
+        if studio is not None and not stack.enter_context(studio_sync_lock(studio.pk)):
+            yield False
+            return
+        root = studio.project_root if studio is not None else org.datasources_dir
+        key = int.from_bytes(hashlib.sha256(os.fsencode(root.resolve())).digest()[:8], "big", signed=True)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", [key])
+            acquired = cursor.fetchone()[0]
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s)", [key])
 
 
 class UploadChange:
@@ -58,9 +97,18 @@ class UploadChange:
         if kind is not None:
             if self.original_changed:
                 # If restoration itself fails, retain the recovery link.
-                os.replace(self.backup, self.original)
+                try:
+                    os.replace(self.backup, self.original)
+                except OSError as exc:
+                    logger.exception("Upload rollback failed; original contents retained at %s", self.backup)
+                    raise UploadRecoveryError("Upload rollback needs administrator recovery") from exc
                 self.backup = None
             if self.created is not None:
                 self.created.unlink(missing_ok=True)
         if self.backup is not None:
-            self.backup.unlink(missing_ok=True)
+            try:
+                self.backup.unlink(missing_ok=True)
+            except OSError:
+                # Cleanup failure does not undo a completed commit or prevent
+                # a truthful response after a successful restoration.
+                logger.exception("Could not clean up upload recovery link %s", self.backup)

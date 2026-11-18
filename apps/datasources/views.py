@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import os
 import uuid
+from copy import copy
 from dataclasses import replace
+from functools import wraps
 from urllib.parse import quote
 
 from django import forms
@@ -23,8 +25,8 @@ from apps.core.form_responses import is_settings_request, settings_error, settin
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from apps.datasources.forms import DataSourceForm
-from apps.datasources.uploads import UploadChange
 from apps.datasources.materialize import (
+    file_mutation_problem,
     resolve_path,
     stored_file,
     upload_rel_path,
@@ -47,6 +49,7 @@ from apps.datasources.status import (
 from apps.datasources import catalog
 from apps.datasources.catalog import effective_bindings, states_for
 from apps.datasources.testing import STALE_CHECK, check_binding, check_draft, check_revision, draft_revision, fmt_size, run_state_check
+from apps.datasources.uploads import UploadChange, UploadRecoveryError, file_scope_lock
 from apps.orgs import quotas
 from apps.orgs.views import paginate
 
@@ -159,6 +162,23 @@ def _whole_number(raw, default: int, low: int, high: int, name: str) -> int:
     return int(raw)
 
 
+def _file_settings_lock(view):
+    """Keep path edits, deletion, uploads and repository sync mutually exclusive."""
+    @wraps(view)
+    def guarded(request, *args, **kwargs):
+        if request.method != "POST":
+            return view(request, *args, **kwargs)
+        with file_scope_lock(studio=getattr(request, "studio", None), org=request.org) as acquired:
+            if not acquired:
+                message = "Data source files are being updated. This change was not saved."
+                if is_settings_request(request) or request.path.endswith("/upload"):
+                    return settings_error(request, message, errors={"__all__": [message]}, status=409)
+                messages.error(request, message)
+                return redirect(request.path)
+            return view(request, *args, **kwargs)
+    return guarded
+
+
 def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
     # Serialize replacements and clears so another request cannot leave an
     # unreferenced file or restore a path removed by a concurrent upload.
@@ -169,6 +189,9 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
             with transaction.atomic(durable=True):
                 ds = DataSource.objects.select_for_update().get(pk=ds.pk)
                 return _store_upload_locked(request, ds, name, change)
+    except UploadRecoveryError:
+        message = "The file change could not be confirmed. The previous contents need administrator recovery."
+        return settings_error(request, message, errors={"__all__": [message]}, status=500)
     except FileExistsError:
         return settings_error(request, "Another file already uses that destination. The current file was kept.", status=409)
     except OSError:
@@ -188,8 +211,11 @@ def _store_upload_locked(request, ds: DataSource, name: str, change: UploadChang
         return JsonResponse(
             {"ok": False, "error": f"Data source '{name}' does not allow uploads"}, status=403
         )
+    current = stored_file(ds)
+    problem = file_mutation_problem(ds, current)
+    if problem:
+        return settings_error(request, problem, errors={"__all__": [problem]}, status=409)
     if request.POST.get("action") == "remove":
-        current = stored_file(ds)
         change.remove(current)
         ds.config = {**(ds.config or {}), "path": ""}
         ds.last_check_at = ds.last_check_ok = None
@@ -232,7 +258,6 @@ def _store_upload_locked(request, ds: DataSource, name: str, change: UploadChang
         )
 
     org = ds.owner_org
-    current = stored_file(ds)
     replacing = current.stat().st_size if current and current.is_file() else 0
     decision = quotas.check_upload_allowed(org, incoming, replacing_bytes=replacing)
     if not decision.allowed:
@@ -315,6 +340,7 @@ def _download(request, ds: DataSource, name: str):
 
 @require_studio_role(roles.DEVELOPER)
 @require_POST
+@_file_settings_lock
 def api_upload(request, org_slug, studio_slug, name):  # noqa: ARG001
     ds = _upload_target(request.studio, name)
     if ds is None or ds.org_id is not None:
@@ -361,13 +387,13 @@ def api_download(request, org_slug, studio_slug, name):  # noqa: ARG001
 def _owned_file(ds: DataSource | None):
     """The file the portal owns for this source right now, if any.
 
-    Resolve this BEFORE saving an edit: the returned Path is a snapshot, while
-    the row it came from is about to change underneath.
+    Resolve this BEFORE saving an edit: the returned owner and path are a
+    snapshot, while the row they came from is about to change underneath.
     """
     if ds is None or not ds.is_uploaded:
         return None
     path = stored_file(ds)
-    return path if path is not None and path.is_file() else None
+    return (copy(ds), path) if path is not None and path.is_file() else None
 
 
 def _discard_orphan(before, ds: DataSource | None) -> None:
@@ -379,11 +405,14 @@ def _discard_orphan(before, ds: DataSource | None) -> None:
     """
     if before is None:
         return
+    owner, path = before
     after = _owned_file(ds) if ds is not None else None
-    if after is not None and after == before:
+    if after is not None and after[1] == path:
+        return
+    if file_mutation_problem(owner, path, ignore_own_declaration=False):
         return
     try:
-        before.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
     except OSError:
         pass
 
@@ -709,6 +738,7 @@ def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=N
 
 
 @require_studio_role(roles.ADMIN)
+@_file_settings_lock
 def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
     from apps.studios.models import StudioRepo
 
@@ -813,6 +843,7 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
 
 
 @require_org_role(roles.ORG_ADMIN)
+@_file_settings_lock
 def org_settings_page(request, org_slug):  # noqa: ARG001
     """Organization settings → Data sources: shared connections every studio
     in the org can use (a studio source with the same name shadows them)."""
@@ -920,11 +951,13 @@ def _create_page(request, studio=None):
 
 
 @require_studio_role(roles.ADMIN)
+@_file_settings_lock
 def create_page(request, org_slug, studio_slug):  # noqa: ARG001
     return _create_page(request, request.studio)
 
 
 @require_org_role(roles.ORG_ADMIN)
+@_file_settings_lock
 def org_create_page(request, org_slug):  # noqa: ARG001
     return _create_page(request)
 
@@ -1109,11 +1142,13 @@ def _editor(request, name, studio=None):
 
 
 @require_studio_role(roles.ADMIN)
+@_file_settings_lock
 def editor_page(request, org_slug, studio_slug, name):  # noqa: ARG001
     return _editor(request, name, request.studio)
 
 
 @require_org_role(roles.ORG_ADMIN)
+@_file_settings_lock
 def org_editor_page(request, org_slug, name):  # noqa: ARG001
     return _editor(request, name)
 
@@ -1129,6 +1164,7 @@ def api_org_test(request, org_slug, name):  # noqa: ARG001
 
 @require_org_role(roles.ORG_ADMIN)
 @require_POST
+@_file_settings_lock
 def api_org_upload(request, org_slug, name):  # noqa: ARG001
     ds = DataSource.objects.filter(org=request.org, name=name).first()
     if ds is None:
