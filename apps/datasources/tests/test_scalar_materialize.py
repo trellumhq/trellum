@@ -141,9 +141,9 @@ def test_scalar_value_is_encrypted_in_database(studio_tree):
 def test_revenue_pulse_real_build_contract(studio_tree, state, inline):
     """Exercise encrypted storage -> injection -> real process -> published files."""
     import os
-    from pathlib import Path
     import subprocess
     import sys
+    from pathlib import Path
 
     value = "synthetic-revenue-pulse-api-key" if state != "cleared" else ""
     ds = DataSource.objects.create(studio=studio_tree, name="litellm_key", type="secret",
@@ -171,7 +171,7 @@ class Report(BaseReport):
     env.update(FW_PROJECT_ROOT=str(studio_tree.project_root), FW_UPDATE_CHECK="0",
                PYTHONPATH=str(repo))
     result = subprocess.run([sys.executable, "-m", "trellum.run", str(directory), "--no-serve"],
-                            cwd=repo, env=env, capture_output=True, text=True, timeout=60)
+                            cwd=repo, env=env, capture_output=True, text=True, timeout=60, check=False)
     assert result.returncode == 0, result.stderr[-1000:]
     output = studio_tree.output_dir / "revenue-pulse"
     assert (output / "index.html").is_file()
@@ -185,10 +185,12 @@ class Report(BaseReport):
         assert data["value"] == "optional value unavailable"
 
 
-def test_portal_secret_flag_cannot_be_downgraded_by_declaration(studio_tree):
-    ds = DataSource.objects.create(studio=studio_tree, name="token", type="string",
-        config={"secret": True}, credentials={"value": "synthetic-binding-secret"})
-    RepoDataSource.objects.create(studio=studio_tree, name=ds.name, type="string",
+@pytest.mark.parametrize("kind,config", [("string", {"secret": True}), ("secret", {})])
+@pytest.mark.parametrize("declared_kind", ["string", "text", "number", "boolean", "json"])
+def test_portal_secret_cannot_be_downgraded_by_declaration(studio_tree, kind, config, declared_kind):
+    ds = DataSource.objects.create(studio=studio_tree, name="token", type=kind,
+        config=config, credentials={"value": "synthetic-binding-secret"})
+    RepoDataSource.objects.create(studio=studio_tree, name=ds.name, type=declared_kind,
         config={"secret": False}, source_file="data-sources/config.yaml")
     env = materialize(studio_tree, report=report_for(studio_tree, [ds.name]))
     assert f"{ds.env_prefix}_VALUE" in json.loads(env["TRELLUM_SCALAR_SECRET_NAMES"])

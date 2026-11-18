@@ -317,6 +317,28 @@ def test_successful_crud_save_follows_same_origin_list_redirect():
         browser.close()
 
 
+def test_scalar_type_change_discards_inflight_saved_connection_test():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        load_page(page)
+        page.locator('[name="host"]').fill("configured")
+        page.locator('#ds-form button[type="submit"]').click()
+        page.wait_for_function("window.requests.length === 2")
+        page.evaluate("completeTest({ok:true,detail:'Initial connection.',revision:'revision-1'})")
+        page.wait_for_function("document.querySelector('[data-ds-test]').disabled === false")
+        # A manual row test has no form generation; the row must invalidate it.
+        page.evaluate("() => { void testSource('1', 'wh', document.querySelector('[data-ds-test]')); }")
+        page.wait_for_function("window.requests.length === 3")
+        page.locator('[name="type"]').evaluate("el => el.add(new Option('String', 'string'))")
+        page.locator('[name="type"]').select_option("string")
+        assert page.locator('[data-ds-result]').text_content() == "Unsaved changes."
+        page.evaluate("completeTest({ok:true,detail:'Stale connection.',revision:'revision-1'})")
+        page.wait_for_function("document.querySelector('[data-ds-test]').disabled === false")
+        assert page.locator('[data-ds-result]').text_content() == "Unsaved changes."
+        browser.close()
+
+
 def test_old_test_does_not_overwrite_new_draft_or_new_saved_revision():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

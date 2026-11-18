@@ -853,11 +853,11 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
   }
   function invalidateTest() {
     if (!form._dsTestingRow) return;
+    form._dsTestingRow._dsGeneration += 1;
     if (scalarType()) {
       form._dsTestingRow.querySelector('[data-ds-result]').textContent = 'Unsaved changes.';
       return;
     }
-    form._dsTestingRow._dsGeneration += 1;
     if (editor) form._dsTestingRow.querySelector('[data-ds-test]').disabled = true;
     dsBadge(form._dsTestingRow, 'warn', editor ? 'Draft changed' : 'Not confirmed');
     form._dsTestingRow.querySelector('[data-ds-result]').textContent = editor ? 'Test draft or save changes to confirm this configuration.' : 'Save changes to test the new configuration.';

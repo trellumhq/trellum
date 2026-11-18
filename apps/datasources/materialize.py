@@ -25,7 +25,12 @@ from pathlib import Path
 
 import yaml
 
-from apps.datasources.models import CREDENTIAL_KEYS, ENV_SUFFIXES, INLINE_TYPES, SCALAR_TYPES
+from apps.datasources.models import (
+    CREDENTIAL_KEYS,
+    ENV_SUFFIXES,
+    INLINE_TYPES,
+    SCALAR_TYPES,
+)
 from apps.datasources.status import SourceState, effective_fields, source_states
 
 #: Incomplete sources are omitted, except explicitly cleared upload entries.
@@ -84,7 +89,8 @@ def materialize(studio, *, report=None) -> dict[str, str]:
             # Only this report's selected bindings enter its child environment.
             entry["runtime_binding"] = True
             secret = (state.type == "secret" or fields.get("secret") is True
-                      or (ds is not None and (ds.config or {}).get("secret") is True))
+                      or (ds is not None and (
+                          ds.type == "secret" or (ds.config or {}).get("secret") is True)))
             entry["secret"] = secret
             if ds is not None:
                 entry["credentials"] = {"local": ds.env_prefix}
