@@ -54,6 +54,29 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Stabilize funnel and heatmap visual compatibility checks against one-level
+  browser rounding in surrounding controls, while comparing chart pixels,
+  geometry and exported data exactly.
+- Keep local filters on retained live results responsive while their parent
+  query is pending.
+- Keep mounted FilterBars usable when their dataset is removed and recreated,
+  and release their control subscriptions when the bar leaves the document.
+- Preserve missing CSS color components and alpha during image capture on
+  browsers that serialize those components as `none`.
+- Reduce cascading-dropdown allocations by reading distinct option values directly
+  from encoded data and reusing matching row indices for equivalent filter queries.
+- Settle cascading selections before delivering filtered rows to charts, and
+  suppress redundant dropdown callbacks during option updates. Preserve child
+  selections when unrelated filters produce an empty result.
+
+### Upgrade notes
+
+- Rebuild reports to include the optimized filter runtime. Existing generated HTML
+  keeps its embedded runtime until it is rebuilt.
+
+
+### Fixed
+
 - Dispose FilterBar dropdown widgets and their cascading-filter subscriptions
   before switching report scopes, so visible choices match the active dataset
   without duplicated SlimSelect controls. Late readiness callbacks from a
