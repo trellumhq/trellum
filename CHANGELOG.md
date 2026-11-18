@@ -52,6 +52,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and discard older connection-test results after switching to a scalar type.
 - Detect missing studio checkouts and report files on page load and startup,
   then restore published files during sync even when the commit is unchanged.
+  Remove reports left by a failed publish when restoring the previous version.
 - Keep long filter bars usable on phones, improve demo card and table spacing,
   and preserve visible events in the Player Overview trends. Give A/B comparison
   intervals more space and simplify the visual-upgrade guide's navigation.

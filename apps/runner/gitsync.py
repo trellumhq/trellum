@@ -868,7 +868,7 @@ class StudioGitSync:
     def _restore_published(self) -> None:
         """Materialize the published commit without consuming pending review.
 
-        Called only under the sync locks. Validate existing registry files
+        Called only under the sync locks. Validate the published report files
         before rescanning, so a partial copy cannot mark reports removed.
         Restoring sources never queues builds.
         """
@@ -894,12 +894,30 @@ class StudioGitSync:
             rc, _, err = self._run_git("checkout", "--force", "--detach", sha)
             if rc:
                 raise RuntimeError(f"Restore checkout failed: {err}")
-            scan_report_configs(os.path.join(self.cache_dir, self.repo.path))
+            source_reports = Path(self.cache_dir) / self.repo.path
+            entries = scan_report_configs(str(source_reports), include_hidden=True, include_disabled=True)
             self._copy_root_files()
             self._copy_reports()
-            health = check_studio_files(self.repo)
-            if not health["ready"]:
-                raise RuntimeError(health["message"])
+            # A failed publish may already have copied or registered new reports.
+            # Validate against the published tree, not that partly updated registry.
+            for entry in entries:
+                directory = self.studio.reports_dir / Path(entry["dir"]).name
+                try:
+                    _checked_path(directory, directory=True)
+                    _checked_path(directory / "report.yaml", directory=False)
+                except (OSError, ValueError) as exc:
+                    raise RuntimeError("Published report files could not be restored.") from exc
+            # Only reports/ is Git-owned. Keep uploads, generated source bindings
+            # and other portal-owned project files outside this subtree intact.
+            retained = set(os.listdir(source_reports)) if source_reports.is_dir() else set()
+            stale = []
+            if self.studio.reports_dir.is_dir():
+                stale = [path for path in self.studio.reports_dir.iterdir()
+                         if path.name not in retained and (path.is_dir() or path.is_symlink())]
+            for path in stale:
+                _checked_path(path, directory=True)
+            for path in stale:
+                shutil.rmtree(path)
             if self.repo.last_error.startswith(("Studio files missing.", "Studio files need restoring.")):
                 self.repo.last_error = ""
             warning = self._sync_repo_datasources(sha)

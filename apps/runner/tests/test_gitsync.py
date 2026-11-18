@@ -1810,6 +1810,44 @@ class TestPublishedFilesRestoration:
         assert check_studio_files(repo)["ready"]
         assert not _sync(studio_repo)["restored"]
 
+    @pytest.mark.parametrize("failure_stage", ["copy", "registry"])
+    def test_restore_discards_reports_from_a_partially_failed_publish(
+        self, studio_repo, studio_tree, upstream, monkeypatch, failure_stage,
+    ):
+        from apps.reports import scan
+
+        assert _sync(studio_repo)["ok"]
+        published = _fresh_repo(studio_repo).last_synced_sha
+        portal_file = studio_tree.project_root / "data-sources" / "keep.txt"
+        portal_file.parent.mkdir(exist_ok=True)
+        portal_file.write_text("portal-owned")
+        upstream["write_report"]("beta")
+        upstream["push"]("add beta")
+        _set(studio_repo, publish_mode="manual")
+        assert _sync(studio_repo)["ok"]
+        _set(studio_repo, publish_requested=True,
+             publish_requested_to=_fresh_repo(studio_repo).remote_sha)
+        target, attribute = ((StudioGitSync, "_copy_reports") if failure_stage == "copy"
+                             else (scan, "sync_studio_registry"))
+        original = getattr(target, attribute)
+
+        def fail_after_write(*args, **kwargs):
+            original(*args, **kwargs)
+            raise OSError("interrupted publication")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(target, attribute, fail_after_write)
+            assert not _sync(studio_repo)["ok"]
+        assert (studio_tree.reports_dir / "beta" / "report.yaml").is_file()
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"], result
+        assert _fresh_repo(studio_repo).last_synced_sha == published
+        assert not (studio_tree.reports_dir / "beta").exists()
+        assert not Report.objects.filter(studio=studio_tree, slug="beta", present_in_scan=True).exists()
+        assert Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
+        assert portal_file.read_text() == "portal-owned"
+        assert Run.objects.count() == 0
+
     def test_fetch_failure_can_restore_locally_but_remains_an_error(self, studio_repo, studio_tree, monkeypatch):
         assert _sync(studio_repo)["ok"]
         (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
@@ -1890,12 +1928,15 @@ class TestPublishedFilesRestoration:
         assert not Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
         assert Report.objects.get(studio=studio_tree, slug="beta").present_in_scan
 
-    @pytest.mark.parametrize("target", ["repo", "project", "project/reports"])
+    @pytest.mark.parametrize("target", ["repo", "project", "project/reports", "project/reports/unpublished"])
     def test_restore_never_erases_symlink_targets(self, studio_repo, studio_tree, tmp_path, target):
         import shutil
 
         assert _sync(studio_repo)["ok"]
         directory = studio_tree.data_root / target
+        if target == "project/reports/unpublished":
+            directory.mkdir()
+            (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
         shutil.rmtree(directory)
         unrelated = tmp_path / "unrelated"
         unrelated.mkdir()
