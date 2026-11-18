@@ -58,7 +58,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Maintenance and documentation
 
 - Update GitHub Actions and Python dependencies with compatible supported
-  interpreter, connector and browser versions.
+  interpreter, connector and browser versions. Keep Python 3.11 framework
+  installs, the HTTPX SDK transport, isolated Snowflake emulator and pinned
+  CI browser image compatible.
 - Refresh the Portal Tour and explain Trellum's data questions, interactive
   reports, dashboards, articles and presentations. Clarify viewer read access
   and developer/admin authoring and publishing permissions.

@@ -5,7 +5,8 @@
 
 # Core dependencies
 pandas>=3.1.1
-numpy>=2.5.4
+# NumPy 2.5+ requires Python 3.12; keep the Python 3.11 install path.
+numpy>=2.0.2
 vertica-python>=1.4.0
 openpyxl>=3.1.5
 python-dotenv>=1.2.4
@@ -24,7 +25,8 @@ requests>=2.34.2
 Pillow>=13.0.0
 
 # Cross-platform OS locks for private local credential updates.
-portalocker>=4.4.2,<5
+portalocker>=3.2.0,<4
 
 # Pinned AST contract for restricted PostgreSQL assistant queries.
-sqlglot==30.31.0
+# fakesnow 0.12.1 also requires the 30.22.x series.
+sqlglot==30.22.0

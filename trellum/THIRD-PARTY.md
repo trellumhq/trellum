@@ -26,6 +26,11 @@ remains MIT-CMU and Snowflake Connector 5.1.0 remains Apache-2.0. The updated
 transitive pins use MPL-2.0 (certifi 2026.10.19), MIT (filelock 4.2.1) and
 BSD-3-Clause (protobuf 6.33.6).
 
+Dependency metadata was rechecked on **2026-11-18** for the compatible update:
+NumPy 2.4.6 (Python 3.11) and 2.5.4 (Python 3.12+) retain the licence expression
+listed below; pandas 3.1.1 remains BSD-3-Clause and Snowflake Connector 5.2.0
+remains Apache-2.0. The emulator installs Connector 4.8.1 separately.
+
 ## Bundled — front-end libraries (`static/vendor/`)
 
 Every one is redistributable with the framework under the licence shown below.
@@ -111,7 +116,7 @@ are redistributed in a container image.
 | fsspec | BSD-3-Clause |
 | aiobotocore | Apache-2.0 |
 | botocore | Apache-2.0 |
-| boto3 | [Apache-2.0](https://github.com/boto/boto3/blob/1.43.106/LICENSE) |
+| boto3 | [Apache-2.0](https://github.com/boto/boto3/blob/1.43.117/LICENSE) |
 
 ### Authentication compatibility test support
 
@@ -123,20 +128,22 @@ backends. They are not added to the standalone framework's runtime dependencies.
 | rsa | Apache-2.0 |
 | ldap3 | LGPL-3.0-or-later |
 
-### `../requirements-django.txt` — native cloud AI additions
+### `../requirements.txt` and `../requirements-django.txt` — control-plane AI
 
 These are control-plane dependencies; the standalone framework does not import
 the AI adapters. Existing google-auth and msal notices are listed above.
 
 | Package | Version | Licence |
 | --- | --- | --- |
-| google-genai | 2.29.0 | [Apache-2.0](https://github.com/googleapis/python-genai/blob/v2.29.0/LICENSE) |
-| azure-identity | 1.26.0 | [MIT](https://github.com/Azure/azure-sdk-for-python/blob/azure-identity_1.26.0/LICENSE) |
+| anthropic | 0.125.0 | [MIT](https://github.com/anthropics/anthropic-sdk-python/blob/v0.125.0/LICENSE) |
+| openai | 2.54.0 | [Apache-2.0](https://github.com/openai/openai-python/blob/v2.54.0/LICENSE) |
+| google-genai | 3.3.0 | [Apache-2.0](https://github.com/googleapis/python-genai/blob/v3.3.0/LICENSE) |
+| azure-identity | 1.27.0 | [MIT](https://github.com/Azure/azure-sdk-for-python/blob/azure-identity_1.27.0/LICENSE) |
 | azure-core | 1.41.0 | [MIT](https://github.com/Azure/azure-sdk-for-python/blob/azure-core_1.41.0/LICENSE) |
 | msal-extensions | 1.3.1 | [MIT](https://github.com/AzureAD/microsoft-authentication-extensions-for-python/blob/1.3.1/LICENSE) |
 | tenacity | 9.1.4 | [Apache-2.0](https://github.com/jd/tenacity/blob/9.1.4/LICENSE) |
-| websockets | 16.0 | [BSD-3-Clause](https://github.com/python-websockets/websockets/blob/16.0/LICENSE) |
-| s3transfer | 0.19.0 | [Apache-2.0](https://github.com/boto/s3transfer/blob/0.19.0/LICENSE.txt) |
+| websockets | 17.4 | [BSD-3-Clause](https://github.com/python-websockets/websockets/blob/17.4/LICENSE) |
+| s3transfer | 0.19.3 | [Apache-2.0](https://github.com/boto/s3transfer/blob/0.19.3/LICENSE.txt) |
 
 The table includes LGPL packages and orjson's MPL licence expression. Refer to
 each package's notices for its applicable terms rather than treating the

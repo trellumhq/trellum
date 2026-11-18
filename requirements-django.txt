@@ -31,11 +31,12 @@ docker==7.2.0
 # Headless Chromium driver for report snapshot rendering (alerts + scheduled
 # delivery attachments). apps/reports/snapshot.py imports it lazily, so its
 # absence only degrades that one feature rather than failing the whole app.
-playwright==1.65.1
+# Match the pinned CI browser image and previous-release browser lane.
+playwright==1.62.0
 # Object storage for the S3 report backend (apps/core/s3.py). Imported lazily,
 # so a local deployment loads none of it.
 # Pinned to match aiobotocore's requirement; raising it alone breaks that pin.
-boto3==1.44.2
+boto3==1.43.117
 # Per-connection transactional API backends; SES uses the existing boto3 pin.
 django-anymail==15.2
 # Custom HTTPS sender uses the already-locked urllib3 directly.
