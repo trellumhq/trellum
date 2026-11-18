@@ -94,7 +94,7 @@ internet or use it for real data.
 Clone the released source on macOS or Linux:
 
 ```bash
-TRELLUM_VERSION=v0.10.2
+TRELLUM_VERSION=v0.11.0
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 ./scripts/demo.sh

@@ -7,129 +7,77 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-- Guide local analysis through unpublished report evidence, scaffold next steps
-  and a combined browser workspace with destination-scoped feedback.
-
-- Detect missing studio checkouts and report files on page load and portal startup,
-  and restore published files during sync even when the commit is unchanged.
+## [0.11.0] — 2026-11-18
 
 ### Added
 
-- Configure string, secret, text, number, boolean and JSON data sources in the
-  portal without uploading a spreadsheet. Report-scoped scalar values use
-  encrypted storage and build-only environment injection, with secret output
-  redaction. Text-mode file sources support TXT, JSON and YAML uploads.
-
-### Fixed
-
-- Uploaded data-source files can be replaced with another file type or removed without deleting the source. Changes take effect on the next build. Failed saves restore the previous file, destination collisions preserve other files, and secondary row actions are grouped under More.
-
-- Reports can use `ctx.ai.complete()` with the organization’s saved AI connection,
-  without provider credentials in the build. Report spend shares the organization
-  AI budget and does not count against any user’s personal cap. AI settings
-  distinguishes chat readiness from report-build availability.
-- Report AI completions price model overrides independently, retain valid usage
-  when an answer is rejected, and retry cloud overload responses. Broker cleanup
-  failures cannot interrupt report termination or monitoring of other runs.
-- Image and PDF captures handle missing CSS color channels and alpha in newer
-  browsers.
-
+- Add string, secret, text, number, boolean and JSON data sources. Store values
+  encrypted, inject them only into builds that declare the source, and read them
+  through `ctx.read_text()` or `ctx.read_value()`. Text-mode file sources accept
+  TXT, JSON and YAML uploads.
+- Let reports call `ctx.ai.complete()` through the organization's saved AI
+  connection without copying provider credentials into the report build.
+  Record report usage against the organization, separately from personal caps.
 
 ### Changed
 
+- Make browser review the default handoff when an agent creates or updates a
+  report. Build and validate first, open the review URL, share a clickable link,
+  and keep listening for scoped feedback. Explicit build-only, CI, plain-preview
+  and no-browser requests remain supported.
 - Check for newer stable releases from the CLI overview used at agent session
-  start, sharing the existing daily cache and offline/CI opt-outs with builds
-  and `doctor`. Generated project instructions surface available upgrades.
-
-### Documentation
-
-- Introduce Trellum consistently in installed agent instructions and clarify
-  the workflows for data questions, interactive reports, analysis articles and
-  presentations, including source knowledge and the optional portal.
-- Clarify viewer read access and developer report authoring, build and publish
-  permissions in agent guidance and the customer workflow.
-- Make browser review part of report creation and updates by default in the
-  agent guide, CLI overview, generated project instructions and prototype
-  skill, including remote browser handoff and explicit build-only exceptions.
-  Update the customer workflow to describe this automatic handoff.
-- Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
-  and document a proposed README visual sequence for review. Use closer
-  captures for sparse settings and reports within a consistent 1280 × 720 frame.
+  start, reusing the daily cache, bounded wait, offline behavior and opt-outs.
+- Guide articles and presentations through local evidence capture and review,
+  including unpublished source reports. Add analysis scaffold next steps and
+  clearer source-building controls in the combined analysis workspace.
+- Reuse filter row indices and batch cascading dropdown updates, reducing
+  allocations and redundant callbacks while retaining valid child selections.
 
 ### Fixed
 
-- Preserve existing database and dataframe source resolution while requiring
-  report declarations for the new scalar readers.
-- Filter custom report data before merging it with framework metadata, including
-  data whose keys match protocol field names.
-- Redact scalar secrets from paginated Metrics workspace artifacts and from
-  native and subprocess build logs, including local `.env` builds.
-- Keep cleared scalar values empty after later editor saves, preserve multiline
-  secret replacements, and show scalar status and controls appropriate to each type.
-- Preserve declared scalar types and secret protection when editing existing
-  source bindings, including description-only saves.
-- Keep generated report markup, navigation and metric identities intact when
-  redacting short scalar secrets, while filtering report content and custom
-  component output.
+- Keep scope dropdowns aligned with the active dataset and dispose old controls,
+  listeners and subscriptions before scope replacement. Keep retained live
+  results and recreated datasets responsive to local filtering.
+- Replace uploaded files across supported file types or remove their contents
+  without deleting the data source. Preserve original bytes on failed saves
+  and refuse occupied replacement destinations.
+- Preserve existing database and dataframe readers alongside scalar sources.
+  Keep saved scalar types and secret classification intact, including cleared
+  and multiline values. Filter secrets from report artifacts and build logs
+  while preserving framework markup and identities.
+- Detect missing studio checkouts and report files on page load and startup,
+  then restore published files during sync even when the commit is unchanged.
+- Keep long filter bars usable on phones, improve demo card and table spacing,
+  and preserve visible events in the Player Overview trends. Give A/B comparison
+  intervals more space and simplify the visual-upgrade guide's navigation.
+- Handle missing CSS color components and alpha in image and PDF captures.
+- Price report AI model overrides separately, retain known usage when rejecting
+  an answer, retry confirmed overload responses, and isolate broker cleanup
+  failures from report termination and other runs.
 
+### Maintenance and documentation
 
-### Fixed
-
-- Stabilize funnel and heatmap visual compatibility checks against one-level
-  browser rounding in surrounding controls, while comparing chart pixels,
-  geometry and exported data exactly.
-- Keep local filters on retained live results responsive while their parent
-  query is pending.
-- Keep mounted FilterBars usable when their dataset is removed and recreated,
-  and release their control subscriptions when the bar leaves the document.
-- Preserve missing CSS color components and alpha during image capture on
-  browsers that serialize those components as `none`.
-- Reduce cascading-dropdown allocations by reading distinct option values directly
-  from encoded data and reusing matching row indices for equivalent filter queries.
-- Settle cascading selections before delivering filtered rows to charts, and
-  suppress redundant dropdown callbacks during option updates. Preserve child
-  selections when unrelated filters produce an empty result.
+- Update GitHub Actions and Python dependencies with compatible supported
+  interpreter, connector and browser versions.
+- Refresh the Portal Tour and explain Trellum's data questions, interactive
+  reports, dashboards, articles and presentations. Clarify viewer read access
+  and developer/admin authoring and publishing permissions.
 
 ### Upgrade notes
 
-- Rebuild reports to include the optimized filter runtime. Existing generated HTML
-  keeps its embedded runtime until it is rebuilt.
-
-
-### Fixed
-
-- Dispose FilterBar dropdown widgets and their cascading-filter subscriptions
-  before switching report scopes, so visible choices match the active dataset
-  without duplicated SlimSelect controls. Late readiness callbacks from a
-  previous scope no longer reconnect its dropdowns.
-
-### Upgrade notes
-
-- Rebuild affected reports with 0.11.0 to include the corrected runtime. Existing
-  generated HTML does not change when the framework package is upgraded.
-- After rebuilding, remove any report-local `fw-dropdowns-ready` workaround
-  that deletes stale SlimSelect wrappers. The framework now owns that cleanup.
-- Report definitions, filter settings and public component APIs are unchanged.
-
-### Fixed
-
-- Keep long report filter bars in normal page flow on phones, while preserving
-  compact pinned bars and desktop behavior. Local filter offsets follow the
-  main bar's current pinned height, including after scope replacement.
-- Give Player Overview's compact trends individual chart cards and fit its
-  eight headline metrics to the available panel width without changing values
-  or plot heights. Improve Store Health card spacing and Cart Funnel phone
-  stage labels. Balance Insert Coin's headline metrics and keep the Checkout
-  Findings conversion table readable on phones.
-- Give report A/B comparison confidence intervals more column width.
-- Start business demos with releases and incidents visible; campaigns and A/B
-  tests remain available in the annotation controls. The Insert Coin canvas
-  now follows those controls without resetting the game. Player Overview also
-  enables campaigns initially, keeping event markers visible throughout its
-  compact trend grid while A/B-test bands start off.
-- Make the visual upgrade guide's section links easier to scan and keep the
-  live-result example's additional explanation collapsible. Omit unrelated
-  project events from its synthetic observations.
+- Upgrade the portal and runner images together to `v0.11.0`; standalone
+  framework users install `trellum==0.11.0`.
+- Apply the additive AI-usage migration and scalar data-source choices migration
+  through the normal portal upgrade workflow.
+- Rebuild reports to embed the updated filter, capture and responsive runtime.
+  After rebuilding, remove report-local `fw-dropdowns-ready` workarounds that
+  delete stale SlimSelect wrappers; the framework now owns that cleanup.
+- Existing agent projects receive refreshed managed instructions by running
+  `python -m trellum setup project` after upgrading. The startup notice checks
+  for updates; it does not install them automatically.
+- Report AI usage checks use recorded completions, not a guaranteed provider
+  spending ceiling. Concurrent requests and provider work with unknown outcomes
+  can exceed recorded spend; use provider-side limits for a hard billing cap.
 
 ## [0.10.1] — 2026-11-08
 

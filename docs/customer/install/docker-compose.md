@@ -33,7 +33,7 @@ settings cannot change the selected release.
 ### 1. Get the matching Compose files
 
 ```bash
-TRELLUM_VERSION=v0.10.2
+TRELLUM_VERSION=v0.11.0
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
@@ -56,7 +56,7 @@ knows how to build the image itself; there is no separate Dockerfile step.
 ### Clone and prepare `.env`
 
 ```bash
-TRELLUM_VERSION=v0.10.2
+TRELLUM_VERSION=v0.11.0
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
