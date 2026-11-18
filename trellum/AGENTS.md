@@ -57,11 +57,18 @@ useful.
 
 Scaffold a new report: `python3 -m trellum.new my-report --studio my-studio --category Revenue`. Build it: `python3 -m trellum.run reports/my-report --no-serve`.
 
-**Always pass `--no-serve` unless you have been asked to open the report in a
-browser.** Without it the command starts a preview server on :8050 and never
-exits — the build itself finishes in under a second, but the process stays in
-the foreground until it is killed. Build first, then serve as a separate step
-if a human is going to look at it.
+**Build with `--no-serve`, then open the report for review.** Creating or
+updating a report for a person includes the browser handoff automatically;
+do not wait for a separate request to launch it. After building and checking
+validation, run `python -m trellum review start reports/<slug>`, open its
+printed URL in the user's browser, and share a clickable link. Follow
+`trellum guide review` and keep the report-scoped feedback poll active.
+A folder path alone is not a completed handoff. Only explicitly requested
+build-only/source-only work, CI or unattended publication stops after the
+build; honor a request for a plain preview or no browser.
+
+`--no-serve` keeps the build process from blocking on a foreground server.
+It is an iteration option, not a reason to omit the browser handoff.
 
 **Read files with your file-reading tool, not with `cat`, `ls` or `grep` in a
 shell.** Every shell command starts a process; your native read, glob and search
@@ -975,6 +982,12 @@ suppression.
 <!-- topic: review -->
 ## The live review loop
 
+Start this loop automatically when creating or updating a local report for
+a person. The report request includes opening it for review; no separate
+launch request is needed. Explicit build-only/source-only requests, CI and
+unattended publication do not start a local session. Honor requests for a
+plain preview or no browser.
+
 Review mode turns a served report into a feedback surface: the user clicks
 elements in the browser, types change requests, queues them with one optional
 chat message, and hits **Send** — you receive the batch in the terminal with
@@ -985,8 +998,14 @@ The loop, from your seat:
 
 1. `python -m trellum review start reports/<slug>` — builds if output is
    missing (`--rebuild` to force), starts or reuses the background server,
-   enables review mode, and opens the browser. Share its printed URL. If a
-   server predating review mode holds the port, rerun with `--restart-server`.
+   enables review mode, and attempts to open the host browser. Build changed
+   source first with `--no-serve`, or pass `--rebuild`, so existing output
+   cannot hide your edits. On a remote/headless host, use `--no-browser` and
+   open the printed report URL through the agent's browser integration.
+   Verify the intended report loads in the browser available to the user,
+   and share a clickable link before waiting for feedback. If browser access
+   is unavailable, say so and provide a working link; do not claim it opened.
+   If a server predating review mode holds the port, rerun with `--restart-server`.
 2. `python -m trellum review poll --report <slug>` — **BLOCKS** until the user sends
    feedback. From an agent harness, run it with a generous timeout or as a
    tracked background task; if it gets killed, just rerun it — queued
@@ -1200,13 +1219,17 @@ A report task is **not done** until you have:
 2. Surfaced every **FAIL** and **WARN** to the user with check ID, affected component/section, and a concrete fix.
 3. **Fixed every FAIL.** WARNs should be fixed unless intentionally accepted (then suppress in `report.yaml` under `validation.suppress` with a one-line reason for why).
 4. If the report has zero FAILs and zero WARNs, said so explicitly.
-5. **Human review handoff.** When a person is reviewing a local report,
-   start it with `python -m trellum review start reports/<slug>` and share the
-   printed URL. Keep `python -m trellum review poll --report <slug>` active;
+5. **Automatic review handoff.** Creating or updating a local report for a
+   person includes launching it: run `python -m trellum review start
+   reports/<slug>`, open the printed URL in the user's browser, verify the
+   intended report loads, and share a clickable link. Follow `trellum guide
+   review` for remote/headless hosts. A folder path alone is not a completed
+   handoff. Keep `python -m trellum review poll --report <slug>` active;
    after changes, rebuild with `python -m trellum.run reports/<slug>
    --no-serve`, then reply through the scoped poll and continue until the user
    ends review. End the session with `python -m trellum review end` when the
-   user asks you to wrap up. Build-only and CI work stops after the build;
+   user asks you to wrap up. Explicit build-only/source-only requests, CI and
+   unattended publication stop after the build. Honor a no-browser request;
    use `python -m trellum serve --background` only for an explicitly requested
    plain preview without review feedback.
 

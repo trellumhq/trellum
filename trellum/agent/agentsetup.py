@@ -105,13 +105,23 @@ Build. `--no-serve` exits when the build is done:
 {py} -m trellum.new <slug>
 ```
 
-When a person will review a local report, start review mode. It prints the
-preview URL and enables feedback:
+Creating or updating a report for a person includes opening it for review
+automatically. Do not wait for a separate launch request. After building and
+checking validation, start review mode:
 
 ```
 {py} -m trellum review start reports/<slug>
 {py} -m trellum review poll --report <slug>
 ```
+Open the printed report URL in the browser available to the user, verify the
+intended report loads, and share a clickable link before polling. A folder
+path alone is not a completed handoff. On a remote/headless host, use
+`review start reports/<slug> --no-browser` and the agent's browser integration;
+a host-browser launch attempt does not prove the user can see it. If access is
+unavailable, explain that limitation and provide a working link.
+Build changed source first with `--no-serve`, or pass `--rebuild` to review
+start, so the review includes the latest edits. Follow `{py} -m trellum guide review`.
+
 Keep the report-scoped poll active. Apply feedback, rebuild with `--no-serve`,
 then reply and continue polling:
 
@@ -121,9 +131,10 @@ then reply and continue polling:
 ```
 
 Continue until the user ends review; use `review end` if they ask you to wrap
-up. Build-only work stops after `--no-serve`. If someone explicitly asks for a
-plain preview without feedback, use `{py} -m trellum serve --background` and
-share its printed URL.
+up. Only explicitly requested build-only/source-only work, CI or unattended
+publication stops after `--no-serve`; honor a request for no browser.
+For an explicitly requested plain preview without feedback, use
+`{py} -m trellum serve --background` and share its printed URL.
 {portal}
 A report is not finished until the validator reports no FAILs.
 """
@@ -330,12 +341,19 @@ Keep exports in `analysis/results/`; update verified context and preserve questi
 
 `trellum` alone is not on PATH, so name the interpreter as shown.
 
-For human-facing local previews, the current default is
-`{py} -m trellum review start reports/<slug>`. Keep
+Creating or updating a report for a person includes opening it for review
+automatically, without a separate launch request. Build and validate, then run
+`{py} -m trellum review start reports/<slug>`. Open the printed report URL in
+the user's browser, verify the intended report loads, and share a clickable
+link; a folder path alone is not a completed handoff. On a remote/headless
+host, use the agent's browser integration; explain if opening is unavailable
+and provide a working link. Keep
 `{py} -m trellum review poll --report <slug>` active; rebuild with `--no-serve`
 before replying with the feedback session, and continue until the user ends
-review. Follow `{py} -m trellum guide review` for the full loop. Build-only work
-stops after the build; use plain preview only when explicitly requested.
+review. Follow `{py} -m trellum guide review` for the full loop. Only explicitly
+requested build-only/source-only work, CI or unattended publication stops after
+the build. Honor a no-browser request;
+use plain preview only when explicitly requested.
 {portal}{end}
 """
 

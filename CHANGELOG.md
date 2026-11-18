@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Documentation
 
+- Make browser review part of report creation and updates by default in the
+  agent guide, CLI overview and generated project instructions, including
+  remote browser handoff and explicit build-only exceptions.
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
   and document a proposed README visual sequence for review. Use closer
   captures for sparse settings and reports within a consistent 1280 × 720 frame.
