@@ -28,7 +28,7 @@ import yaml
 from apps.datasources.models import CREDENTIAL_KEYS, ENV_SUFFIXES, INLINE_TYPES, SCALAR_TYPES
 from apps.datasources.status import SourceState, effective_fields, source_states
 
-#: Nothing to write for these: the build would be blocked before it started.
+#: Incomplete sources are omitted, except explicitly cleared upload entries.
 _OMITTED = (SourceState.NEEDS_CREDENTIALS, SourceState.NEEDS_UPLOAD, SourceState.UNKNOWN)
 _REPLACE_RETRY_DELAYS = (0.01, 0.03, 0.06)
 
@@ -63,6 +63,13 @@ def materialize(studio, *, report=None) -> dict[str, str]:
     assistant_value = None
     for state in source_states(studio):
         if state.state in _OMITTED and state.type not in SCALAR_TYPES:
+            # Keep an explicit cleared upload as a pathless entry. Inline
+            # report declarations must not fall back to the removed path.
+            binding = state.binding
+            if (state.state == SourceState.NEEDS_UPLOAD and binding is not None
+                    and binding.is_uploaded and (binding.config or {}).get("path") == ""):
+                sources[state.name] = {"type": "file" if state.type == "image" else state.type,
+                                       "upload": True}
             continue
         ds, declaration = state.binding, state.declaration
         fields = effective_fields(declaration, ds)
@@ -240,39 +247,14 @@ def stored_file(ds) -> Path | None:
 def upload_rel_path(ds, filename: str = "") -> str:
     """Where an upload of ``filename`` lands, relative to :func:`storage_root`.
 
-    A configured path is the destination, verbatim: it is what the admin chose,
-    what reports resolve, and what the framework dispatches on — an upload is
-    not permission to move it. Only when nothing is configured yet does the
-    filename decide, and then only its extension, so a first upload of
-    ``q3.xlsx`` gives ``…/<name>.xlsx`` rather than an extensionless file the
-    framework cannot read.
+    Keep a configured destination's stem, but follow the new file's extension
+    so the framework selects the matching reader on the next build.
     """
     rel = (ds.config or {}).get("path")
-    if rel:
-        return rel
     ext = os.path.splitext(filename)[1].lower()
+    if rel:
+        return os.path.splitext(rel)[0] + ext if ext else rel
     return default_upload_rel(ds) + ext
-
-
-def extension_conflict(ds, filename: str) -> str:
-    """Why this upload does not fit the configured path, or "".
-
-    The framework picks its reader from the extension (``.csv`` -> read_csv,
-    ``.xlsx`` -> read_excel), so writing an Excel file over ``budget.csv``
-    produces a source that parses as garbage at build time instead of failing
-    here, where a person is watching.
-    """
-    rel = (ds.config or {}).get("path")
-    if not rel:
-        return ""
-    want = os.path.splitext(rel)[1].lower()
-    got = os.path.splitext(filename or "")[1].lower()
-    if not want or not got or want == got:
-        return ""
-    return (
-        f"This source reads {os.path.basename(rel)}, but you picked a "
-        f"{got} file. Upload a {want} file, or change the path first."
-    )
 
 
 def upload_target(ds, filename: str = "") -> Path:

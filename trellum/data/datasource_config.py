@@ -82,6 +82,13 @@ def resolve_declared_source(sources: list, name: str, *, allow_legacy: bool = Fa
     """
     for source in sources:
         if isinstance(source, dict) and source.get("name") == name:
+            # Portal-managed uploads can move or be cleared independently of
+            # the report's committed path, including text-mode files.
+            if source.get("type") == "file":
+                central = get_datasource(name)
+                if (central is not None and central.get("type") == "file"
+                        and central.get("upload")):
+                    return {**source, "path": central.get("path", "")}
             return source
         if isinstance(source, str) and source == name:
             central = get_datasource(source)

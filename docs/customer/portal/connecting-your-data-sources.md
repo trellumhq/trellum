@@ -208,9 +208,17 @@ replace them. They are independent, and all three combinations are useful:
 - **Both** — a file committed as a baseline that an analyst also refreshes by
   hand between pushes.
 
-Each row gets **Upload** / **Replace file** and **Download** buttons, with a
-progress bar for large files. Uploads are bounded by a per-file cap and your
-organization's storage quota.
+Each uploadable row shows the current filename beside **Replace file** and
+**Remove file**, plus **Download**. Replacing accepts a different file type
+(for example, CSV instead of Excel), updates the stored path's extension and
+deletes the previous file. **Remove file** deletes the bytes and clears the
+path, keeping the source and its empty upload slot. Both actions take effect
+on the next build and require no Git commit. A declared source returns to
+**Needs upload**, and reports requiring it wait for a new upload. Code reading
+an absent source must handle the missing file or source error.
+
+A progress bar tracks large uploads. Uploads are bounded by a per-file cap and
+your organization's storage quota.
 
 !!! warning
     Do not point an uploadable file at a path under `reports/`. Git sync

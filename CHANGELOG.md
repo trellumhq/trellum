@@ -14,6 +14,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   encrypted storage and build-only environment injection, with secret output
   redaction. Text-mode file sources support TXT, JSON and YAML uploads.
 
+### Fixed
+
+- Uploaded data-source files can be replaced with another file type or removed without deleting the source. Changes take effect on the next build. Failed saves restore the previous file, destination collisions preserve other files, and secondary row actions are grouped under More.
+
 ### Documentation
 
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data

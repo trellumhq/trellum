@@ -14,19 +14,32 @@ def page_html(*, test_timeout=30000):
     script = script.replace("{{ max_upload_bytes }}", "0").replace("{{ test_url_base }}", "/api/datasources/")
     script = script.replace("}, 30000);", "}, " + str(test_timeout) + ");")
     driver = (ROOT / "static/settings-forms.js").read_text(encoding="utf-8")
-    return """
-      <meta charset="utf-8">
+    css = (ROOT / "static/ui.css").read_text(encoding="utf-8")
+    return f"<style>{css}</style>" + """
+      <meta charset="utf-8"><body class="mgmt"><main>
       <div style="height:600px"></div>
-      <table data-mobile-cards><tbody><tr id="ds-row-wh" data-source-id="1" data-source-name="wh">
+      <table class="ui-table ds-table" data-mobile-cards>
+        <thead><tr><th>Source</th><th>Scope</th><th>Type</th><th>Status</th><th>Used by</th><th></th></tr></thead><tbody><tr id="ds-row-wh" data-source-id="1" data-source-name="wh">
         <td data-label="Source"><strong data-ds-name>wh</strong><span class="ui-chip">from repository</span>
-          <br data-ds-description-break><span class="muted" data-ds-description>Old description</span></td>
+          <br data-ds-description-break><span class="muted" data-ds-description>Old description</span>
+          <div class="ds-file" data-ds-file><span class="muted" data-ds-filename>No file uploaded</span>
+            <div class="ds-file-controls" data-ds-file-controls>
+              <label class="ui-btn ghost"><input class="ds-file-input" type="file" data-pk="1" data-name="wh" data-url="/upload"><span data-ds-upload-label>Upload file</span></label>
+              <form class="inline" method="post" action="/upload" data-ds-remove data-settings-form data-settings-save hidden>
+                <input type="hidden" name="csrfmiddlewaretoken" value="csrf-form-token"><input type="hidden" name="action" value="remove">
+                <button class="ui-btn ghost ds-remove-file" type="submit">Remove</button>
+              </form>
+            </div>
+          </div></td>
         <td data-label="Scope">studio</td><td data-label="Type">Postgres</td>
         <td data-label="Status"><span data-ds-badge>Connected</span><span data-ds-detail></span>
           <div data-ds-result id="test-result-1"></div>
           <div class="ds-progress" id="ds-progress-1" hidden><div class="ds-progress-bar"><span></span></div><div class="ds-progress-label"></div></div>
-        </td><td data-label="Used by">0 reports</td><td data-label="Actions">
-          <label><input class="ds-file-input" type="file" data-pk="1" data-name="wh" data-url="/upload"><span data-ds-upload-label>Upload</span></label>
-          <button data-ds-test type="button">Test</button>
+        </td><td data-label="Used by">0 reports</td><td class="ui-row-actions ds-actions" data-label="Actions">
+          <button type="button" class="ui-btn ghost" data-ds-more popovertarget="ds-actions-1" aria-expanded="false" aria-controls="ds-actions-1">More</button>
+          <div id="ds-actions-1" class="ds-action-menu" data-ds-action-menu popover role="group" aria-label="Actions for wh">
+            <button data-ds-test type="button">Test</button>
+          </div>
         </td></tr></tbody></table>
       <div style="height:600px"></div>
       <h2 data-ds-form-title>Add a portal-only source (advanced)</h2>
@@ -80,7 +93,7 @@ def load_page(page, **kwargs):
 
 def load_editor(page):
     html = page_html()
-    start, end = html.index('<table data-mobile-cards>'), html.index('</table>') + len('</table>')
+    start, end = html.index('<table class="ui-table ds-table" data-mobile-cards>'), html.index('</table>') + len('</table>')
     html = html[:start] + """
       <h1 data-ds-editor-name>wh</h1><p data-ds-saved-evidence>Last confirmed yesterday</p><p data-ds-saved-scope>Credentials for this studio.</p>
       <div id="ds-editor-status" data-ds-status><span data-ds-badge>Last confirmed yesterday</span>
@@ -352,9 +365,9 @@ def test_upload_updates_file_controls_without_navigation_and_preserves_draft():
         page.locator('.ds-file-input').set_input_files({"name": "data.csv", "mimeType": "text/csv", "buffer": b"a,b\n1,2\n"})
         scroll = page.evaluate("window.scrollY")
         page.evaluate("completeUpload()")
-        assert page.locator('[data-ds-upload-label]').text_content() == "Replace file"
+        assert page.locator('[data-ds-upload-label]').text_content() == "Replace"
         assert page.locator('[data-ds-download]').get_attribute("href") == "/download"
-        assert page.locator('.ds-progress-label').text_content() == "Uploaded 8 B."
+        assert page.locator('.ds-progress-label').text_content() == "Uploaded 8 B. Takes effect on the next build."
         assert page.evaluate("window.scrollY") == scroll
         assert page.locator('[name="other"]').input_value() == "Another draft"
         browser.close()
@@ -457,12 +470,16 @@ def test_new_source_has_native_edit_delete_and_next_save_edits_same_source():
         assert page.locator('[data-ds-form-title]').text_content() == "Edit “created”"
         confirmations = []
         page.on("dialog", lambda dialog: (confirmations.append(dialog.message), dialog.dismiss()))
+        if not delete.is_visible():
+            row.locator('[data-ds-more]').click()
         delete.locator('button').click()
         assert "created" in confirmations[-1]
         page.evaluate("window.saveResponse.source_name = 'renamed'")
         page.locator('[name="name"]').fill("renamed")
         page.locator('#ds-form button[type="submit"]').click()
         page.wait_for_function("window.requests.length === 4")
+        if not delete.is_visible():
+            row.locator('[data-ds-more]').click()
         delete.locator('button').click()
         assert "renamed" in confirmations[-1] and "created" not in confirmations[-1]
         assert page.locator('tr[data-source-id="9"]').count() == 1
@@ -484,7 +501,7 @@ def test_first_credential_save_updates_configure_and_removal_controls():
           var link = document.createElement('a');
           link.dataset.dsConfigure = '';
           link.setAttribute('href','?configure=wh#configure'); link.textContent='Configure';
-          document.querySelector('[data-label=Actions]').appendChild(link);
+          document.querySelector('[data-ds-action-menu]').appendChild(link);
           window.saveResponse = {configured:true,can_edit:false,configure_url:'?configure=wh#configure',remove_credentials:true};
         }""")
         page.locator('[name="host"]').fill("new")
@@ -497,6 +514,46 @@ def test_first_credential_save_updates_configure_and_removal_controls():
         assert remove.locator('[name="csrfmiddlewaretoken"]').input_value() == "csrf-form-token"
         confirmations = []
         page.on("dialog", lambda dialog: (confirmations.append(dialog.message), dialog.dismiss()))
+        page.locator('[data-ds-more]').click()
         remove.locator('button').click()
         assert "Remove the stored credentials" in confirmations[-1] and "wh" in confirmations[-1]
+        browser.close()
+
+
+def test_replace_filename_and_remove_clear_slot_without_navigation_or_losing_draft():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        load_page(page)
+        page.locator('[name="other"]').fill("Another draft")
+        for filename in ("litellm_key.xlsx", "litellm_key.csv"):
+            page.locator('.ds-file-input').set_input_files({
+                "name": filename, "mimeType": "application/octet-stream", "buffer": b"replacement",
+            })
+            page.evaluate("completeUpload()")
+            assert page.locator('[data-ds-filename]').text_content() == filename
+            assert page.locator('[data-ds-remove]').is_visible()
+            assert page.locator('[data-ds-upload-label]').text_content() == "Replace"
+        page.evaluate("""() => {
+            window.fetch = function(url, options) {
+                window.removeAction = options.body.get('action');
+                return Promise.resolve({ok:true,json:function(){return Promise.resolve({
+                    ok:true,removed:true,revision:'removed',badge:'warn',label:'Needs upload',
+                    detail:'No file uploaded.',message:'Removed. Takes effect on the next build.'
+                })}});
+            };
+            window.pageMarker = 'same document';
+        }""")
+        page.locator('[data-ds-remove] button').scroll_into_view_if_needed()
+        scroll = page.evaluate("window.scrollY")
+        page.locator('[data-ds-remove] button').click()
+        page.wait_for_function("document.querySelector('[data-ds-remove]').hidden")
+        assert page.evaluate("window.removeAction") == "remove"
+        assert page.locator('[data-ds-filename]').text_content() == "No file uploaded"
+        assert page.locator('[data-ds-download]').count() == 0
+        assert page.locator('[data-ds-upload-label]').text_content() == "Upload file"
+        assert page.locator('[name="other"]').input_value() == "Another draft"
+        assert page.evaluate("window.pageMarker") == "same document"
+        assert page.evaluate("window.scrollY") == scroll
+        assert page.locator('.ds-file-input').is_enabled()
         browser.close()

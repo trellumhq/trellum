@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import os
+import uuid
 from dataclasses import replace
 from urllib.parse import quote
 
 from django import forms
 from django.contrib import messages
+from django.db import transaction
 from django.db.models.functions import Collate
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -21,8 +23,8 @@ from apps.core.form_responses import is_settings_request, settings_error, settin
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from apps.datasources.forms import DataSourceForm
+from apps.datasources.uploads import UploadChange
 from apps.datasources.materialize import (
-    extension_conflict,
     resolve_path,
     stored_file,
     upload_rel_path,
@@ -92,6 +94,7 @@ def _source_info(ds: DataSource, state: SourceState) -> dict:
     # bytes live in the organization's share rather than a studio project.
     if state.type in INLINE_TYPES:
         full = stored_file(ds)
+        info["filename"] = full.name if full is not None else ""
         if full and full.is_file():
             stat = os.stat(full)
             info["status"] = "available"
@@ -157,6 +160,22 @@ def _whole_number(raw, default: int, low: int, high: int, name: str) -> int:
 
 
 def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
+    # Serialize replacements and clears so another request cannot leave an
+    # unreferenced file or restore a path removed by a concurrent upload.
+    try:
+        # The file guard surrounds the commit too: a failed save, audit or
+        # commit must restore the bytes as well as roll back the database.
+        with UploadChange() as change:
+            with transaction.atomic(durable=True):
+                ds = DataSource.objects.select_for_update().get(pk=ds.pk)
+                return _store_upload_locked(request, ds, name, change)
+    except FileExistsError:
+        return settings_error(request, "Another file already uses that destination. The current file was kept.", status=409)
+    except OSError:
+        return settings_error(request, "The file could not be changed. The current file was kept.", status=500)
+
+
+def _store_upload_locked(request, ds: DataSource, name: str, change: UploadChange) -> JsonResponse:
     """Write one uploaded file for ``ds``. Shared by the studio and org routes.
 
     Three things this does that the bare chunk-loop it replaces did not:
@@ -168,6 +187,19 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
     if not (ds.config or {}).get("upload"):
         return JsonResponse(
             {"ok": False, "error": f"Data source '{name}' does not allow uploads"}, status=403
+        )
+    if request.POST.get("action") == "remove":
+        current = stored_file(ds)
+        change.remove(current)
+        ds.config = {**(ds.config or {}), "path": ""}
+        ds.last_check_at = ds.last_check_ok = None
+        ds.last_check_error = ""
+        ds.save(update_fields=["config", "updated_at", "last_check_at", "last_check_ok", "last_check_error"])
+        audit(request, "datasource.remove_file", target=ds, name=name)
+        return settings_success(
+            request, "File removed. Takes effect on the next build.",
+            source_id=ds.pk, revision=check_revision(ds), removed=True,
+            badge="warn", label="Needs upload", detail="No file uploaded.",
         )
     files = list(request.FILES.values())
     if not files:
@@ -211,9 +243,6 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
             status=507,
         )
 
-    conflict = extension_conflict(ds, upload.name or "")
-    if conflict:
-        return JsonResponse({"ok": False, "error": conflict}, status=400)
     try:
         rel = upload_rel_path(ds, upload.name or "")
         target = resolve_path(ds, rel)
@@ -221,7 +250,7 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    staged = target.with_name(target.name + ".part")
+    staged = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
     written = 0
     try:
         with open(staged, "wb") as fh:
@@ -231,16 +260,15 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
                 if cap and written > cap:
                     raise ValueError(f"upload exceeded {fmt_size(cap)}")
                 fh.write(chunk)
-        os.replace(staged, target)
     except Exception as exc:  # noqa: BLE001 - the live file must survive this
         staged.unlink(missing_ok=True)
         status = 413 if isinstance(exc, ValueError) else 500
         return JsonResponse({"ok": False, "error": str(exc)}, status=status)
 
-    # An extension change relocates the file; drop what it replaced so the
-    # storage quota does not count a file nothing points at any more.
-    if current and current.is_file() and current != target:
-        current.unlink(missing_ok=True)
+    try:
+        change.replace(staged, target, current)
+    finally:
+        staged.unlink(missing_ok=True)
     ds.config = {**(ds.config or {}), "path": rel}
     ds.last_check_at = ds.last_check_ok = None
     ds.last_check_error = ""
@@ -264,6 +292,7 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
             "badge": badge,
             "label": label,
             "detail": _status_detail(state),
+            "message": "File uploaded. Takes effect on the next build.",
         }
     )
 
@@ -586,6 +615,7 @@ def _row(request, st: SourceState, *, studio) -> dict:
         "file_available": info.get("status") == "available",
         "file_accept": (".txt,.json,.yaml,.yml" if effective_fields(st.declaration, ds).get("mode") == "text"
                         else ".csv,.xlsx,.xls,.parquet") if st.type == "file" else "",
+        "filename": info.get("filename", ""),
         "used_by": len(st.used_by),
         **urls,
     }
