@@ -134,8 +134,8 @@ def test_successful_assistant_and_sso_configuration_returns_no_secrets(login, or
     readiness_ok, readiness_reason = llm.is_available(org)
     assert response.json()["assistant_ready"] is readiness_ok
     assert response.json()["updates"]["assistant-readiness-title"] == (
-        "AI is ready based on saved settings." if readiness_ok
-        else "AI is unavailable based on saved settings."
+        "Chat is ready based on saved settings." if readiness_ok
+        else "Chat is unavailable based on saved settings."
     )
     assert response.json()["updates"]["assistant-readiness-reason"] == (
         readiness_reason or "Use Test connection below to verify provider access."

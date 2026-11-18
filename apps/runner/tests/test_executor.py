@@ -37,6 +37,13 @@ class TestChildEnv:
             "SESSION_SECRET_KEY",
             "SECRET_ENCRYPTION_KEY",
             "ANTHROPIC_API_KEY",
+            "LITELLM_API_KEY",
+            "OPENAI_API_KEY",
+            "AWS_SECRET_ACCESS_KEY",
+            "Authorization",
+            "LITELLM_BASE_URL",
+            "TRELLUM_AI_TOKEN",
+            "TRELLUM_AI_SOCKET",
             "POSTGRES_PASSWORD",
             "EMAIL_URL",
         ):
@@ -47,6 +54,13 @@ class TestChildEnv:
             "SESSION_SECRET_KEY",
             "SECRET_ENCRYPTION_KEY",
             "ANTHROPIC_API_KEY",
+            "LITELLM_API_KEY",
+            "OPENAI_API_KEY",
+            "AWS_SECRET_ACCESS_KEY",
+            "Authorization",
+            "LITELLM_BASE_URL",
+            "TRELLUM_AI_TOKEN",
+            "TRELLUM_AI_SOCKET",
             "POSTGRES_PASSWORD",
             "EMAIL_URL",
         ):
@@ -142,6 +156,10 @@ class TestSpawn:
         assert ex.start_run(queued_run) is True
 
         proc = fake_popen["procs"][0]
+        broker = ex._procs[queued_run.pk].ai_broker
+        assert proc.kwargs["env"]["TRELLUM_AI_SOCKET"] == broker.path
+        assert proc.kwargs["env"]["TRELLUM_AI_TOKEN"] == broker.child_env["TRELLUM_AI_TOKEN"]
+        assert broker.child_env["TRELLUM_AI_TOKEN"] not in proc.kwargs["env"]["FW_EXTENSIONS_JSON"]
         # cwd = repo root, so the bundled source wins sys.path.
         assert proc.kwargs["cwd"] == str(settings.BASE_DIR)
         # python -m trellum.run <sandbox>/reports/<slug> --no-serve
@@ -220,6 +238,26 @@ class TestSpawn:
         settings.DEBUG = False
         Executor("w1").start_run(queued_run)
         assert "--production" in fake_popen["procs"][-1].cmd
+
+    def test_spawn_failure_closes_ai_listener(self, fake_popen, queued_run, monkeypatch):
+        from apps.runner.ai_broker import AIBroker
+
+        brokers = []
+        start = AIBroker.start
+
+        def capture(broker):
+            brokers.append(broker)
+            return start(broker)
+
+        def fail(*args, **kwargs):
+            raise OSError("synthetic spawn failure")
+
+        monkeypatch.setattr(AIBroker, "start", capture)
+        monkeypatch.setattr(executor_mod.subprocess, "Popen", fail)
+        assert not Executor("test-ai").start_run(queued_run)
+        assert len(brokers) == 1
+        assert not brokers[0]._thread.is_alive()
+        assert not Path(brokers[0].path).exists()
 
     def test_missing_report_dir_fails_cleanly(self, fake_popen, report_row, studio_tree):
         import shutil
@@ -430,6 +468,71 @@ class TestCompletionAndTimeouts:
         # Live log dir is gone once tails are persisted.
         assert not Path(run.log_dir).exists()
 
+    @pytest.mark.parametrize("reason", ["completed", "stop", "timeout"])
+    def test_replaced_ai_socket_does_not_block_other_tenants(
+        self, fake_popen, queued_run, other_studio, reason
+    ):
+        ex, proc = self._start(fake_popen, queued_run)
+        other_studio.ensure_dirs()
+        other_dir = other_studio.reports_dir / "other"
+        other_dir.mkdir()
+        (other_dir / "report.yaml").write_text("name: Other\n")
+        (other_dir / "generator.py").write_text("# test stub\n")
+        other_report = Report.objects.create(studio=other_studio, slug="other", name="Other")
+        other_run = Run.objects.create(
+            report=other_report, studio=other_studio, slug="other", status=Run.STARTING
+        )
+        assert ex.start_run(other_run)
+        fake_popen["procs"][-1].finish(0)
+
+        running = ex._procs[queued_run.pk]
+        socket_path = Path(running.ai_broker.path)
+        socket_path.unlink()
+        socket_path.mkdir()
+        if reason == "completed":
+            proc.finish(0)
+        elif reason == "stop":
+            Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+        else:
+            running.timeout_seconds = 1
+            running.started_at = timezone.now() - timedelta(seconds=60)
+
+        ex.tick()
+        other_run.refresh_from_db()
+        assert other_run.status == Run.SUCCESS
+        if reason != "completed":
+            assert signal.SIGTERM in proc.signals
+            proc.finish(-signal.SIGTERM if os.name != "nt" else 1)
+            ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == {
+            "completed": Run.SUCCESS, "stop": Run.STOPPED, "timeout": Run.TIMEOUT
+        }[reason]
+        assert ex.running_count == 0
+
+    def test_broker_cleanup_exception_does_not_prevent_stop(
+        self, fake_popen, queued_run, monkeypatch, caplog
+    ):
+        ex, proc = self._start(fake_popen, queued_run)
+        broker = ex._procs[queued_run.pk].ai_broker
+        close = broker.close
+
+        def broken_close():
+            close()
+            raise OSError("synthetic-private-detail")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(broker, "close", broken_close)
+            Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+            ex.tick()
+            assert signal.SIGTERM in proc.signals
+            proc.finish(-signal.SIGTERM if os.name != "nt" else 1)
+            ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.STOPPED
+        assert ex.running_count == 0
+        assert "synthetic-private-detail" not in caplog.text
+
     def test_error_completion_writes_meta(self, fake_popen, queued_run, studio_tree):
         ex, proc = self._start(fake_popen, queued_run)
         run = Run.objects.get(pk=queued_run.pk)
@@ -451,6 +554,7 @@ class TestCompletionAndTimeouts:
 
         ex.tick()  # over budget -> SIGTERM
         assert rp.timed_out is True
+        assert not Path(rp.ai_broker.path).exists()
         assert signal.SIGTERM in proc.signals
         assert not proc.killed
 
@@ -473,7 +577,9 @@ class TestCompletionAndTimeouts:
     def test_stop_request_marks_stopped(self, fake_popen, queued_run, caplog):
         ex, proc = self._start(fake_popen, queued_run)
         Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+        broker = ex._procs[queued_run.pk].ai_broker
         ex.tick()  # picks up the flag -> SIGTERM
+        assert not Path(broker.path).exists()
         assert signal.SIGTERM in proc.signals
         stop = next(r for r in caplog.records if getattr(r, "signal", None) == "SIGTERM")
         assert stop.reason == "stop requested"

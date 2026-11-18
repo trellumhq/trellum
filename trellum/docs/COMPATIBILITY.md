@@ -258,12 +258,13 @@ tables, ComparisonTables, Pivot bands and theme-relative component colors with
 the bundled html2canvas. PNG, PDF and analysis-section captures convert modern
 computed colors to 8-bit sRGB in a temporary clone, retaining alpha and the
 current table viewport. On-screen styles, source data and CSV stay unchanged.
-This uses browser relative-color serialization; browsers unable to convert a
-color report a capture failure and restore controls. Custom multicolor modern
-gradients reject because the vendor cannot preserve their interpolation;
-uniform modern stops used by native table separators are supported. Other
-html2canvas CSS limitations still apply. No Python API, host or database
-migration is needed.
+This uses browser relative-color serialization. Missing color components
+(`none`), including alpha, render as zero; omitted alpha remains opaque.
+Browsers unable to convert a color report a capture failure and restore controls.
+Custom multicolor modern gradients reject because the vendor cannot preserve
+their interpolation; uniform modern stops used by native table separators are
+supported. Other html2canvas CSS limitations still apply. No Python API, host
+or database migration is needed.
 
 ## Unreleased: DataTable ranked row-count selection
 

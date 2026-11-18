@@ -132,7 +132,7 @@
     var status = document.getElementById('assistant-readiness');
     status.classList.toggle('success', ready); status.classList.toggle('error', !ready);
     document.getElementById('assistant-readiness-mark').textContent = ready ? '✓' : '×';
-    document.querySelector('[data-settings-text="assistant-readiness-title"]').textContent = ready ? 'AI is ready based on saved settings.' : 'AI is unavailable based on saved settings.';
+    document.querySelector('[data-settings-text="assistant-readiness-title"]').textContent = ready ? 'Chat is ready based on saved settings.' : 'Chat is unavailable based on saved settings.';
     document.querySelector('[data-settings-text="assistant-readiness-reason"]').textContent = reason || 'Use Test connection below to verify provider access.';
   }
   function edited(event) {

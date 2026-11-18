@@ -9,7 +9,7 @@ import time
 import uuid
 from urllib.parse import urlsplit
 
-from .transport import TransportError
+from .transport import TransportError, normalize_error
 
 
 def _close(resource):
@@ -32,16 +32,18 @@ def _failure(exc):
         return exc
     response = getattr(exc, "response", {})
     code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
-    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     if (code in {"AccessDeniedException", "UnrecognizedClientException", "ExpiredTokenException", "InvalidSignatureException"}
-            or status in (401, 403) or type(exc).__name__ in {"ClientAuthenticationError", "CredentialUnavailableError", "DefaultCredentialsError", "RefreshError", "NoCredentialsError", "PartialCredentialsError"}):
+            or type(exc).__name__ in {"ClientAuthenticationError", "CredentialUnavailableError", "DefaultCredentialsError", "RefreshError", "NoCredentialsError", "PartialCredentialsError"}):
         return TransportError("authentication", "Cloud authentication failed. Check the saved credentials and service permissions.")
-    if code == "ThrottlingException" or status == 429:
+    if code == "ThrottlingException":
         return TransportError("rate_limit", "The cloud provider rate limit was reached. Try again later.")
-    if code == "ValidationException" or status in (400, 404, 422):
+    if code in {"ValidationException", "ResourceNotFoundException", "ModelNotFoundException"}:
         return TransportError("unsupported", "The cloud provider rejected this model or request capability. Check the model and region.")
-    if code in {"InternalServerException", "ServiceUnavailableException", "ModelStreamErrorException"} or isinstance(status, int) and status >= 500:
+    if code in {"InternalServerException", "ServiceUnavailableException", "ModelStreamErrorException"}:
         return TransportError("server", "The cloud provider could not complete the request. Try again later.")
+    safe = normalize_error(exc)
+    if safe.kind != "protocol":
+        return safe
     return TransportError("connection", "Could not connect to the cloud provider. Check credentials, region and network access.")
 
 

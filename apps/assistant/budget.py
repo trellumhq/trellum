@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from apps.assistant.models import LlmUsage, month_start
+from apps.assistant.models import LlmUsage, ReportLlmUsage, month_start
 
 
 def _caps(org):
@@ -89,3 +89,21 @@ def precheck(org, user) -> tuple[bool, str]:
 def record(org, user, cost_usd) -> Decimal:
     """Book a charge; returns the user's new month-to-date total."""
     return LlmUsage.add_cost(org, user, cost_usd)
+
+
+def report_precheck(org) -> tuple[bool, str]:
+    """Check only the shared org cap; saved connection probes are irrelevant.
+
+    Report spend never consumes a user's allowance, even for a manual build.
+    Provider readiness and actual usage availability are checked by the broker.
+    """
+    org_cap, _ = _caps(org)
+    if org_cap is None:
+        return True, ""
+    blocked, reason = _blocked_reason(org_cap, None, LlmUsage.month_total(org), Decimal("0"))
+    return not blocked, reason
+
+
+def report_record(org, cost_usd) -> Decimal:
+    """Book report spend to the shared org pool, never to a requesting user."""
+    return ReportLlmUsage.add_cost(org, cost_usd)

@@ -28,6 +28,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -435,6 +436,17 @@ class RunningProc:
     memory_cap_mb: int | None = None
     memory_cap_kind: str = "none"
     peak_memory_mb: int | None = None
+    ai_broker: object | None = field(default=None, repr=False)
+
+
+def _close_ai_broker(broker):
+    if broker is not None:
+        try:
+            broker.close()
+        except Exception:
+            # Cleanup must not prevent termination or monitoring other runs.
+            # The socket directory is tenant-writable; do not log its contents.
+            logger.warning("Report AI broker cleanup failed")
 
 
 class Executor:
@@ -524,6 +536,7 @@ class Executor:
         stdout_path = str(log_dir / "stdout.log")
         stderr_path = str(log_dir / "stderr.log")
         stdout_fh = stderr_fh = None
+        ai_broker = None
         try:
             # Pre-flight: a report whose data sources cannot connect yet is
             # not started -- the run ends with what each source is waiting
@@ -616,6 +629,11 @@ class Executor:
                 memory_cap_mb = int(memory_mb * settings.TRELLUM_JOB_MEMORY_HEADROOM)
                 memory_cap_kind = "address space (RLIMIT_AS)"
             env = child_env(studio, ds_env)
+            if hasattr(socket, "AF_UNIX"):
+                from apps.runner.ai_broker import AIBroker
+
+                ai_broker = AIBroker(run, log_dir).start()
+                env.update(ai_broker.child_env)
             diagnostics_path = str(log_dir / "diagnostics.json")
             env["TRELLUM_DIAGNOSTICS_PATH"] = diagnostics_path
             start_context = {
@@ -696,6 +714,7 @@ class Executor:
                 timeout_seconds=timeout,
                 published_output_dir=published_output_dir,
                 diagnostics_path=diagnostics_path,
+                ai_broker=ai_broker,
                 process_group_id=(proc.pid if os.name != "nt" and sandbox_kind != "docker" else None),
                 memory_limit_mb=memory_mb,
                 memory_cap_mb=memory_cap_mb,
@@ -722,6 +741,7 @@ class Executor:
                 extra={"run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
                        "worker_id": self.worker_id, "trigger": run.trigger, "reason": "start_failed"},
             )
+            _close_ai_broker(ai_broker)
             for fh in (stdout_fh, stderr_fh):
                 if fh is not None:
                     try:
@@ -781,6 +801,7 @@ class Executor:
                 logger.exception("Cannot persist progress; enforcing local build deadline")
             ret = proc.process.poll()
             if ret is not None:
+                _close_ai_broker(proc.ai_broker)
                 finished.append((proc, ret))
                 continue
 
@@ -828,6 +849,7 @@ class Executor:
             f"Sending SIGTERM to {proc.slug}: {reason}",
             extra={**self._log_context(proc), "reason": reason, "signal": "SIGTERM"},
         )
+        _close_ai_broker(proc.ai_broker)
         try:
             self._signal_process_tree(proc, signal.SIGTERM)
             proc.sigterm_at = now
@@ -1143,6 +1165,7 @@ class Executor:
 
     @staticmethod
     def _cleanup(proc: RunningProc) -> None:
+        _close_ai_broker(proc.ai_broker)
         # Remove the finished sandbox container (no-op for in-process runs).
         cleanup = getattr(proc.process, "cleanup", None)
         if cleanup is not None:

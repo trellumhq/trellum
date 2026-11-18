@@ -1040,7 +1040,7 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
                     assistant_open_pricing=open_pricing,
                     updates={
                         "assistant-key-stored": "(a key is stored — blank keeps it)" if form.instance.api_key else "(none stored yet)",
-                        "assistant-readiness-title": "AI is ready based on saved settings." if readiness_ok else "AI is unavailable based on saved settings.",
+                        "assistant-readiness-title": "Chat is ready based on saved settings." if readiness_ok else "Chat is unavailable based on saved settings.",
                         "assistant-readiness-reason": readiness_reason or "Use Test connection below to verify provider access.",
                         "assistant-pricing-state": pricing_state,
                         **_assistant_check_updates(form.instance),

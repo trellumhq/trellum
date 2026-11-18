@@ -161,8 +161,9 @@ class TestSectionedForms:
         page = html(f"/orgs/{org.slug}/settings/assistant")
         assert "Provider" in page and "Budgets" in page
         assert "AI settings" in page
-        assert "shared provider and model for report chats and alert evaluations" in page
-        assert "Enable AI for chats and alerts in this organization" in page
+        assert "shared provider and model for chats, alert evaluations and report builds" in page
+        assert "Enable AI for chats, alerts and report builds in this organization" in page
+        assert "They do not require a successful Test connection." in page
         assert "strictly read-only" not in page
         assert 'href="/orgs/demo/settings/assistant"' in page
         assert '<span class="tl-console-label">AI settings</span>' in page

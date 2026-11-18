@@ -55,6 +55,9 @@ class ReportContext:
         output_dir: str,
         theme: Theme | None = None,
     ):
+        from trellum.ai import ReportAI
+
+        self.ai = ReportAI()
         self._config = config
         self._slug = slug
         self._output_dir = output_dir

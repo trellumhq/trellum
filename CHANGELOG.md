@@ -18,6 +18,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Uploaded data-source files can be replaced with another file type or removed without deleting the source. Changes take effect on the next build. Failed saves restore the previous file, destination collisions preserve other files, and secondary row actions are grouped under More.
 
+- Reports can use `ctx.ai.complete()` with the organization’s saved AI connection,
+  without provider credentials in the build. Report spend shares the organization
+  AI budget and does not count against any user’s personal cap. AI settings
+  distinguishes chat readiness from report-build availability.
+- Report AI completions price model overrides independently, retain valid usage
+  when an answer is rejected, and retry cloud overload responses. Broker cleanup
+  failures cannot interrupt report termination or monitoring of other runs.
+- Image and PDF captures handle missing CSS color channels and alpha in newer
+  browsers.
+
+
 ### Documentation
 
 - Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
