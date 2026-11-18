@@ -1,14 +1,20 @@
 ---
 name: trellum
-description: Build, fix and validate reports in a repository that uses the Trellum reporting framework, and add or troubleshoot the data sources they read from. Use whenever a task involves a report, a chart, a dashboard, a metric, `report.yaml`, a generator, `data-sources/config.yaml`, or connecting a database for reporting.
+description: Explore data and metrics, create or revise interactive reports and dashboards, and write analysis articles or presentations in a Trellum project. Use for Trellum report source, configured data sources, validation and local browser review.
 ---
 
-# Trellum reports
+# Work with Trellum
 
-The framework installed in this repository describes itself. Ask it rather
-than reading its source or guessing at its API — the answers below are
-generated from the installed version, so they cannot drift the way a copied
-example does.
+Trellum is a Python toolkit for answering data questions, building interactive
+reports and dashboards, and writing analysis articles or presentations with
+captured evidence. It can use databases, spreadsheets, files and APIs; SQL is
+optional. Python prepares the data; reusable charts, KPIs, tables, filters,
+layouts and themes provide the browser experience. Reports build to HTML and
+JSON for local viewing or publication.
+
+Local work and browser review do not require the optional Trellum portal.
+The portal adds shared access, scheduled builds and team workflows. Ask the
+installed version for commands, components and guides before choosing an API.
 
 Use this exact interpreter, run from the repository root:
 
@@ -22,54 +28,57 @@ Use this exact interpreter, run from the repository root:
 {py} -m trellum doctor                is the agent guidance layer wired up
 ```
 
-`trellum` alone is not on PATH — name the interpreter every time.
+Use the interpreter shown above so commands use this project's Trellum version.
 
-## Where to start
+## Start with the question and project knowledge
 
-Before writing a generator, ask for the authoring contract. These are not
-guessable from the API, and getting them wrong builds a clean report that
-shows nothing useful:
+Read `context/README.md`, source and metric notes, and existing findings in
+`analysis/` when present. Inspect configured sources and check `trellum metrics`
+before deriving a KPI. Verify columns, row grain, joins, date coverage and units
+against the actual source. Save useful queries and sanitized findings in
+`analysis/`; keep local exports in `analysis/results/` and verified knowledge
+in `context/`.
 
-```
-{py} -m trellum guide queries format
-```
+| Requested result | Workflow |
+|---|---|
+| A number, explanation or investigation | `trellum guide answer`; query configured sources by name and report the source, dates, method and limitations. A report is unnecessary unless requested. |
+| An interactive report or dashboard | `trellum guide queries format components`, then `guide report` as needed. Author `reports/<slug>/report.yaml`, `generator.py` and source-specific readers or `queries.py`. Reuse Trellum components. |
+| An analysis article or presentation | `trellum guide analysis`; scaffold with `trellum analysis new <slug> [--format presentation]`, then author `content.md` or `slides.yaml` with evidence. Use `analysis session reports/<slug>` for capture and review. |
+| An operation on a connected portal | When `.mcp.json` configures a Trellum server, read `trellum guide portal` and follow the project's publishing permissions. Local review does not require publishing. |
 
-`{py} -m trellum` lists every available guide topic. Ask for the ones your
-task touches in a single command — each invocation re-reads your whole
-context, so four separate calls cost four times the context, not four times
-the content.
+Commands in the table use the `{py} -m trellum` prefix shown above. Fetch only
+the guide topics needed; several fit in one invocation. Use `guide upgrade`
+when report source needs changes after a Trellum upgrade.
 
 ## Data sources
 
-To connect a database, hand the details to the framework rather than writing
-`data-sources/config.yaml` and `.env` yourself. It puts each part where it
-belongs and connects to check, so a wrong password surfaces immediately:
+Discover configured sources before choosing queries or file readers. For a new
+source, inspect the supported types and options; the add command writes the
+configuration and tests access:
 
 ```
-{py} -m trellum datasource add <name> --type postgres --host <h> --port <p> --database <db> --user <u> --password <pw>
+{py} -m trellum datasource add --help
 ```
 
-Column names come from the warehouse, never from an example. Check them
-before writing SQL rather than after the build fails:
+Use the hidden prompt or supported secret input for credentials. If a source
+fails, report the cause; do not substitute invented data for real results.
 
-```
-{py} -m trellum data
-```
+## Build, validate and open for review
 
-When a connection fails, read the error rather than working around it. A
-build that falls back to mock data is worse than a build that fails: it
-produces a report full of numbers that look real and are not. Report the
-failure and its cause.
-
-## Building
+Edit authored files under `reports/<slug>/`; rebuild generated `output/`
+files from that source. For an interactive report:
 
 ```
 {py} -m trellum.new <slug>                      scaffold a report
 {py} -m trellum.run reports/<slug> --no-serve   build it
+{py} -m trellum validate reports/<slug>        inspect validation
 ```
 
 `--no-serve` exits when the build is done; without it the command starts a
 preview server and never returns.
+
+Read validation results, fix every FAIL and resolve or explicitly explain
+WARNs before handing over the report.
 
 A report is not finished until the validator reports no FAILs and the person
 can review it. Creating or updating a report includes opening it automatically;
@@ -83,6 +92,10 @@ explain the limitation and provide a working link. Follow
 `{py} -m trellum guide review`, keeping the report-scoped feedback poll active
 and rebuilding before replying. Build changed source first with `--no-serve`
 or pass `--rebuild` to review start.
+
+For articles and presentations, use `{py} -m trellum analysis session
+reports/<slug>` as the review entry point and follow `guide analysis` for its
+evidence workspace. Apply the same browser handoff and report-scoped feedback loop.
 
 Explicit build-only/source-only requests, CI and unattended publication skip
 interactive review. Honor requests for a plain preview or no browser.

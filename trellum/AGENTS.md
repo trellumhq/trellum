@@ -1,7 +1,17 @@
-# BI Report Framework -- Agent Workflow Guide
+# Trellum -- Agent Workflow Guide
 
-This is the **workflow guide** for AI assistants (Claude Code, Cursor, Codex)
-building reports with this framework. It is the only document you need resident.
+Trellum is a Python toolkit for exploring data, building interactive reports
+and dashboards, and writing analysis articles or presentations with captured
+evidence. Sources can be databases, spreadsheets, files or APIs; SQL is optional.
+Reports use reusable charts, tables, KPIs, filters and themes and build to HTML
+and JSON. They can run locally or be published to a static host. The optional
+Trellum portal adds shared access, scheduled builds and team workflows; local
+report authoring and browser review do not require it.
+
+This guide helps coding agents choose the result the user needs, use the
+project's data and metric definitions, and deliver a validated result they can
+review. Read `context/README.md` and existing source/metric notes when present;
+retain useful investigations in `analysis/` and reports in `reports/<slug>/`.
 
 `README.md` is written for people, and it is long. **Do not load it wholesale.**
 Ask for the part you need instead:
@@ -17,10 +27,8 @@ trellum validate <dir>     the current validation state of a built report
 `components`, `header`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
 `report-yaml`, `themes`, `review`, `portal`, `analysis`.
 
-**Why this shape.** Your whole context is re-read on every API round-trip, so a
-large always-loaded reference is paid for dozens of times per task. A command is
-paid for once, when it is actually needed. Reach for `trellum guide` freely —
-it is cheaper than it looks, and far cheaper than guessing.
+The installed commands expose the version's component APIs and guides. Fetch
+the topics relevant to the task; one `guide` command accepts several topics.
 
 ## Where to look, by question
 
@@ -46,12 +54,12 @@ The data rules are not guessable from the API, and
 getting them wrong produces a report that builds cleanly and displays nothing
 useful.
 
-## When to use the framework
+## Choose the result
 
 | Goal | Where it goes |
 |---|---|
 | Recurring, interactive report — served standalone, on a schedule, or embedded in another application | `reports/{slug}/` (the framework) |
-| Publish a written finding with fixed evidence | `trellum analysis new <slug>`; Markdown in `reports/{slug}/content.md`, `kind: analysis` in `report.yaml`. See `trellum guide analysis` |
+| Write an article or presentation with fixed evidence | `trellum analysis new <slug> [--format presentation]`; `content.md` or `slides.yaml` in `reports/{slug}/`, `kind: analysis` in `report.yaml`. Use `trellum analysis session` for evidence capture and review. See `trellum guide analysis` |
 | A number or an answer — "what was X yesterday", a one-off check, quick exploration | `trellum query "SELECT ..."` or `from trellum import query` in Python, against the configured source by name. No report. See `trellum guide answer` |
 | Unsure | Answer first. Promote to a report when it needs a schedule, more than one reader, a consequential number that should be reviewed, or the same question comes back a third time |
 
@@ -69,18 +77,6 @@ build; honor a request for a plain preview or no browser.
 
 `--no-serve` keeps the build process from blocking on a foreground server.
 It is an iteration option, not a reason to omit the browser handoff.
-
-**Read files with your file-reading tool, not with `cat`, `ls` or `grep` in a
-shell.** Every shell command starts a process; your native read, glob and search
-tools do not. On the machine these runs were measured on a bare `ls` cost about
-twelve seconds and an identical `Read` cost none — that gap is environment-
-specific, but its direction never is.
-
-The trap is that batching looks cheaper: `cat a.py; cat b.py; cat c.py` is one
-command where three reads are three calls. Under a per-command cost that
-reasoning is right, and here it is exactly backwards — three native reads are
-free and the one shell command is not. Use the shell for things that genuinely
-need it: running the build, the validator, git.
 
 When you do serve, two things are not guessable and both have cost real time:
 
