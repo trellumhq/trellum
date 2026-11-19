@@ -166,6 +166,43 @@ def test_build_redacts_print_html_data_and_validator(project, monkeypatch, capsy
     assert '[REDACTED]' in (out / '_validation.json').read_text()
 
 
+@pytest.mark.parametrize('secret', ['private-custom-key-91', 'type'])
+@pytest.mark.parametrize('scoped', [False, True])
+def test_custom_component_mapping_keys_are_filtered(project, monkeypatch, secret, scoped):
+    from trellum.components.base import Component
+
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+
+    class CustomMap(Component):
+        _component_type = 'custom_map'
+
+        def render_html(self, ctx):
+            cid = ctx.next_id()
+            data = {'type': 'custom_map', secret + '-label': 'public'}
+            ctx.register(cid, data)
+            data['custom_mapping'] = {secret: 'public'}
+            return f'<div id="{cid}">Public</div>'
+
+    # Real report/plugin methods live outside the framework package.
+    CustomMap.render_html.__module__ = 'report_plugin'
+
+    def generate(self, ctx):
+        ctx.read_text('input')
+        for scope in ('first', 'second') if scoped else (None,):
+            if scope is not None:
+                ctx.set_scope(scope)
+            ctx.add_section('Public', [CustomMap()])
+
+    out = build(project, monkeypatch, generate)
+    paths = list(out.glob('data*.json'))
+    assert len(paths) == (2 if scoped else 1)
+    for path in paths:
+        components = json.loads(path.read_text())['components']
+        config = next(value for value in components.values() if value['type'] == 'custom_map')
+        assert config['[REDACTED]-label'] == 'public'
+        assert config['custom_mapping'] == {'[REDACTED]': 'public'}
+
+
 def test_build_error_and_exception_chain_redacted(project, monkeypatch, capsys):
     secret = 'private-error-token'
     monkeypatch.setenv('SCALAR_TEST_VALUE', secret)

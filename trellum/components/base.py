@@ -115,6 +115,8 @@ class RenderContext:
         self.live_queries: dict[str, dict] = live_queries or {}
         self._counter = 0
         self._component_data: dict[str, dict] = {}
+        self._custom_component_ids: set[str] = set()
+        self._trusted_renderer = True
         self._raw_js_blocks: list[str] = []
         self._raw_data_blocks: dict[str, Any] = {}
         self._seen_types: set[type] = set()
@@ -157,18 +159,27 @@ class RenderContext:
     def register(self, cid: str, data: dict) -> None:
         """Register component data to be written to ``data.json``."""
         self._component_data[cid] = data
+        if self._trusted_renderer:
+            self._custom_component_ids.discard(cid)
+        else:
+            self._custom_component_ids.add(cid)
 
     def render_children(self, children: list) -> str:
         return "\n".join(self.render_child(c) for c in children)
 
     def render_child(self, child: Any) -> str:
-        from trellum.rendering.redaction import component_output, html_content
+        from trellum.rendering.redaction import component_output, framework_method, html_content
         if isinstance(child, str):
             return html_content(child, trusted_code=False)
         if isinstance(child, Component):
             self._seen_types.add(type(child))
             before = self._counter
-            rendered = component_output(child.render_html, child.render_html(self), markup=True)
+            previous = self._trusted_renderer
+            self._trusted_renderer = framework_method(child.render_html)
+            try:
+                rendered = component_output(child.render_html, child.render_html(self), markup=True)
+            finally:
+                self._trusted_renderer = previous
             return self._stamp_identity(child, rendered, before)
         return f"<!-- Unknown component: {type(child).__name__} -->"
 
@@ -203,6 +214,7 @@ class RenderContext:
     def reset(self) -> None:
         self._counter = 0
         self._component_data = {}
+        self._custom_component_ids = set()
         self._raw_js_blocks = []
         self._raw_data_blocks = {}
         self._seen_types = set()
@@ -214,6 +226,13 @@ class RenderContext:
     @property
     def component_data(self) -> dict[str, dict]:
         return self._component_data
+
+    @property
+    def component_payload(self) -> dict[str, dict]:
+        """Filter plugin content after renderers finish mutating their data."""
+        from trellum.rendering.redaction import custom_component_data
+        return {cid: custom_component_data(data) if cid in self._custom_component_ids else data
+                for cid, data in self._component_data.items()}
 
     @property
     def raw_js_blocks(self) -> list[str]:

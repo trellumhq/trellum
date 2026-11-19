@@ -278,7 +278,7 @@ def render_report(
         sections_html = _render_section_list(
             ctx.scopes[default_scope], default_render_ctx
         )
-        scope_data_map[default_scope] = dict(default_render_ctx.component_data)
+        scope_data_map[default_scope] = default_render_ctx.component_payload
         raw_js_collected = list(default_render_ctx.raw_js_blocks)
         for rk, rv in default_render_ctx.raw_data_blocks.items():
             raw_data_collected[rk] = rv
@@ -289,7 +289,7 @@ def render_report(
             scope_render_ctx = RenderContext(theme, live_queries=live_registry)
             all_render_ctxs.append(scope_render_ctx)
             _render_section_list(ctx.scopes[scope_name], scope_render_ctx)
-            scope_data_map[scope_name] = dict(scope_render_ctx.component_data)
+            scope_data_map[scope_name] = scope_render_ctx.component_payload
             for rk, rv in scope_render_ctx.raw_data_blocks.items():
                 raw_data_collected[rk] = rv
 
@@ -336,7 +336,7 @@ def render_report(
         raw_js_collected = list(render_ctx.raw_js_blocks)
 
         report_data = content(data) if data else {}
-        report_data["components"] = render_ctx.component_data
+        report_data["components"] = render_ctx.component_payload
         for rk, rv in render_ctx.raw_data_blocks.items():
             report_data[rk] = rv
 

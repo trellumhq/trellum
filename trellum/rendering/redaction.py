@@ -41,6 +41,19 @@ def content(value):
     return redact(normalized)
 
 
+def custom_component_data(value):
+    """Only the renderer type is a framework field in a plugin's data."""
+    result = content({key: child for key, child in value.items() if key != 'type'})
+    if 'type' in value:
+        result['type'] = value['type']
+    return result
+
+
+def framework_method(method):
+    """Inherited native renderers still own their schema and executable code."""
+    return getattr(method, '__module__', '').startswith('trellum.')
+
+
 def record(value):
     """Filter content in a framework record; preserve its public schema."""
     if isinstance(value, dict):
@@ -207,6 +220,6 @@ def component_output(method, value, *, markup=False):
     Inspect the implementation, so inheriting a native renderer does not turn
     its framework-owned markup or assets into report-authored code.
     """
-    if getattr(method, '__module__', '').startswith('trellum.'):
+    if framework_method(method):
         return value
     return html_content(value, trusted_code=False) if markup else redact(value)
