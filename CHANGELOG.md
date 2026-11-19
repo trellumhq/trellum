@@ -70,6 +70,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance and documentation
 
+- Let Docker assign the integration harness's SSH host port and pass its actual
+  mapping to the test client, avoiding collisions with an occupied default port.
 - Update GitHub Actions and Python dependencies with compatible supported
   interpreter, connector and browser versions. Keep Python 3.11 framework
   installs, the HTTPX SDK transport, isolated Snowflake emulator and pinned

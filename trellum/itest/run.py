@@ -156,6 +156,19 @@ def _compose(*args: str, env: dict) -> int:
     return subprocess.run(cmd, env=env).returncode
 
 
+def _ssh_port(env: dict) -> str:
+    """Read the allocated port instead of racing a probe against Docker's bind."""
+    result = subprocess.run(
+        ["docker", "compose", "-f", str(_COMPOSE_FILE), "-p", _COMPOSE_PROJECT,
+         "port", "ssh", "2222"],
+        env=env, capture_output=True, text=True, check=True, timeout=30,
+    )
+    ports = {int(line.rsplit(":", 1)[1]) for line in result.stdout.splitlines() if line.strip()}
+    if len(ports) != 1 or not 1 <= next(iter(ports)) <= 65535:
+        raise ValueError("Docker did not return one usable SSH port")
+    return str(ports.pop())
+
+
 def main() -> int:
     args, passthrough = _parse_args(sys.argv[1:])
     engine_names = _resolve_engines(args)
@@ -168,6 +181,10 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("ITEST_SQLSERVER_USER", _SQLSERVER_DEFAULT_USER)
     env.setdefault("ITEST_SQLSERVER_PASS", _SQLSERVER_DEFAULT_PASS)
+    if "ssh" in services and not env.get("ITEST_SSH_PORT"):
+        # Docker chooses and binds the port atomically. Explicit host ports
+        # still work, and --no-docker keeps the external server's defaults.
+        env["ITEST_SSH_PORT"] = "0"
 
     started_containers = False
 
@@ -198,24 +215,31 @@ def main() -> int:
             return rc
         started_containers = True
 
-    pytest_cmd = [
-        sys.executable, "-m", "pytest", "-q",
-        f"--engines={','.join(engine_names)}",
-        *passthrough,
-    ]
-    print(f"  $ {' '.join(pytest_cmd)}  (cwd={_ITEST_DIR})", flush=True)
-    result = subprocess.run(pytest_cmd, cwd=str(_ITEST_DIR), env=env)
+    try:
+        if "ssh" in services:
+            try:
+                env["ITEST_SSH_PORT"] = _ssh_port(env)
+            except (subprocess.SubprocessError, ValueError, IndexError) as exc:
+                print(f"itest/run.py: cannot discover the SSH host port: {exc}", file=sys.stderr)
+                return 1
+            print(f"  SSH bastion host port: {env['ITEST_SSH_PORT']}", flush=True)
 
-    if started_containers and not args.keep:
-        _compose("down", "-v", env=env)
-    elif started_containers and args.keep:
-        print(
-            f"  (containers left running -- `docker compose -f {_COMPOSE_FILE} "
-            f"-p {_COMPOSE_PROJECT} down -v` to tear down)",
-            flush=True,
-        )
-
-    return result.returncode
+        pytest_cmd = [
+            sys.executable, "-m", "pytest", "-q",
+            f"--engines={','.join(engine_names)}",
+            *passthrough,
+        ]
+        print(f"  $ {' '.join(pytest_cmd)}  (cwd={_ITEST_DIR})", flush=True)
+        return subprocess.run(pytest_cmd, cwd=str(_ITEST_DIR), env=env).returncode
+    finally:
+        if started_containers and not args.keep:
+            _compose("down", "-v", env=env)
+        elif started_containers and args.keep:
+            print(
+                f"  (containers left running -- `docker compose -f {_COMPOSE_FILE} "
+                f"-p {_COMPOSE_PROJECT} down -v` to tear down)",
+                flush=True,
+            )
 
 
 if __name__ == "__main__":
