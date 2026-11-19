@@ -94,3 +94,30 @@ def test_numeric_exception_controls_keep_their_semantics(error, field, monkeypat
         with build_redaction({}):
             raise error
     assert getattr(caught.value, field) == 7
+
+
+@pytest.mark.parametrize('grouped', [False, True])
+@pytest.mark.parametrize('suppress', [False, True])
+@pytest.mark.parametrize('encode', [str, json.dumps], ids=['python', 'json'])
+def test_boolean_secrets_preserve_exception_context(grouped, suppress, encode, monkeypatch):
+    secret = encode(suppress)
+    monkeypatch.setenv('TRELLUM_SCALAR_SECRETS', json.dumps([secret]))
+    original = (ExceptionGroup(secret, [RuntimeError(secret)])
+                if grouped else RuntimeError(secret))
+    with pytest.raises(type(original)) as caught:
+        with build_redaction({}):
+            try:
+                raise ValueError(secret)
+            except ValueError:
+                if suppress:
+                    raise original from None
+                raise original
+    assert caught.value.__suppress_context__ is suppress
+    assert isinstance(caught.value.__context__, ValueError)
+    assert str(caught.value.__context__) == '[REDACTED]'
+    if grouped:
+        assert caught.value.message == '[REDACTED]'
+        assert str(caught.value.exceptions[0]) == '[REDACTED]'
+    else:
+        assert caught.value is original
+        assert str(caught.value) == '[REDACTED]'

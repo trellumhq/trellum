@@ -27,6 +27,7 @@ _active = {}
 _thread_secrets = ()
 
 _NUMERIC_EXCEPTION_CONTROLS = (
+    (BaseException, {'__suppress_context__'}),
     (SystemExit, {'code'}),
     (OSError, {'errno', 'winerror', 'characters_written'}),
     (SyntaxError, {'lineno', 'offset', 'end_lineno', 'end_offset', 'print_file_and_line'}),
