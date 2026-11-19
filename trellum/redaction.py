@@ -43,7 +43,7 @@ def _secret_values():
     return _values.get() or _thread_secrets
 
 
-def redact(value):
+def redact(value, _ancestors=None):
     """Filter raw, HTML-escaped and JSON-escaped text before serialization/write."""
     if not _secret_values():
         return value
@@ -56,12 +56,21 @@ def redact(value):
         # including when an artifact is filtered again during publication.
         pattern = '|'.join(re.escape(part) for part in sorted({'[REDACTED]', *_secret_values()}, key=len, reverse=True))
         return re.sub(pattern, '[REDACTED]', value)
-    if isinstance(value, dict):
-        return {redact(k): redact(v) for k, v in value.items()}
-    if isinstance(value, tuple):
-        return tuple(redact(v) for v in value)
-    if isinstance(value, list):
-        return [redact(v) for v in value]
+    if isinstance(value, (dict, tuple, list)):
+        ancestors = set() if _ancestors is None else _ancestors
+        identity = id(value)
+        if identity in ancestors:
+            return '[REDACTED]'
+        ancestors.add(identity)
+        try:
+            if isinstance(value, dict):
+                return {redact(k, ancestors): redact(v, ancestors) for k, v in value.items()}
+            if isinstance(value, tuple):
+                return tuple(redact(v, ancestors) for v in value)
+            return [redact(v, ancestors) for v in value]
+        finally:
+            # Shared children in different branches are not cycles.
+            ancestors.remove(identity)
     if isinstance(value, (int, float)) and (str(value) in _secret_values()
             or json.dumps(value) in _secret_values()):
         return '[REDACTED]'

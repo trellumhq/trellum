@@ -353,6 +353,31 @@ def test_structured_logging_preserves_hashable_tuple_keys(project, monkeypatch, 
     assert caplog.records[-1].details == {expected: '[REDACTED]'}
 
 
+@pytest.mark.parametrize('kind', ['dict', 'list', 'tuple'])
+def test_cyclic_logging_values_are_filtered_without_mutation(project, monkeypatch, caplog, kind):
+    from trellum.redaction import build_redaction
+
+    secret = 'private-cycle-token'
+    monkeypatch.setenv('SCALAR_TEST_VALUE', secret)
+    shared = {'token': secret}
+    if kind == 'dict':
+        value = {'first': shared, 'second': shared}
+        value['self'] = value
+    elif kind == 'list':
+        value = [shared, shared]
+        value.append(value)
+    else:
+        cycle = []
+        value = (shared, shared, cycle)
+        cycle.append(value)
+    with build_redaction(context('secret').config):
+        logging.warning('cycle %s', value, extra={'details': value})
+    record = caplog.records[-1]
+    assert secret not in record.getMessage() + repr(record.details)
+    assert repr(record.details).count("'token': '[REDACTED]'") == 2
+    assert shared == {'token': secret}
+
+
 def test_numeric_secret_keeps_valid_json(project, monkeypatch):
     monkeypatch.setenv('SCALAR_TEST_VALUE', '12')
     def generate(self, ctx):

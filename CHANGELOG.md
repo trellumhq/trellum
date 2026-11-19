@@ -52,6 +52,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   writes across nested builds, custom numeric exception payloads and custom
   component data keys,
   while preserving framework markup and identities.
+- Keep secret-filtered logging safe for cyclic dictionaries, lists and tuples
+  without modifying report-owned objects.
 - Retain saved secret protection when repository scalar declarations change,
   and discard older connection-test results after switching to a scalar type.
 - Detect missing studio checkouts and report files on page load and startup,
