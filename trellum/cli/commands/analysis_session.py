@@ -101,6 +101,7 @@ def _cmd_analysis_session(args: argparse.Namespace) -> int:
         workspace_url += "&source=" + quote(sources[0], safe="")
     if not args.no_browser:
         webbrowser.open(workspace_url)
+    print("Local-only review: this workspace does not publish the source reports or analysis.")
     print(f"Analysis session: {url}")
     print(f"Analysis workspace: {workspace_url}")
     print(f"Local reports: http://localhost:{port}/")

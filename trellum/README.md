@@ -66,7 +66,7 @@ The public [demo gallery](https://trellum.dev/demo/) contains interactive
 reports built from synthetic data. The demo project also includes a written
 [Northwind checkout analysis](https://github.com/trellumhq/trellum/blob/main/trellum/demo/reports/checkout-findings/content.md)
 with fixed captured evidence. For the article format and Git workflow, see
-[Publish an analysis](https://trellum.dev/docs/latest/workflow/published-analyses/).
+[Local analysis workflow](../docs/customer/workflow/local-analysis.md).
 For scheduled builds, team access, shared metrics, experiments, annotations,
 published analyses and optional AI assistance, explore the
 [interactive portal tour](https://trellum.dev/tour/) or
@@ -371,6 +371,58 @@ python3 -m trellum.run --all --serve --port 8060
 
 ---
 
+<!-- topic: data-sources -->
+## Scalar values and text uploads
+
+Declare every source used by a report in `report.yaml`:
+
+```yaml
+data_sources: [api_token, threshold, options, notes]
+```
+
+Configure named sources in `data-sources/config.yaml`. Scalar values use
+`credentials.local` and the existing `.env` loader:
+
+```yaml
+sources:
+  api_token:
+    type: secret
+    credentials: {local: API_TOKEN}
+  threshold:
+    type: number
+    credentials: {local: THRESHOLD}
+  options:
+    type: json
+    credentials: {local: OPTIONS}
+  notes:
+    type: file
+    mode: text
+    path: data-sources/uploads/notes.txt
+```
+
+Set `API_TOKEN_VALUE`, `THRESHOLD_VALUE` and `OPTIONS_VALUE` in `.env`.
+`ctx.read_text("api_token")` preserves whitespace for `string`, `secret` and
+`text` scalars. It also reads UTF-8 `file` sources with `mode: text` and a
+`.txt`, `.json`, `.yaml` or `.yml` extension. Structured files remain text.
+`ctx.read_value("threshold")` returns a finite number; `boolean` accepts JSON
+`true` or `false`; `json` requires a JSON object, not an array or primitive.
+Missing or empty values raise `ValueError` when read. Catch it in a generator
+when the input is optional; an unused empty source does not prevent a build.
+
+Use `type: secret` or `secret: true` on a scalar to filter its value from
+framework build logs, HTML, JSON and validation diagnostics. CLI builds filter
+native and child-process stdout/stderr before the host writes its log files.
+Hosts may also supply `TRELLUM_SCALAR_SECRETS` as a JSON list of secret strings,
+or `TRELLUM_SCALAR_SECRET_NAMES` as a JSON list of injected `TRELLUM_DS_*_VALUE`
+environment names. Avoid printing
+or rendering secrets deliberately: redaction covers known literal and common
+escaped representations, not arbitrary transformations such as hashing or
+base64 encoding. Short and common values are supported. Generated runtime
+code, schema fields and navigation identities can contain coincidental matching
+characters; these remain intact so the report can run. Report text and data
+values are filtered. Do not interpolate secrets into custom JavaScript or CSS:
+redaction cannot infer the meaning of arbitrary executable code.
+
 <!-- topic: report-yaml -->
 ## Report Structure
 
@@ -672,6 +724,11 @@ The framework supports two FilterBar placements; they compose.
 
 **Section-scoped FilterBar** (drill-downs). Place inside a titled section as `[DataSource(s), FilterBar, ...content]`. Sticks below the main FilterBar while its section is in view. Use for filters that only make sense inside that section (e.g. `chest_level`, `difficulty_tier` for a chest analysis section).
 
+On phone-width views (640px or less), bars taller than 96px scroll with the
+page so wrapped controls do not cover the report. Compact bars stay pinned;
+section bars reserve space only for a main bar that is still pinned. Resizing
+or changing the controls remeasures this layout without clearing selections.
+
 Constraints (validator-enforced):
 
 - At most one main FilterBar per report.
@@ -729,7 +786,15 @@ FilterBar("cpd_pkg", df, filters=[
 - `depends_on` accepts a single column or a list of columns.
 - Both filters must live on the same FilterBar and refer to real DataFrame columns. The validator checks this (`filter-depends-on-missing`, `filter-depends-on-self`).
 - Currently selected values that remain valid under the parent's new selection are preserved; values that drop out are removed and the URL is rewritten.
-- The child's options are derived using `getFilteredExcluding(dsId, [self_col])` so the child's own selection doesn't restrict its own options.
+- The child's options are derived using `getDistinctValues(dsId, self_col, {excludingColumns: [self_col]})` so its own selection does not restrict its options. This reads the requested column without constructing complete row objects.
+
+Cascading controls settle their selections before chart subscribers receive
+filtered rows. A parent change and its child-selection corrections form one
+update, including propagated filters and the URL. An unrelated filter change
+can produce an empty report while preserving the child's current selection;
+it does not count as a declared parent change.
+For live sources, cascading availability waits for the new server response.
+Clearing an invalid child can then require a further query for the broader result.
 
 For entity drill-down, a child dropdown can additionally declare
 `"clear_on_parent_change": True`. A real parent selection change then clears
@@ -1493,6 +1558,7 @@ The framework embeds a JS runtime in every report. All public APIs are accessibl
 | `fw.filterEngine.setFilter(dsId, filterId, column, mode, value)` | Set a filter (modes: `equals`, `in`, `range`, `flag`) |
 | `fw.filterEngine.getFiltered(dsId)` | Get current filtered rows |
 | `fw.filterEngine.getFilteredExcluding(dsId, columns)` | Get filtered rows while ignoring specific filter columns |
+| `fw.filterEngine.getDistinctValues(dsId, column, options)` | Get sorted, distinct option strings without constructing rows. Set `options.excludingColumns` to ignore local filters on those columns. Null and empty values are omitted. |
 | `fw.filterEngine.getFilterState(dsId)` | Read-only snapshot of active filters |
 | `fw.filterEngine.getDatasetIds()` | List initialized dataset IDs |
 | `fw.filterEngine.getDatasetRowCount(dsId)` | Return row count for dataset |
@@ -1504,6 +1570,13 @@ The framework embeds a JS runtime in every report. All public APIs are accessibl
 | `fw.filterEngine.removeDataset(dsId)` | Remove dataset state/subscribers from engine |
 | `fw.filterEngine.subscribe(dsId, id, fn)` | Subscribe to filter changes |
 | `fw.filterEngine.notify(dsId)` | Trigger subscriber callbacks |
+
+`getDistinctValues()` applies the same effective filters as
+`getFilteredExcluding()`. Exclusions on a scoped dataset affect its own filters;
+restrictions inherited from its ancestors still apply. Excluding the requested
+column is explicit, as in `{excludingColumns: [column]}`. The result follows
+dropdown option semantics: values are converted to strings, deduplicated and
+sorted with JavaScript's default string ordering.
 
 ### Aggregation
 
@@ -1634,7 +1707,7 @@ published site uses). `--background` starts the server detached, prints the
 URLs, and returns immediately. Use it for an explicitly requested plain
 preview without feedback. For a human review, use
 `python -m trellum review start reports/<slug>` and follow
-`python -m trellum guide review`. Idempotent: re-running reuses a server
+`python -m trellum guide review`; analyses use the combined local workspace. Idempotent: re-running reuses a server
 already up for this output directory.
 
 | Argument | Description |
@@ -1977,15 +2050,20 @@ Subclass `ReportHeader` and pass to `ctx.set_header_component()`.
 <!-- topic: analysis -->
 ## Analysis articles
 
-Publish a finding as a readable article with fixed evidence. Analyses use the
-same Git repository, build command, output format, and portal access controls
-as reports, and appear under **Analyses** in the portal.
+Create a finding as a readable article with fixed evidence. Eligible local
+reports under `reports/` are analysis sources even when unpublished. A report
+can still query a configured remote data source. Reviewing the combined local
+workspace does not publish either source reports or the analysis; publishing
+or pushing is a separate deliberate action. When asked to create an analysis,
+open this workspace by default, even without an explicit preview request.
+Honor build-only, CI and plain-preview requests. Analyses use the same Git
+repository, build command, output format, and portal access controls as reports.
 
 ```bash
-trellum analysis new september-conversion
-trellum analysis import reports/september-conversion capture.trellum-capture.json --name conversion
-python -m trellum.run reports/september-conversion --no-serve
-trellum review start reports/september-conversion
+python -m trellum analysis new september-conversion
+python -m trellum.run reports/<source-slug> --no-serve
+python -m trellum analysis session reports/september-conversion --source <source-slug>
+python -m trellum review poll --report september-conversion
 ```
 
 Choose `article` (the default) or `presentation` when scaffolding:
@@ -2050,45 +2128,47 @@ files; the JSON supplies the figure's source caption. An existing filename is
 never silently overwritten. Clicking an article image opens the full image.
 
 Analysis builds need no Python generator, warehouse credentials, data-source
-declarations, or data-refresh schedule. The evidence remains fixed as source
+declarations, or data-refresh schedule. Raw files need an explicit reader or
+local report before they can be selected as report evidence. The evidence remains fixed as source
 reports update or disappear. Revise the Markdown or import a new capture under
-a new name and publish a Git change to update the analysis. Rebuilding a broken
+a new name, then rebuild the analysis. Rebuilding a broken
 article retains its last successful output. Existing output retention still
 applies; committed evidence can recreate the article.
 
 For a local, agent-assisted analysis workflow, create an article or
 presentation with `python -m trellum analysis new <slug> --format article|presentation`
-(`article` is the default), then start `python -m trellum analysis session
-reports/<slug>`. The session builds and serves the analysis, activates its
-local review inbox, and prints preview and gallery URLs. From a report, choose
-**Export > Capture for analysis > Send to agent** to send a filtered PNG capture
-and optional note. The agent polls with `python -m trellum review poll --report
-<analysis-slug>`; the poll returns a capture ID and annotation feedback. Import
-it with `python -m trellum analysis import reports/<slug> --inbox <capture-id>
-[--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`, rebuild with
-`python -m trellum.run reports/<slug> --no-serve`, then reply by polling again
-with `python -m trellum review poll --report <slug> --session <session> --reply "what changed"`.
+(`article` is the default), then start the combined workspace with
+`python -m trellum analysis session reports/<slug> --source <source-slug>`.
+Omit `--source` to choose from eligible reports in this project. Build the chosen
+source with `python -m trellum.run reports/<source-slug> --no-serve` before
+handing over the workspace. If a source is missing or stale in the workspace,
+choose **Build report** or **Rebuild report**; selection alone does not run it.
+The workspace serves the source reports and analysis together. The Reports tab remains a report picker; select a chart
+or section and queue it as evidence for the analysis. The Analysis tab selects
+content to edit. One listener handles both kinds of feedback:
+`python -m trellum review poll --report <analysis-slug>`.
+Import captures with `python -m trellum analysis import reports/<slug> --inbox
+<capture-id> [--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`,
+rebuild with `python -m trellum.run reports/<slug> --no-serve`, then reply using
+`python -m trellum review poll --report <slug> --session <session> --reply "what changed"`.
 Use the session returned with the polled batch; a reply without a session or
-feedback ID is chat text only and does not complete feedback.
+feedback ID is chat text only and does not complete feedback. Poll again until
+the user ends review. Keep that one scoped
+listener active throughout the review; do not launch separate source listeners.
 Pending captures stay outside the repository and output tree under
 `~/.trellum/analysis-inbox/<project-id>`; list them after restart with
 `python -m trellum analysis inbox reports/<slug>` and explicitly discard one
 with `python -m trellum analysis discard reports/<slug> <capture-id>`. A failed
-import leaves its capture pending. With no active local session, capture JSON
-downloads and the existing file-based import still works. See the
-[local analysis workflow](../docs/customer/workflow/local-analysis.md) for the
-complete filter, capture, annotation, and rebuild loop.
+import leaves its capture pending. Without an active local session, capture
+JSON downloads and the file-based import still works. See the
+[local analysis workflow](../docs/customer/workflow/local-analysis.md) for
+filters, captures, annotations, and rebuilds.
 
 Resolve the source report from the user's request; if it is missing or
-ambiguous, offer the available report titles and ask which to open. Build the
-source separately with `--no-serve` and open both source and destination on
-the same project server. Captures are routed to the analysis, but ordinary
-source-page review selections remain tagged with the source report. Keep
-scoped listeners for both pages, acknowledge on the sending page, and collect
-each poll result before replying and polling again. Keep the agent turn
-active while reviewing; a background process followed by a final answer does
-not consume its feedback. Read `python -m trellum guide review` for the full
-source/destination and active polling contract.
+ambiguous, show available report titles and ask which to use. Preserve explicit
+build-only, CI, or plain-preview requests; for a human analysis review, use the
+combined workspace and keep polling until the user ends review. Read
+`python -m trellum guide review` for the general review contract.
 
 In the portal, the analysis's own permissions govern its article and evidence.
 New analyses inherit the studio's analysis audience default. To request a
@@ -2096,6 +2176,8 @@ different initial audience, set `initial_audience: private` or
 `initial_audience: studio` in `report.yaml` before its first import. Later Git
 changes preserve the audience; use the analysis's Access page to change it.
 Publishing it deliberately shares the captured evidence with that audience.
+In a repository configured for automatic publishing, pushing changes can
+trigger publication; keep local-only work unpushed.
 Source report links require their own access. Sharing, embedding, favorites,
 activity, exports, and snapshot delivery reuse the report features and their
 existing deployment restrictions.

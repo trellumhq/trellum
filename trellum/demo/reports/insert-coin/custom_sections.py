@@ -255,7 +255,8 @@ CABINET_JS = """
       for (var k = 0; k < days.length; k++) {
         if (days[k].date === evs[e].date) {
           events.push({ idx: k, label: evs[e].label || '',
-                        type: evs[e].type || 'campaign' });
+                        type: evs[e].type || 'campaign',
+                        defaultVisible: evs[e].default_visible !== false });
           break;
         }
       }
@@ -492,6 +493,9 @@ CABINET_JS = """
     // event annotations, framework style
     for (var ei = 0; ei < events.length; ei++) {
       var ev = events[ei];
+      var visibility = window._annoVisible || {};
+      if (visibility[ev.type] === false ||
+          (visibility[ev.type] === undefined && !ev.defaultVisible)) { continue; }
       var ex = ev.idx * pxd;
       var ecol = ev.type === 'incident' ? c.bad
                : ev.type === 'release' ? c.good
@@ -719,6 +723,20 @@ CABINET_JS = """
 
     fw.filterEngine.subscribe(DS, 'ride-the-metric', rebuild);
     rebuild(fw.filterEngine.getFiltered(DS) || []);
+    // The custom canvas follows the same annotation controls as native charts.
+    // Own the handler on the bar so a repeated boot replaces it cleanly.
+    requestAnimationFrame(function () {
+      var annoBar = document.querySelector('.fw-anno-bar');
+      if (!annoBar || !canvas.isConnected) { return; }
+      if (annoBar._rideMetricAnnotations) {
+        annoBar.removeEventListener('click', annoBar._rideMetricAnnotations);
+      }
+      annoBar._rideMetricAnnotations = function (event) {
+        if (!event.target.closest('.fw-anno-toggle') || !canvas.isConnected) { return; }
+        if (state === 'playing') { drawFrame(); } else { drawPanorama(); }
+      };
+      annoBar.addEventListener('click', annoBar._rideMetricAnnotations);
+    });
   }
 
   function whenReady(attempts) {

@@ -7,11 +7,10 @@ descendants before assignment succeeds.
 from __future__ import annotations
 
 import ctypes
-from ctypes import wintypes
 import signal
 import subprocess
 import sys
-
+from ctypes import wintypes
 
 _GATED_RUN = (
     "import runpy,sys; "
@@ -23,6 +22,8 @@ _GATED_RUN = (
 _KILL_ON_CLOSE = 0x2000
 _EXTENDED_LIMIT_INFO = 9
 _BASIC_ACCOUNTING_INFO = 1
+_BASIC_PROCESS_ID_LIST = 3
+_MAX_SAMPLE_PROCESSES = 4096
 
 
 class _BasicLimit(ctypes.Structure):
@@ -61,6 +62,12 @@ class _Accounting(ctypes.Structure):
                 ("TotalProcesses", wintypes.DWORD),
                 ("ActiveProcesses", wintypes.DWORD),
                 ("TotalTerminatedProcesses", wintypes.DWORD)]
+
+
+class _ProcessIds(ctypes.Structure):
+    _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD),
+                ("NumberOfProcessIdsInList", wintypes.DWORD),
+                ("ProcessIdList", ctypes.c_size_t * _MAX_SAMPLE_PROCESSES)]
 
 
 def _api():
@@ -128,6 +135,32 @@ class WindowsJobProcess:
 
     def poll(self):
         return self._proc.poll()
+
+    def peak_rss_mb(self):
+        """Largest live job member's RSS high-water mark, including the build.
+
+        The assigned leader can be a log supervisor. Job memory counters are
+        committed bytes, not RSS; query each member's PeakWorkingSetSize to
+        preserve the executor's resident-memory metric.
+        """
+        from apps.runner.executor import read_peak_rss_mb
+
+        info = _ProcessIds()
+        try:
+            if not self._api.QueryInformationJobObject(
+                self._job, _BASIC_PROCESS_ID_LIST, ctypes.byref(info), ctypes.sizeof(info), None,
+            ):
+                return None
+        except OSError:
+            return None
+        if info.NumberOfProcessIdsInList > _MAX_SAMPLE_PROCESSES:
+            return None
+        peak = None
+        for pid in info.ProcessIdList[:info.NumberOfProcessIdsInList]:
+            observed = read_peak_rss_mb(pid)
+            if observed is not None:
+                peak = max(peak or 0, observed)
+        return peak
 
     @property
     def termination_confirmed(self):

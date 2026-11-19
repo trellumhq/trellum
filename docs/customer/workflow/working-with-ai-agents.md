@@ -34,15 +34,23 @@ reports than any amount of prompting.
 
 ## Refine a local preview
 
-After the first build, keep your coding agent listening while you inspect the
-report in a browser. In review mode you can select a chart or table, or send a
-general change request. The agent edits the report definition or source files
-in your repository, rebuilds, and the preview reloads. See
-[Refine reports in your browser](refine-reports.md) for the prompt and command loop.
+When you ask your coding agent to create or update a report, Trellum's project
+guidance tells it to build, validate and open the report for browser review
+automatically. You do not need a separate launch prompt or a personal agent
+rule. The agent should provide a clickable link and keep listening for feedback.
+
+In review mode you can select a chart or table, or send a general change
+request. The agent edits the report source in your repository, rebuilds, and
+the preview reloads. See [Refine reports in your browser](refine-reports.md)
+for the review controls and command loop. Ask explicitly for build-only work
+if you do not want an interactive preview.
 
 This local source-editing loop is separate from the portal assistant. The
 assistant answers questions about portal reports and never edits your Git
-repository.
+repository. Viewers can ask questions and retrieve reports and data they are
+allowed to access. Creating or editing reports requires a developer or
+administrator with repository access; viewers cannot start builds or publish,
+even with a write-scoped API key.
 
 ## Give it real data access
 
@@ -59,6 +67,14 @@ Configured sources are usually enough — see
 [Ad-hoc analysis](/docs/latest/workflow/ad-hoc-analysis/).
 
 ## Point agents at Trellum, check it, take it out
+
+The startup overview (`python -m trellum`) checks for a newer stable release
+at most once per local calendar day and reuses that day's result. Claude's
+session-start hook runs this overview; generated project instructions tell
+other coding agents to run it when a new chat starts. The agent should mention
+an available update and its upgrade command. Trellum does not upgrade itself.
+Offline checks stay quiet, as do CI runs and projects with `update_check: false`
+in `config.yaml` or `FW_UPDATE_CHECK=0` in the environment.
 
 `trellum init` does this for a new project; for an existing one run it
 yourself, from the repository root:
@@ -208,9 +224,9 @@ stored — so a credential never lands in your agent's context or transcript.
 
 ## Publish and configure from your agent
 
-Once wired, the agent that edits reports can also take them to the portal
-and back. `trellum guide portal` prints this loop to the agent; here it is
-for you.
+For developers and administrators with repository access, the agent that edits
+reports can also take them to the portal and back. `trellum guide portal`
+prints this loop to the agent; here it is for you.
 
 1. **Edit and build locally.** `python -m trellum.run reports/<slug> --no-serve`.
 2. **Validate.** `python -m trellum validate reports/<slug>` — a report is
@@ -237,9 +253,13 @@ for you.
    the portal's own agent, see [Alerts](/docs/latest/portal/alerts/);
    `update_alert` changes it.
 
-Steps 4 and 6 read, and work on a `read` key. Steps 5, 7 and 8 need
-`read,write` and the organization's actions switch; your harness asks before
-each call, and every call is in the audit log under your key.
+Checking repository changes needs developer access and a `read` key. Reading
+build results needs only permitted read access; starting the build is a
+developer action. Publishing, starting builds, testing sources and managing
+alerts need developer access or higher, `read,write` and the organization's
+actions switch. Configuring source credentials needs a studio administrator.
+Your harness asks before each action, and every call is in the audit log
+under your key.
 
 ## A good first prompt
 

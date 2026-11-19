@@ -6,7 +6,7 @@
 <header class="page-head">
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
   <h1>AI settings</h1>
-  <p class="muted page-sub">These settings choose the shared provider and model for report chats and alert evaluations.
+  <p class="muted page-sub">These settings choose the shared provider and model for chats, alert evaluations and report builds.
     Proposed actions wait for an organization member to approve them. Credentials are stored encrypted, used only server-side, and never sent to the browser.</p>
 </header>
 
@@ -14,9 +14,9 @@
   <span class="ui-flash-mark" id="assistant-readiness-mark" aria-hidden="true">{% if readiness_ok %}✓{% else %}×{% endif %}</span>
   <div>
     {% if readiness_ok %}
-      <strong data-settings-text="assistant-readiness-title">AI is ready based on saved settings.</strong>
+      <strong data-settings-text="assistant-readiness-title">Chat is ready based on saved settings.</strong>
     {% else %}
-      <strong data-settings-text="assistant-readiness-title">AI is unavailable based on saved settings.</strong>
+      <strong data-settings-text="assistant-readiness-title">Chat is unavailable based on saved settings.</strong>
     {% endif %}
     <div class="subtle" data-settings-text="assistant-readiness-reason">{{ readiness_reason|default:"Use Test connection below to verify provider access." }}</div>
   </div>
@@ -24,6 +24,7 @@
 <ul id="assistant-capabilities" aria-live="polite">
   {% for key, text in check_updates.items %}<li data-settings-text="{{ key }}">{{ text }}</li>{% endfor %}
 </ul>
+<p class="muted">Report builds use this saved connection too. They do not require a successful Test connection.</p>
 
   <form id="orgAssistantForm" method="post" data-settings-form data-settings-save
         data-test-url="{% url 'org-assistant-test' org.slug %}"
@@ -31,7 +32,7 @@
         data-config-revision="{{ cfg.config_revision|default:1 }}">
     {% csrf_token %}{{ form.config_revision }}
     {{ form.non_field_errors }}
-    <label class="ui-check-row">{{ form.enabled }} Enable AI for chats and alerts in this organization</label>
+    <label class="ui-check-row">{{ form.enabled }} Enable AI for chats, alerts and report builds in this organization</label>
 
     <section class="ui-form-section" aria-labelledby="assistant-provider-title">
     <h2 id="assistant-provider-title">Provider and connection</h2>

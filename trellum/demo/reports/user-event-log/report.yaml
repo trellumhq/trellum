@@ -50,3 +50,7 @@ display:
   icon: search
   color: "#0d9488"
   priority: 7
+
+# Keep operational events visible; readers can enable the busier overlays.
+annotations:
+  default_visible: [release, incident]

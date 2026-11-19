@@ -30,3 +30,7 @@ display:
   icon: shopping-bag
   color: "#4e79a7"
   priority: 1
+
+# Keep operational events visible; readers can enable the busier overlays.
+annotations:
+  default_visible: [release, incident]

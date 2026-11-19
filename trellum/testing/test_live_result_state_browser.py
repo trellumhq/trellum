@@ -79,13 +79,22 @@ def build_report(output, *, baseline=False, scoped=False, line_presentation=Fals
         assert validation.summary['warn'] == validation.summary['fail'] == 0, validation.to_dict()
         with ExitStack() as stack:
             if baseline:
-                names = ['runtime/live_query.js', 'runtime/filter_engine.js', 'components/live_data_source.js']
+                # Historical engine internals and their control callers must
+                # come from one revision; mixing current controls with an old
+                # engine would test an unsupported runtime combination.
+                filter_types = ['date_range', 'dropdown', 'flag', 'slider', 'text', 'toggle']
+                names = ['runtime/live_query.js', 'runtime/filter_engine.js', 'runtime/url_sync.js',
+                         'components/live_data_source.js', 'components/filter_bar.js',
+                         *[f'components/{kind}_filter.js' for kind in filter_types]]
                 sources = {name: subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/js/{name}'], cwd=ROOT, text=True)
                            for name in names}
                 def historical(name):
                     return sources[name] if name in sources else load_js(name)
                 stack.enter_context(patch('trellum.rendering.js_runtime.load_js', historical))
                 stack.enter_context(patch('trellum.components.live_filterable.load_js', historical))
+                stack.enter_context(patch('trellum.components.filterable.load_js', historical))
+                for kind in filter_types:
+                    stack.enter_context(patch(f'trellum.components.filters.{kind}.load_js', historical))
             render_report(ctx, str(output), auto_refresh=False)
         copy_vendor_tree(output)
     finally:

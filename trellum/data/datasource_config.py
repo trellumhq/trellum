@@ -72,6 +72,45 @@ def get_datasource(name: str) -> dict | None:
     return load_datasource_config().get(name)
 
 
+def resolve_declared_source(sources: list, name: str, *, allow_legacy: bool = False) -> dict:
+    """Resolve inline or central configuration through a report's declarations.
+
+    Declarations are checked in order. An inline dict supplies its own
+    configuration; a string refers to the central configuration by name.
+    Scalar readers require membership. Existing dataframe readers may retain
+    their central-config fallback for non-scalar sources.
+    """
+    for source in sources:
+        if isinstance(source, dict) and source.get("name") == name:
+            # Portal-managed uploads can move or be cleared independently of
+            # the report's committed path, including text-mode files.
+            if source.get("type") == "file":
+                central = get_datasource(name)
+                if (central is not None and central.get("type") == "file"
+                        and central.get("upload")):
+                    return {**source, "path": central.get("path", "")}
+            return source
+        if isinstance(source, str) and source == name:
+            central = get_datasource(source)
+            if central is not None:
+                return central
+
+    if allow_legacy:
+        from trellum.data.scalar import SCALAR_TYPES
+        central = get_datasource(name)
+        if central is not None and central.get('type') not in SCALAR_TYPES:
+            return central
+
+    raise ValueError(f"Data source '{name}' not found: not declared in report.yaml or not configured")
+
+
+def resolve_scalar_source(sources: list, name: str) -> dict:
+    """Keep inline precedence unless the host supplied an explicit runtime binding."""
+    source = resolve_declared_source(sources, name)
+    central = get_datasource(name)
+    return central if central and central.get("runtime_binding") is True else source
+
+
 def resolve_to_legacy_format(name: str) -> dict | None:
     """Convert a central config entry to the dict format that resolve_connection() expects.
 

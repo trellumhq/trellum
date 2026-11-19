@@ -40,3 +40,7 @@ display:
   icon: activity
   color: "#4e79a7"
   priority: 1
+
+# Keep dated context visible; readers can add the broader A/B-test overlays.
+annotations:
+  default_visible: [release, incident, campaign]

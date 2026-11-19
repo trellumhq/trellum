@@ -3,11 +3,14 @@ non-secret config JSON vs the encrypted credentials JSON. Secret fields are
 write-only: blank on edit = keep the stored value."""
 from __future__ import annotations
 
+import json
+import math
 from copy import copy, deepcopy
 
 from django import forms
 
 from apps.datasources.models import (
+    SCALAR_TYPES,
     CONFIG_KEYS,
     CREDENTIAL_KEYS,
     INLINE_TYPES,
@@ -18,6 +21,9 @@ from apps.datasources.models import (
 )
 
 _CONFIG_FIELDS = [
+    ("secret", forms.BooleanField(required=False, label="Secret value")),
+    ("secret_reference", forms.ChoiceField(required=False, label="Organization secret", choices=[("", "Store a value here"), ("assistant_api_key", "Assistant API key")])),
+    ("mode", forms.ChoiceField(required=False, choices=[("table", "Table (CSV, Excel, Parquet)"), ("text", "Text (TXT, JSON, YAML)")])),
     ("host", forms.CharField(required=False)),
     ("port", forms.IntegerField(required=False)),
     ("database", forms.CharField(required=False)),
@@ -84,10 +90,22 @@ _SECRET_FIELDS = [
 
 
 
+class SecretTextarea(forms.Textarea):
+    """Accept multiline replacements without rendering submitted/stored secrets."""
+
+    def format_value(self, value):
+        return None
+
+
 class DataSourceForm(forms.Form):
     name = forms.CharField(max_length=64, validators=[name_validator])
-    type = forms.ChoiceField(choices=DataSource.TYPES)
+    type = forms.ChoiceField(choices=[
+        (kind, {"file": "Data file", "json": "JSON"}.get(kind, label))
+        for kind, label in DataSource.TYPES
+    ])
     description = forms.CharField(max_length=400, required=False)
+    value = forms.CharField(required=False, max_length=16384, strip=False)
+    clear_value = forms.BooleanField(required=False, label="Clear saved value")
     scope = forms.ChoiceField(
         choices=[("studio", "This studio only"), ("org", "Entire organization")],
         initial="studio", widget=forms.RadioSelect, required=False,
@@ -95,9 +113,9 @@ class DataSourceForm(forms.Form):
 
     def __init__(
         self, *args, instance: DataSource | None = None, studio=None, org=None,
-        allow_org_scope: bool = False, fixed_scope: str | None = None, **kwargs,
+        allow_secret_reference: bool = False, allow_org_scope: bool = False, fixed_scope: str | None = None, **kwargs,
     ):
-        initial = kwargs.pop("initial", {})
+        initial = dict(kwargs.pop("initial", {}) or {})
         if instance is not None:
             initial.update(
                 {
@@ -111,6 +129,7 @@ class DataSourceForm(forms.Form):
                 }
             )
         super().__init__(*args, initial=initial, **kwargs)
+        self.allow_secret_reference = allow_secret_reference
         self.instance = instance
         self.studio = studio
         self.org = org or (studio.org if studio else None)
@@ -123,6 +142,26 @@ class DataSourceForm(forms.Form):
             self.fields["scope"].widget = forms.HiddenInput()
         for key, field in _CONFIG_FIELDS + _SECRET_FIELDS:
             self.fields[key] = deepcopy(field)
+        if not allow_secret_reference:
+            self.fields["secret_reference"].widget = forms.HiddenInput()
+        kind = self.data.get("type", initial.get("type")) if self.is_bound else initial.get("type")
+        hidden_value = kind == "secret" or bool(self.data.get("secret") if self.is_bound else initial.get("secret")) or bool(self.data.get("secret_reference") if self.is_bound else initial.get("secret_reference"))
+        if hidden_value:
+            self.fields["value"].widget = (
+                SecretTextarea(attrs={"rows": 5, "autocomplete": "off", "spellcheck": "false"})
+                if kind in {"text", "json"} else forms.PasswordInput(render_value=False)
+            )
+            self.fields["value"].help_text = "Blank keeps the saved value. Saved secrets are never shown again."
+        elif kind in {"text", "json"}:
+            self.fields["value"].widget = forms.Textarea(attrs={"rows": 5})
+        elif kind == "boolean":
+            self.fields["value"].widget = forms.Select(choices=[("", "No value"), ("true", "True"), ("false", "False")])
+        elif kind == "number":
+            self.fields["value"].widget = forms.NumberInput(attrs={"step": "any"})
+        if not instance:
+            self.fields["clear_value"].widget = forms.HiddenInput()
+        if instance and not hidden_value:
+            self.initial["value"] = (instance.credentials or {}).get("value", "")
 
     def clean(self):
         cleaned = super().clean()
@@ -135,6 +174,33 @@ class DataSourceForm(forms.Form):
             raise forms.ValidationError(
                 f"“{ds_type}” sources cannot be shared across an organization."
             )
+        value = cleaned.get("value", "")
+        if ds_type in {"number", "boolean", "json"} or not value.strip():
+            value = value.strip()
+            cleaned["value"] = value
+        if ds_type in SCALAR_TYPES and len(value.encode("utf-8")) > 16384:
+            self.add_error("value", "The value must be at most 16 KiB.")
+        if ds_type in SCALAR_TYPES and value and not cleaned.get("clear_value"):
+            try:
+                if ds_type == "number":
+                    number = json.loads(value)
+                    if type(number) not in (int, float) or not math.isfinite(number):
+                        raise ValueError
+                if ds_type == "boolean" and value not in {"true", "false"}:
+                    raise ValueError
+                if ds_type == "json":
+                    def reject_constant(_):
+                        raise ValueError
+                    if not isinstance(json.loads(value, parse_constant=reject_constant), dict):
+                        raise ValueError
+            except (ValueError, TypeError, OverflowError, RecursionError):
+                self.add_error("value", "Enter a finite number, true/false boolean, or JSON object matching the selected type.")
+        stored_reference = (self.instance.config or {}).get("secret_reference", "") if self.instance else ""
+        if cleaned.get("secret_reference") and cleaned["secret_reference"] != stored_reference and not self.allow_secret_reference:
+            self.add_error("secret_reference", "Only organization admins may use an organization secret.")
+        if cleaned.get("secret_reference") and ds_type in SCALAR_TYPES:
+            if ds_type != "secret" and not cleaned.get("secret"):
+                self.add_error("secret_reference", "Organization secrets require a secret source.")
         # A file source needs SOMEWHERE to read from: either a path that is
         # already populated, or permission for the portal to create one.
         if ds_type in INLINE_TYPES:
@@ -205,6 +271,19 @@ class DataSourceForm(forms.Form):
         if data.get("user"):
             stored["user"] = data["user"]
         stored = {k: v for k, v in stored.items() if k in relevant}
+        if data["type"] in SCALAR_TYPES:
+            is_secret = data["type"] == "secret" or data.get("secret", False)
+            if is_secret:
+                config["secret"] = True
+            reference = data.get("secret_reference", "")
+            if data.get("clear_value"):
+                config.pop("secret_reference", None)
+                stored["value"] = ""
+            elif reference:
+                config["secret_reference"] = reference
+                stored = {}
+            elif data.get("value") or not is_secret:
+                stored["value"] = data.get("value", "")
 
         ds = copy(self.instance) if self.instance is not None else DataSource()
         # Scope is switchable on edit: moving studio->org shares it with

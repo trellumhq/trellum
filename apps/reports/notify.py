@@ -989,16 +989,13 @@ class _DeliveryEmail(EmailMultiAlternatives):
         |   +-- image (cid)
         +-- pdf
 
-    Django's ``EmailMultiAlternatives`` only exposes one ``mixed_subtype``
-    knob, which wraps the alternative part *and every attachment* in the
-    same container -- setting it to "related" (needed at all for an inline
-    CID image to render) used to sweep a PDF attachment into
+    Wrapping the alternative part and every attachment in a single
+    "related" container sweeps a PDF attachment into
     ``multipart/related`` right alongside it too. Several mail clients
     (Outlook among them) don't treat an attachment nested that way as a
     real, downloadable attachment and simply never show it. Passing the
     inline image via ``inline_image=`` instead of ``.attach()`` keeps it
-    out of ``self.attachments`` entirely, so ``mixed_subtype`` never needs
-    touching and a PDF passed to ``.attach()`` lands as a plain sibling
+    out of ``self.attachments`` entirely, so a PDF passed to ``.attach()`` lands as a plain sibling
     under the (default) ``multipart/mixed`` root.
     """
 
@@ -1006,19 +1003,17 @@ class _DeliveryEmail(EmailMultiAlternatives):
         super().__init__(*args, **kwargs)
         self._inline_image = inline_image
 
-    def _create_message(self, msg):
-        from django.conf import settings as dj_settings
-        from django.core.mail.message import SafeMIMEMultipart
+    def _add_bodies(self, msg):
+        if self._inline_image is None:
+            return super()._add_bodies(msg)
 
-        body = self._create_alternatives(msg)
-        if self._inline_image is not None:
-            related = SafeMIMEMultipart(
-                _subtype="related", encoding=self.encoding or dj_settings.DEFAULT_CHARSET
-            )
-            related.attach(body)
-            related.attach(self._inline_image)
-            body = related
-        return self._create_attachments(body)
+        from email.message import MIMEPart
+
+        body = MIMEPart(policy=msg.policy)
+        super()._add_bodies(body)
+        msg.make_related()
+        msg.attach(body)
+        msg.attach(self._inline_image)
 
 
 def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sample, meta=None, before_send=None) -> int:

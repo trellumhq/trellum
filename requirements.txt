@@ -7,9 +7,10 @@
 
 # Scheduling and auth
 APScheduler>=3.10.0
-PyJWT[crypto]>=2.8.0
+PyJWT[crypto]>=2.15.1
 
 # AI assistant (lazy-imported; the portal runs fine without them, the
 # features report themselves unavailable). Install the one(s) you use.
-anthropic>=0.40.0
-openai>=1.50.0
+# Keep the HTTPX transport contract used by the portal and release tests.
+anthropic>=0.125.0,<1
+openai>=2.54.0,<3

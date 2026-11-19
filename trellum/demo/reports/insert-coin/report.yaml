@@ -28,3 +28,7 @@ display:
   icon: gamepad
   color: "#ffc400"
   priority: 3
+
+# Keep operational events visible; readers can enable the busier overlays.
+annotations:
+  default_visible: [release, incident]

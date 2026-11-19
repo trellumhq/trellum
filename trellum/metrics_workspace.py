@@ -10,6 +10,8 @@ from pathlib import Path
 
 import orjson
 
+from trellum.rendering.redaction import html_content, json_bytes, record
+
 PAGE_SIZE = 25
 VERSION = 1
 PREFIX = "_metrics-workspace-"
@@ -124,6 +126,7 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
     the catalog routes every definition. Its rows come from the catalog in the
     browser, so a page carries no definition rows of its own.
     """
+    html = html_content(html)
     blocks = render_ctx._metric_workspace_blocks
     metric_ids = {cid for block in blocks for cid in block['ids']}
     common = {cid: value for cid, value in report_data['components'].items() if cid not in metric_ids}
@@ -132,6 +135,7 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
         indexed = {row[0]: row[2:] for row in common[definition_id]['rows']}
         catalog = [{**row, 'details': indexed[row['name']]} if not row.get('monitored', True) else row
                    for row in catalog]
+    catalog = [{**record(row), 'name': row['name'], 'anchor': row['anchor']} for row in catalog]
     pages = page_count(len(blocks))
     files = []
     catalog_name = f'{PREFIX}{build}-catalog.json'
@@ -179,9 +183,11 @@ def write_pages(out, html, report_data, render_ctx, catalog, build):
             definition_html = ('<section class="fw-section"><h2>Defined but not monitored</h2>'
                 + getattr(render_ctx, '_metric_workspace_definition_html', '') + '</section>')
         page_html = html.replace(CONTROLS, controls(catalog, page, pages, build)).replace(
-            BLOCKS, '\n'.join(block['html'] for block in visible)).replace(
-            DEFINITIONS, definition_html).replace('<head>', '<head>' + boot, 1)
-        Path(out, data_name).write_bytes(orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS))
+            BLOCKS, '\n'.join(html_content(block['html']) for block in visible)).replace(
+            DEFINITIONS, html_content(definition_html)).replace('<head>', '<head>' + boot, 1)
+        Path(out, data_name).write_bytes(json_bytes(payload, kind='payload', option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS))
+        # Content fragments are filtered before adding generated routing,
+        # controls and page labels; those public values must stay functional.
         Path(out, html_name).write_text(page_html, encoding='utf-8')
         files.extend((data_name, html_name))
         if first is None:

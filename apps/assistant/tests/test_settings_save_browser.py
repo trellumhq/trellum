@@ -81,20 +81,21 @@ def test_old_connection_test_cannot_replace_result_or_unlock_new_test_after_save
             "config_revision": 2,
             "saved_connection": saved_connection,
             "updates": {
-                "assistant-readiness-title": "AI is ready based on saved settings.",
+                "assistant-readiness-title": "Chat is ready based on saved settings.",
                 "assistant-readiness-reason": "Use Test connection below to verify provider access.",
                 "assistant-pricing-state": "Cost estimates are unavailable without pricing. Prices are optional while both budgets are blank.",
             },
         }
         saves[0].fulfill(json=saved_payload)
         expect(page.locator("#orgAssistantForm")).to_have_attribute("data-settings-state", "saved")
-        expect(page.locator('[data-settings-text="assistant-readiness-title"]')).to_have_text("AI is ready based on saved settings.")
+        expect(page.locator('[data-settings-text="assistant-readiness-title"]')).to_have_text("Chat is ready based on saved settings.")
         expect(page.locator('[data-settings-text="assistant-pricing-state"]')).to_contain_text("Cost estimates are unavailable")
         expect(page.locator("#orgAssistantForm details").nth(0)).to_have_attribute("open", "")
         expect(page.locator("#assistant-readiness")).to_have_class("ui-flash success")
         expect(page.locator("#assistant-readiness-mark")).to_have_text(chr(0x2713))
         page.evaluate("payload => document.getElementById('orgAssistantForm').dispatchEvent(new CustomEvent('settings:success', {bubbles:true, detail:payload}))", saved_payload | {"assistant_ready": False, "assistant_open_pricing": False})
         expect(page.locator("#assistant-readiness")).to_have_class("ui-flash error")
+        expect(page.locator('[data-settings-text="assistant-readiness-title"]')).to_have_text("Chat is unavailable based on saved settings.")
         expect(page.locator("#assistant-readiness-mark")).to_have_text(chr(0x00D7))
         page.evaluate("payload => document.getElementById('orgAssistantForm').dispatchEvent(new CustomEvent('settings:success', {bubbles:true, detail:payload}))", saved_payload | {"assistant_ready": True, "assistant_open_pricing": False})
         expect(result).to_be_hidden()

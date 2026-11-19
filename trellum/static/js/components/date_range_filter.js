@@ -281,14 +281,16 @@ window._fwFilterTypes['date_range'] = {
 
             // Apply on date input change
             function applyRange() {
-                var rangeVal = self._readRange(dr, hourly);
-                if (!self._validRange(rangeVal)) return;
-                h.setFilter(fc.id, fc.column, 'range', rangeVal);
-                h.propagate(fc.column, 'range', rangeVal);
-                self._updateTrigger(dr, rangeVal);
-                var match = self._matchPreset(fc, rangeVal.min, rangeVal.max);
-                self._highlightPreset(dr, match || '');
-                h.urlWrite();
+                h.transaction(function() {
+                    var rangeVal = self._readRange(dr, hourly);
+                    if (!self._validRange(rangeVal)) return;
+                    h.setFilter(fc.id, fc.column, 'range', rangeVal);
+                    h.propagate(fc.column, 'range', rangeVal);
+                    self._updateTrigger(dr, rangeVal);
+                    var match = self._matchPreset(fc, rangeVal.min, rangeVal.max);
+                    self._highlightPreset(dr, match || '');
+                    h.urlWrite();
+                });
             }
 
             dr.querySelectorAll('.fw-date-input').forEach(function(inp) {
@@ -302,19 +304,21 @@ window._fwFilterTypes['date_range'] = {
             dr.addEventListener('click', function(e) {
                 var preset = e.target.closest('.fw-date-preset');
                 if (!preset) return;
-                var days = preset.dataset.days || null;
-                var hours = preset.dataset.hours || null;
-                if (days === '') days = null;
-                if (hours === '') hours = null;
-                var minVal = self._computePresetMin(fc, days, hours);
-                if (minVal === null) return;
-                var rangeVal = { min: minVal, max: fc.max_date };
-                self._setInputs(dr, rangeVal, hourly);
-                h.setFilter(fc.id, fc.column, 'range', rangeVal);
-                h.propagate(fc.column, 'range', rangeVal);
-                self._updateTrigger(dr, rangeVal);
-                self._highlightPreset(dr, preset.textContent.trim());
-                h.urlWrite();
+                h.transaction(function() {
+                    var days = preset.dataset.days || null;
+                    var hours = preset.dataset.hours || null;
+                    if (days === '') days = null;
+                    if (hours === '') hours = null;
+                    var minVal = self._computePresetMin(fc, days, hours);
+                    if (minVal === null) return;
+                    var rangeVal = { min: minVal, max: fc.max_date };
+                    self._setInputs(dr, rangeVal, hourly);
+                    h.setFilter(fc.id, fc.column, 'range', rangeVal);
+                    h.propagate(fc.column, 'range', rangeVal);
+                    self._updateTrigger(dr, rangeVal);
+                    self._highlightPreset(dr, preset.textContent.trim());
+                    h.urlWrite();
+                });
             });
         });
     }

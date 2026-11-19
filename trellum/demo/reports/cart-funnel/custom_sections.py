@@ -94,7 +94,7 @@ CUSTOM_JS = """
      to a sliver IS the message, so no log scale -- only a 3px floor so the
      survivors stay visible. */
   function geometry(w, h) {
-    var padX = 70, top = 46, bandH = h * 0.52;
+    var padX = w < 600 ? 36 : 70, top = 46, bandH = h * 0.52;
     var xs = [], half = [];
     var base = Math.max(counts[0] || 0, 1);
     for (var i = 0; i < stages.length; i++) {
@@ -136,7 +136,30 @@ CUSTOM_JS = """
     ctx2d.globalAlpha = 1;
 
     var fontFam = getComputedStyle(document.body).fontFamily;
+    function wrapLabel(label, maxWidth) {
+      var words = String(label).split(/\\s+/), lines = [], line = '';
+      for (var word = 0; word < words.length; word++) {
+        var candidate = line ? line + ' ' + words[word] : words[word];
+        if (line && ctx2d.measureText(candidate).width > maxWidth) {
+          lines.push(line);
+          line = words[word];
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) { lines.push(line); }
+      return lines;
+    }
 
+    ctx2d.font = '11px ' + fontFam;
+    var gap = g.xs.length > 1 ? g.xs[1] - g.xs[0] : w;
+    var stageLabels = stages.map(function (stage) {
+      return wrapLabel(stage.label, Math.max(1, gap - 8));
+    });
+    var labelRows = 0;
+    stageLabels.forEach(function (lines) {
+      labelRows = Math.max(labelRows, lines.length);
+    });
     for (i = 0; i < g.xs.length; i++) {
       // Gate line
       ctx2d.strokeStyle = c.grid;
@@ -145,13 +168,17 @@ CUSTOM_JS = """
       ctx2d.lineTo(g.xs[i], g.midY + g.half[0] + 6);
       ctx2d.stroke();
       // Label + live count above
-      ctx2d.textAlign = i === 0 ? 'left' : (i === g.xs.length - 1 ? 'right' : 'center');
+      ctx2d.textAlign = w < 600 ? 'center'
+        : (i === 0 ? 'left' : (i === g.xs.length - 1 ? 'right' : 'center'));
       ctx2d.fillStyle = c.dim;
       ctx2d.font = '11px ' + fontFam;
-      ctx2d.fillText(stages[i].label, g.xs[i], 18);
+      var labelLines = stageLabels[i];
+      for (var labelLine = 0; labelLine < labelLines.length; labelLine++) {
+        ctx2d.fillText(labelLines[labelLine], g.xs[i], (w < 600 ? 12 : 18) + labelLine * 12);
+      }
       ctx2d.fillStyle = c.text;
       ctx2d.font = '600 13px ' + fontFam;
-      ctx2d.fillText(fmt(counts[i]), g.xs[i], 36);
+      ctx2d.fillText(fmt(counts[i]), g.xs[i], w < 600 ? 12 + labelRows * 12 + 3 : 36);
 
       // The loss in each gap, said plainly underneath.
       if (i > 0) {
@@ -164,7 +191,7 @@ CUSTOM_JS = """
         ctx2d.fillText('-' + fmt(lost), mx, g.midY + g.half[0] + 34);
         ctx2d.fillStyle = c.dim;
         ctx2d.font = '10px ' + fontFam;
-        ctx2d.fillText(pct + '% leak here', mx, g.midY + g.half[0] + 48);
+        ctx2d.fillText(pct + (w < 600 ? '% lost' : '% leak here'), mx, g.midY + g.half[0] + 48);
         if (reduced) {
           // Static leak wedge: the particles' story without the motion.
           ctx2d.globalAlpha = 0.25;

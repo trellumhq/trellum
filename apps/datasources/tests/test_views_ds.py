@@ -43,6 +43,17 @@ def pg_source(studio_tree):
     )
 
 
+@pytest.fixture
+def framework_project(studio_tree, monkeypatch):
+    """Read materialized sources through the framework's environment contract."""
+    from trellum.data.datasource_config import invalidate_datasource_cache
+
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(studio_tree.project_root))
+    invalidate_datasource_cache()
+    yield
+    invalidate_datasource_cache()
+
+
 class TestListApi:
     def test_status_shapes(self, login, viewer, prefix, file_source, pg_source, studio_tree):
         body = login(viewer).get(f"{prefix}/api/datasources").json()
@@ -189,11 +200,10 @@ class TestUpload:
         assert resp.status_code == 404
         assert not AuditLog.objects.filter(action="datasource.download").exists()
 
-    def test_the_configured_path_is_never_moved_by_an_upload(
+    def test_same_extension_upload_preserves_the_configured_path(
         self, login, developer, prefix, file_source, studio_tree
     ):
-        """The admin chose this path and reports resolve it; an upload writes
-        there or not at all."""
+        """Replacing with the same file type keeps the configured destination."""
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         login(developer).post(
@@ -205,24 +215,150 @@ class TestUpload:
         target = studio_tree.project_root / "data-sources/files/budget.csv"
         assert target.read_bytes() == b"a,b\n"
 
-    def test_a_mismatched_extension_is_refused(
-        self, login, developer, prefix, file_source, studio_tree
+    @pytest.mark.parametrize("old_extension,new_extension", [
+        (".xlsx", ".csv"), (".csv", ".xlsx"), (".csv", ".csv"),
+    ])
+    def test_replace_updates_path_and_next_build_reads_new_bytes(
+        self, login, developer, prefix, file_source, studio_tree, framework_project,
+        old_extension, new_extension,
     ):
-        """The framework picks its reader from the extension, so an .xlsx over
-        budget.csv would parse as garbage at build time. Fail here instead."""
+        from io import BytesIO
+
+        import pandas as pd
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        target = studio_tree.project_root / "data-sources/files/budget.csv"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"good data")
+        from apps.datasources.materialize import materialize
+        from trellum.report import ReportContext
 
-        resp = login(developer).post(
-            f"{prefix}/api/datasources/budget/upload",
-            {"file": SimpleUploadedFile("q3.xlsx", b"xl")},
+        file_source.config["path"] = f"data-sources/files/litellm_key{old_extension}"
+        file_source.save()
+        client = login(developer)
+        url = f"{prefix}/api/datasources/budget/upload"
+        old_bytes = b"value\nold\n"
+        assert client.post(url, {
+            "file": SimpleUploadedFile(f"litellm_key{old_extension}", old_bytes),
+        }).status_code == 200
+        old_path = studio_tree.project_root / file_source.config["path"]
+        assert old_path.read_bytes() == old_bytes
+        if new_extension == ".csv":
+            new_bytes = b"value\nreplacement\n"
+        else:
+            output = BytesIO()
+            pd.DataFrame({"value": ["replacement"]}).to_excel(output, index=False)
+            new_bytes = output.getvalue()
+        response = client.post(url, {
+            "file": SimpleUploadedFile(f"replacement{new_extension}", new_bytes),
+        })
+        assert response.status_code == 200
+        file_source.refresh_from_db()
+        new_path = studio_tree.project_root / file_source.config["path"]
+        assert new_path.suffix == new_extension
+        assert new_path.read_bytes() == new_bytes
+        if old_extension != new_extension:
+            assert not old_path.exists()
+        else:
+            assert new_path == old_path
+        assert not any(path.read_bytes() == old_bytes for path in new_path.parent.iterdir() if path.is_file())
+
+        materialize(studio_tree)
+        ctx = ReportContext(config={"data_sources": ["budget"]}, slug="test", output_dir=str(studio_tree.project_root))
+        assert ctx.read_source("budget")["value"].tolist() == ["replacement"]
+        inline = ReportContext(config={"data_sources": [{"name": "budget", "type": "file",
+                               "path": str(old_path), "upload": True}]},
+                               slug="inline", output_dir=str(studio_tree.project_root))
+        assert inline.read_source("budget")["value"].tolist() == ["replacement"]
+
+    @pytest.mark.parametrize("declared", [False, True])
+    def test_remove_keeps_source_empty_and_next_build_cannot_read_old_file(
+        self, login, developer, prefix, file_source, studio_tree, framework_project, declared,
+    ):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.datasources.materialize import materialize
+        from apps.datasources.models import RepoDataSource
+        from trellum.report import ReportContext
+
+        if declared:
+            RepoDataSource.objects.create(
+                studio=studio_tree, name="budget", type="file", config=dict(file_source.config),
+                source_file="data-sources/config.yaml",
+            )
+        client = login(developer)
+        url = f"{prefix}/api/datasources/budget/upload"
+        assert client.post(url, {"file": SimpleUploadedFile("budget.csv", b"value\nold\n")}).status_code == 200
+        old_path = studio_tree.project_root / file_source.config["path"]
+        assert old_path.is_file()
+        materialize(studio_tree)
+        response = client.post(url, {"action": "remove"})
+        assert response.status_code == 200
+        file_source.refresh_from_db()
+        assert file_source.config["path"] == ""
+        assert file_source.config["upload"] is True
+        assert not old_path.exists()
+        assert any(source["name"] == "budget" for source in client.get(f"{prefix}/api/datasources").json()["sources"])
+        assert client.get(f"{prefix}/api/datasources/budget/download").status_code == 404
+
+        materialize(studio_tree)
+        ctx = ReportContext(config={"data_sources": ["budget"]}, slug="test", output_dir=str(studio_tree.project_root))
+        with pytest.raises(ValueError, match="no 'path' configured|not found in report.yaml"):
+            ctx.read_source("budget")
+        inline = ReportContext(config={"data_sources": [{"name": "budget", "type": "file",
+                               "path": str(old_path), "upload": True}]},
+                               slug="inline", output_dir=str(studio_tree.project_root))
+        with pytest.raises(ValueError, match="no 'path' configured"):
+            inline.read_source("budget")
+        assert client.post(url, {"action": "remove"}).status_code == 200
+        assert client.post(url, {"file": SimpleUploadedFile("new.csv", b"value\nnew\n")}).status_code == 200
+        file_source.refresh_from_db()
+        assert (studio_tree.project_root / file_source.config["path"]).read_bytes() == b"value\nnew\n"
+
+    @pytest.mark.parametrize("action", ["remove", "replace"])
+    def test_delete_failure_keeps_previous_file_and_path(
+        self, login, developer, prefix, file_source, studio_tree, monkeypatch, action,
+    ):
+        from pathlib import Path
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        target = studio_tree.project_root / file_source.config["path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"previous")
+        original_unlink = Path.unlink
+
+        def refuse_old(path, *args, **kwargs):
+            if path == target:
+                raise PermissionError("synthetic deletion failure")
+            return original_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", refuse_old)
+        data = {"action": "remove"} if action == "remove" else {
+            "file": SimpleUploadedFile("new.xlsx", b"new bytes"),
+        }
+        response = login(developer).post(f"{prefix}/api/datasources/budget/upload", data)
+        assert response.status_code == 500
+        file_source.refresh_from_db()
+        assert file_source.config["path"] == "data-sources/files/budget.csv"
+        assert target.read_bytes() == b"previous"
+        assert list(target.parent.iterdir()) == [target]
+
+    def test_viewer_cannot_remove(self, login, viewer, prefix, file_source, studio_tree):
+        target = studio_tree.project_root / file_source.config["path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"preserved")
+        response = login(viewer).post(f"{prefix}/api/datasources/budget/upload", {"action": "remove"})
+        assert response.status_code == 403
+        assert target.read_bytes() == b"preserved"
+
+    def test_remove_refused_without_upload_flag(self, login, developer, prefix, studio_tree):
+        ds = DataSource.objects.create(
+            studio=studio_tree, name="fixed", type="file", config={"path": "data-sources/files/fixed.csv"},
         )
-        assert resp.status_code == 400
-        assert ".xlsx" in resp.json()["error"]
-        assert target.read_bytes() == b"good data"
+        target = studio_tree.project_root / ds.config["path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"preserved")
+        response = login(developer).post(f"{prefix}/api/datasources/fixed/upload", {"action": "remove"})
+        assert response.status_code == 403
+        assert target.read_bytes() == b"preserved"
 
     def test_a_first_upload_names_the_file_when_no_path_is_set(
         self, login, developer, prefix, studio_tree
@@ -326,6 +462,36 @@ class TestOrgUpload:
         assert target.read_bytes() == b"a,b\n1,2\n"
         org_file.refresh_from_db()
         assert org_file.config["path"] == "files/shared.csv"
+
+    def test_org_admin_replaces_and_removes_shared_file(
+        self, login, org_admin, org_prefix, org_file, studio_tree,
+    ):
+        import yaml
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.datasources.materialize import materialize, stored_file
+        from apps.datasources.models import RepoDataSource
+
+        RepoDataSource.objects.create(studio=studio_tree, name="shared", type="file",
+                                      config={"upload": True, "path": "baseline.xlsx"})
+        client = login(org_admin)
+        url = f"{org_prefix}/shared/upload"
+        assert client.post(url, {"file": SimpleUploadedFile("old.xlsx", b"old")}).status_code == 200
+        org_file.refresh_from_db()
+        old = stored_file(org_file)
+        assert client.post(url, {"file": SimpleUploadedFile("new.csv", b"value\nnew\n")}).status_code == 200
+        org_file.refresh_from_db()
+        new = stored_file(org_file)
+        assert new.suffix == ".csv" and not old.exists()
+        materialize(studio_tree)
+        config = yaml.safe_load((studio_tree.datasources_dir / "config.yaml").read_text())
+        assert config["sources"]["shared"]["path"] == str(new)
+        assert client.post(url, {"action": "remove"}).status_code == 200
+        org_file.refresh_from_db()
+        assert org_file.config["path"] == "" and not new.exists()
+        materialize(studio_tree)
+        config = yaml.safe_load((studio_tree.datasources_dir / "config.yaml").read_text())
+        assert not config["sources"]["shared"].get("path")
 
     def test_every_studio_sees_it(self, login, org_admin, org_prefix, org_file, studio_tree):
         from django.core.files.uploadedfile import SimpleUploadedFile

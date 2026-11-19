@@ -55,6 +55,9 @@ class ReportContext:
         output_dir: str,
         theme: Theme | None = None,
     ):
+        from trellum.ai import ReportAI
+
+        self.ai = ReportAI()
         self._config = config
         self._slug = slug
         self._output_dir = output_dir
@@ -130,32 +133,25 @@ class ReportContext:
     # ── Data access ──────────────────────────────────────────
 
     def _resolve_source(self, name: str) -> dict:
-        """Find a data source by name, supporting both dict and string entries.
+        """Resolve a dataframe source, preserving its central-config fallback."""
+        from trellum.data.datasource_config import resolve_declared_source
 
-        Resolution order:
-        1. Dict entry in report.yaml ``data_sources`` with ``name: <name>``
-        2. String entry in report.yaml matching ``<name>``
-        3. Lookup in ``data-sources/config.yaml``
-        """
-        from trellum.data.datasource_config import get_datasource
+        return resolve_declared_source(self._config.get("data_sources", []), name, allow_legacy=True)
 
-        sources = self._config.get("data_sources", [])
-        for s in sources:
-            if isinstance(s, dict) and s.get("name") == name:
-                return s
-            if isinstance(s, str) and s == name:
-                central = get_datasource(s)
-                if central is not None:
-                    return central
+    def _resolve_scalar_source(self, name: str) -> dict:
+        from trellum.data.datasource_config import resolve_scalar_source
 
-        # Not listed in report.yaml — try central config directly
-        central = get_datasource(name)
-        if central is not None:
-            return central
+        return resolve_scalar_source(self._config.get("data_sources", []), name)
 
-        raise ValueError(
-            f"Data source '{name}' not found in report.yaml or data-sources/config.yaml"
-        )
+    def read_text(self, name: str) -> str:
+        """Read a declared text scalar or text-mode upload, preserving whitespace."""
+        from trellum.data.scalar import read_text
+        return read_text(self._resolve_scalar_source(name), name)
+
+    def read_value(self, name: str):
+        """Read a declared number, boolean or JSON object with its native type."""
+        from trellum.data.scalar import read_value
+        return read_value(self._resolve_scalar_source(name), name)
 
     def get_connection(self, name: str):
         """Get (or create) a database connection by name.
@@ -335,8 +331,9 @@ class ReportContext:
         dataset_id: str = "",
     ) -> None:
         """Register a data-quality check merged into ``_validation.json`` after generate."""
+        from trellum.redaction import redact
         self._extra_validation_checks.append({
-            "id": check_id,
+            "id": redact(check_id),
             "level": level,
             "message": message,
             "component": component,

@@ -7,11 +7,100 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Documentation
+## [0.11.0] — 2026-11-19
 
-- Refresh the Portal Tour screenshots from v0.10.1 using synthetic demo data
-  and document a proposed README visual sequence for review. Use closer
-  captures for sparse settings and reports within a consistent 1280 × 720 frame.
+### Added
+
+- Add string, secret, text, number, boolean and JSON data sources. Store values
+  encrypted, inject them only into builds that declare the source, and read them
+  through `ctx.read_text()` or `ctx.read_value()`. Text-mode file sources accept
+  TXT, JSON and YAML uploads.
+- Let reports call `ctx.ai.complete()` through the organization's saved AI
+  connection without copying provider credentials into the report build.
+  Record report usage against the organization, separately from personal caps.
+
+### Changed
+
+- Make browser review the default handoff when an agent creates or updates a
+  report. Build and validate first, open the review URL, share a clickable link,
+  and keep listening for scoped feedback. Explicit build-only, CI, plain-preview
+  and no-browser requests remain supported.
+- Check for newer stable releases from the CLI overview used at agent session
+  start, reusing the daily cache, bounded wait, offline behavior and opt-outs.
+- Guide articles and presentations through local evidence capture and review,
+  including unpublished source reports. Add analysis scaffold next steps and
+  clearer source-building controls in the combined analysis workspace.
+- Reuse filter row indices and batch cascading dropdown updates, reducing
+  allocations and redundant callbacks while retaining valid child selections.
+
+### Fixed
+
+- Return the documented AI concurrency error reliably by consuming a bounded
+  request before closing a rejected broker connection.
+- Keep deeply nested, malformed AI broker replies catchable as completion errors.
+- Keep scope dropdowns aligned with the active dataset and dispose old controls,
+  listeners and subscriptions before scope replacement. Keep retained live
+  results and recreated datasets responsive to local filtering.
+- Replace uploaded files across supported file types or remove their contents
+  without deleting the data source. Preserve original bytes on failed saves
+  and refuse occupied replacement destinations.
+- Protect files referenced by multiple data sources during upload replacement,
+  removal and source edits. Preserve recovery contents and report an unconfirmed
+  file change if filesystem rollback fails.
+- Preserve existing database and dataframe readers alongside scalar sources.
+  Keep saved scalar types and secret classification intact, including cleared
+  and multiline values and significant whitespace. Filter secrets from report
+  artifacts and build logs, including Python string and byte representations,
+  writes across nested builds, custom numeric exception payloads and custom
+  component data keys,
+  while preserving framework markup and identities.
+- Keep secret-filtered logging safe for cyclic dictionaries, lists and tuples
+  without modifying report-owned objects. Preserve exception context flags when
+  a secret matches a boolean value.
+- Retain saved secret protection when repository scalar declarations change,
+  and discard older connection-test results after switching to a scalar type.
+- Detect missing studio checkouts and report files on page load and startup,
+  then restore published files during sync even when the commit is unchanged.
+  Remove reports left by a failed publish when restoring the previous version.
+  Bound inline file inspection for large registries and leave them unchecked
+  when complete verification would exceed the request budget.
+- Keep long filter bars usable on phones, improve demo card and table spacing,
+  and preserve visible events in the Player Overview trends. Give A/B comparison
+  intervals more space and simplify the visual-upgrade guide's navigation.
+- Handle missing CSS color components and alpha in image and PDF captures.
+- Keep run-statistics filters and inline email previews compatible with the
+  updated Django release. Register file removal in the audit event taxonomy.
+- Price report AI model overrides separately, retain known usage when rejecting
+  an answer, retry confirmed overload responses, and isolate broker cleanup
+  failures from report termination and other runs.
+
+### Maintenance and documentation
+
+- Let Docker assign the integration harness's SSH host port and pass its actual
+  mapping to the test client, avoiding collisions with an occupied default port.
+- Update GitHub Actions and Python dependencies with compatible supported
+  interpreter, connector and browser versions. Keep Python 3.11 framework
+  installs, the HTTPX SDK transport, isolated Snowflake emulator and pinned
+  CI browser image compatible.
+- Refresh the Portal Tour and explain Trellum's data questions, interactive
+  reports, dashboards, articles and presentations. Clarify viewer read access
+  and developer/admin authoring and publishing permissions.
+
+### Upgrade notes
+
+- Upgrade the portal and runner images together to `v0.11.0`; standalone
+  framework users install `trellum==0.11.0`.
+- Apply the additive AI-usage migration and scalar data-source choices migration
+  through the normal portal upgrade workflow.
+- Rebuild reports to embed the updated filter, capture and responsive runtime.
+  After rebuilding, remove report-local `fw-dropdowns-ready` workarounds that
+  delete stale SlimSelect wrappers; the framework now owns that cleanup.
+- Existing agent projects receive refreshed managed instructions by running
+  `python -m trellum setup project` after upgrading. The startup notice checks
+  for updates; it does not install them automatically.
+- Report AI usage checks use recorded completions, not a guaranteed provider
+  spending ceiling. Concurrent requests and provider work with unknown outcomes
+  can exceed recorded spend; use provider-side limits for a hard billing cap.
 
 ## [0.10.1] — 2026-11-08
 

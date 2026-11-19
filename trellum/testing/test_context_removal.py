@@ -213,3 +213,18 @@ def test_previous_generated_pointer_is_removed_but_authored_additions_stay(tmp_p
     assert not (tmp_path / 'CLAUDE.md').exists()
     assert rows['AGENTS.md'].status == 'kept'
     assert (tmp_path / 'AGENTS.md').read_bytes() == authored
+
+
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_released_pointer_with_portal_and_context_is_removed_safely(tmp_path, newline):
+    template = (Path(__file__).parent / 'fixtures/project-pointer-0101.txt').read_text(encoding='utf-8')
+    original = template.format(py='"C:/Project Env/python.exe"', cwd_note=RELATIVE_INTERPRETER_NOTE)
+    original = original.replace('\n', newline).encode('utf-8')
+    (tmp_path / 'CLAUDE.md').write_bytes(original)
+    authored = original + b'\nKeep our custom source policy.\n'
+    (tmp_path / 'AGENTS.md').write_bytes(authored)
+    rows = {row.name: row for row in remove(tmp_path)}
+    assert rows['CLAUDE.md'].status == 'deleted'
+    assert not (tmp_path / 'CLAUDE.md').exists()
+    assert rows['AGENTS.md'].status == 'kept'
+    assert (tmp_path / 'AGENTS.md').read_bytes() == authored

@@ -166,6 +166,8 @@ class TestReportCap:
         self, studio_tree, write_report, org, monkeypatch
     ):
         """The org admin looks at the repo page when a sync misbehaves."""
+        import shutil
+
         from apps.studios.models import StudioRepo
 
         repo = StudioRepo.objects.create(
@@ -174,6 +176,9 @@ class TestReportCap:
         OrgQuota.objects.create(org=org, max_reports=1)
         write_report("alpha")
         write_report("bravo")
+        # The checked-out tree owns the published files. Exercise real copying
+        # and reconciliation with both reports present in that source tree.
+        shutil.copytree(studio_tree.reports_dir, studio_tree.repo_dir / repo.path)
 
         from apps.runner import gitsync
 
@@ -181,13 +186,13 @@ class TestReportCap:
         pending = {"from": None, "to": "abc123", "initial": True, "reports": {}, "root_files": []}
         monkeypatch.setattr(sync, "fetch", lambda: pending)
         monkeypatch.setattr(sync, "_run_git", lambda *args, **kwargs: (0, "", ""))
-        monkeypatch.setattr(sync, "_copy_reports", lambda only_slugs=None: None)
 
         result = sync.sync()
 
         repo.refresh_from_db()
         assert result["ok"] is True  # the publish itself worked
         assert "limited to 1 report" in repo.last_error
+        assert Report.objects.filter(studio=studio_tree, present_in_scan=True).count() == 1
 
 
 class TestMemoryCap:

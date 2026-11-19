@@ -20,6 +20,18 @@
     </section>
 
     <section class="ui-form-section" data-ds-fields>
+      <h2>Value</h2>
+      <div class="ui-form-row">
+      {% for field in form.visible_fields %}{% if field.name == "value" or field.name == "secret" or field.name == "secret_reference" or field.name == "clear_value" or field.name == "mode" %}
+        <div class="ui-field ui-field-wide" data-f="{{ field.name }}">
+          {% if field.field.widget.input_type == "checkbox" %}<label class="ui-check-row">{{ field }} {{ field.label }}</label>{% else %}<label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}
+          {% if field.errors %}<div class="ui-field-error" role="alert">{{ field.errors }}</div>{% endif %}
+          {% if field.help_text %}<span class="ui-help">{{ field.help_text }}</span>{% endif %}
+        </div>
+      {% endif %}{% endfor %}
+      </div>
+    </section>
+    <section class="ui-form-section" data-ds-fields>
       <h2>Connection</h2>
       <div class="ui-form-row">
         <div class="ui-field" data-f="host"><label for="{{ form.host.id_for_label }}">{{ form.host.label }}</label>{{ form.host }}{% if form.host.errors %}<div class="ui-field-error" id="id_host_errors" role="alert">{{ form.host.errors }}</div>{% endif %}</div>

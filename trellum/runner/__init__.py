@@ -122,7 +122,7 @@ def _load_project_bootstrap(args) -> None:
                 print(f"  Warning: bootstrap.py failed: {exc}", flush=True)
 
 
-def main():
+def main(*, _capture=True):
     _force_utf8_console()
 
     parser = argparse.ArgumentParser(description="Run a BI report")
@@ -189,6 +189,17 @@ def main():
                         action="store_false",
                         help="Allow generation even with validation FAILs")
     args = parser.parse_args()
+
+    if _capture and (args.report_dir or args.all):
+        from trellum.log_capture import local_secrets, run_filtered
+        try:
+            secrets = local_secrets(args.report_dir if not args.all else None)
+        except Exception:
+            # Config/credential parser errors can contain the original value.
+            print('Unable to read scalar secret configuration.', file=sys.stderr)
+            sys.exit(1)
+        if secrets:
+            sys.exit(run_filtered(secrets=secrets))
 
     _load_project_bootstrap(args)
 

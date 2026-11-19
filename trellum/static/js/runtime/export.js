@@ -32,6 +32,9 @@
     function _fwCaptureColorConverter() {
         var cache = new Map();
         var context = document.createElement('canvas').getContext('2d');
+        // Modern serialization can retain `none`; missing components paint as
+        // zero outside interpolation, including a missing alpha channel.
+        function numeric(value) { return value === 'none' ? 0 : Number(value); }
         return function(value) {
             if (/^(?:rgba?|hsla?)\(/i.test(value) || /^#/.test(value) || value === 'transparent') return value;
             if (/^[a-z]+$/i.test(value) && value.toLowerCase() !== 'currentcolor' && CSS.supports('color', value)) return value;
@@ -43,8 +46,8 @@
             context.fillStyle = relative;
             var match = /^color\(srgb\s+([^\s]+)\s+([^\s]+)\s+([^\s/)]+)(?:\s*\/\s*([^\s)]+))?\)$/.exec(context.fillStyle);
             if (!match) throw new Error('Image capture cannot convert CSS color: ' + value);
-            var channels = match.slice(1, 4).map(Number);
-            var alpha = match[4] === undefined ? 1 : Number(match[4]);
+            var channels = match.slice(1, 4).map(numeric);
+            var alpha = match[4] === undefined ? 1 : numeric(match[4]);
             if (!channels.every(Number.isFinite) || !Number.isFinite(alpha))
                 throw new Error('Image capture cannot convert CSS color: ' + value);
             var result = 'rgba(' + channels.map(function(n) {

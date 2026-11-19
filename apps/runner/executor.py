@@ -28,6 +28,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -285,6 +286,54 @@ def read_peak_rss_mb(pid: int) -> int | None:
     return None
 
 
+def read_process_tree_peak_rss_mb(pid: int) -> int | None:
+    """Largest observed process RSS high-water mark in a direct build tree.
+
+    A log supervisor is now the process leader, so measuring only its PID
+    misses the report's allocations. Keep the existing per-process peak
+    metric; summing historical peaks would count allocations that did not
+    coexist. Windows Job processes and Docker supply their own sampler.
+    """
+    pending = [pid]
+    seen = set()
+    peak = None
+    # Bound procfs work even when an unsandboxed build creates many tasks.
+    budget = 4096
+    while pending and budget:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        budget -= 1
+        observed = read_peak_rss_mb(current)
+        if observed is not None:
+            peak = max(peak or 0, observed)
+        if not sys.platform.startswith("linux"):
+            continue
+        try:
+            with os.scandir(f"/proc/{current}/task") as tasks:
+                for task in tasks:
+                    if not budget:
+                        break
+                    budget -= 1
+                    try:
+                        with open(f"{task.path}/children", encoding="ascii") as fh:
+                            children = fh.read(65537)
+                        if len(children) > 65536:
+                            continue
+                        for child in children.split():
+                            if len(pending) >= budget:
+                                break
+                            child_pid = int(child)
+                            if child_pid not in seen:
+                                pending.append(child_pid)
+                    except (OSError, ValueError):
+                        continue
+        except OSError:
+            continue
+    return peak
+
+
 def _read_peak_working_set_mb(pid: int) -> int | None:
     """Windows: PeakWorkingSetSize via GetProcessMemoryInfo (psapi)."""
     import ctypes
@@ -387,6 +436,17 @@ class RunningProc:
     memory_cap_mb: int | None = None
     memory_cap_kind: str = "none"
     peak_memory_mb: int | None = None
+    ai_broker: object | None = field(default=None, repr=False)
+
+
+def _close_ai_broker(broker):
+    if broker is not None:
+        try:
+            broker.close()
+        except Exception:
+            # Cleanup must not prevent termination or monitoring other runs.
+            # The socket directory is tenant-writable; do not log its contents.
+            logger.warning("Report AI broker cleanup failed")
 
 
 class Executor:
@@ -476,6 +536,7 @@ class Executor:
         stdout_path = str(log_dir / "stdout.log")
         stderr_path = str(log_dir / "stderr.log")
         stdout_fh = stderr_fh = None
+        ai_broker = None
         try:
             # Pre-flight: a report whose data sources cannot connect yet is
             # not started -- the run ends with what each source is waiting
@@ -548,7 +609,7 @@ class Executor:
             # framework + decrypted TRELLUM_DS_* credentials for the child env.
             from apps.datasources.materialize import materialize, shared_read_paths
 
-            ds_env = materialize(studio)
+            ds_env = materialize(studio, report=run.report)
             if extra_env:
                 ds_env.update(extra_env)
 
@@ -568,6 +629,11 @@ class Executor:
                 memory_cap_mb = int(memory_mb * settings.TRELLUM_JOB_MEMORY_HEADROOM)
                 memory_cap_kind = "address space (RLIMIT_AS)"
             env = child_env(studio, ds_env)
+            if hasattr(socket, "AF_UNIX"):
+                from apps.runner.ai_broker import AIBroker
+
+                ai_broker = AIBroker(run, log_dir).start()
+                env.update(ai_broker.child_env)
             diagnostics_path = str(log_dir / "diagnostics.json")
             env["TRELLUM_DIAGNOSTICS_PATH"] = diagnostics_path
             start_context = {
@@ -648,6 +714,7 @@ class Executor:
                 timeout_seconds=timeout,
                 published_output_dir=published_output_dir,
                 diagnostics_path=diagnostics_path,
+                ai_broker=ai_broker,
                 process_group_id=(proc.pid if os.name != "nt" and sandbox_kind != "docker" else None),
                 memory_limit_mb=memory_mb,
                 memory_cap_mb=memory_cap_mb,
@@ -674,6 +741,7 @@ class Executor:
                 extra={"run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
                        "worker_id": self.worker_id, "trigger": run.trigger, "reason": "start_failed"},
             )
+            _close_ai_broker(ai_broker)
             for fh in (stdout_fh, stderr_fh):
                 if fh is not None:
                     try:
@@ -733,14 +801,15 @@ class Executor:
                 logger.exception("Cannot persist progress; enforcing local build deadline")
             ret = proc.process.poll()
             if ret is not None:
+                _close_ai_broker(proc.ai_broker)
                 finished.append((proc, ret))
                 continue
 
-            # Sample peak memory while the process is alive. In-process runs
-            # read /proc VmHWM; sandboxed runs expose it via the facade (the
-            # container's own /proc is gone once it exits).
+            # Sample peak memory while the process is alive. Direct runs must
+            # include the report behind its log supervisor; Windows Jobs and
+            # sandboxes expose their sampler through the process facade.
             sampler = getattr(proc.process, "peak_rss_mb", None)
-            observed = sampler() if sampler else read_peak_rss_mb(proc.process.pid)
+            observed = sampler() if sampler else read_process_tree_peak_rss_mb(proc.process.pid)
             if observed is not None and observed > (proc.peak_memory_mb or 0):
                 proc.peak_memory_mb = observed
 
@@ -780,6 +849,7 @@ class Executor:
             f"Sending SIGTERM to {proc.slug}: {reason}",
             extra={**self._log_context(proc), "reason": reason, "signal": "SIGTERM"},
         )
+        _close_ai_broker(proc.ai_broker)
         try:
             self._signal_process_tree(proc, signal.SIGTERM)
             proc.sigterm_at = now
@@ -1095,6 +1165,7 @@ class Executor:
 
     @staticmethod
     def _cleanup(proc: RunningProc) -> None:
+        _close_ai_broker(proc.ai_broker)
         # Remove the finished sandbox container (no-op for in-process runs).
         cleanup = getattr(proc.process, "cleanup", None)
         if cleanup is not None:

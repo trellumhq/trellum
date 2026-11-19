@@ -16,13 +16,14 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
 
-from apps.datasources.models import CREDENTIAL_KEYS, INLINE_TYPES, DataSource, RepoDataSource
+from apps.datasources.models import CREDENTIAL_KEYS, INLINE_TYPES, SCALAR_TYPES, DataSource, RepoDataSource
 from apps.datasources.probe import ProbeBusy, admission, run_probe
 
 TIMEOUT_SECONDS = 10
 
 #: Types we can meaningfully test from the web process.
 UNTESTABLE = {
+    **{kind: "Scalar values are read when a report requests them." for kind in SCALAR_TYPES},
     "onedrive": "Connection test is not supported for OneDrive yet — run a report to verify.",
 }
 
@@ -51,6 +52,8 @@ def fmt_size(n: int) -> str:
 
 def test_datasource(ds) -> tuple[bool, str]:
     """Returns (ok, human detail). Never raises."""
+    if ds.type in SCALAR_TYPES:
+        return True, "Scalar values are resolved when the report requests them."
     # File-ish types first: for an uploaded source "path" is missing until the
     # first upload, and "missing: path" is not what the admin needs to hear.
     if ds.type in INLINE_TYPES:

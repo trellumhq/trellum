@@ -8,6 +8,7 @@ from trellum.components import (
     LiveDataSource,
     RawHTML,
     ScopedDataSource,
+    Section,
 )
 
 # Literal rows keep this teaching query independent of source tables/fixtures.
@@ -37,6 +38,7 @@ class LiveResultExamplesReport(BaseReport):
             '<p>Every row is one synthetic platform/day observation. Value is in USD; '
             'Returned value = sum(value), and Observations = returned row count. '
             'The line sums value by day. The fixed build snapshot is Current.</p>'
+        )), Section('How the live example works', [RawHTML(html=(
             '<p>Standalone and shared pages keep disabled live controls and show '
             'the build snapshot with unknown completeness. A serving host with '
             'live queries enabled runs the registered query for Current, Alternative '
@@ -45,7 +47,7 @@ class LiveResultExamplesReport(BaseReport):
             'responses have those states. Returned rows may be bounded by a host or '
             'authored SQL; they do not establish entire warehouse totals. Response '
             'receipt time does not establish source freshness.</p>'
-        ))])
+        ))], collapsible=True, default_collapsed=True)])
         ctx.add_section('', [
             LiveDataSource('live_result_rows', query='live_result_example', df=frame),
             FilterBar('live_result_rows', frame, filters=[

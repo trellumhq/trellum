@@ -51,7 +51,7 @@
 {% include "_list_toolbar.html" with q=q placeholder="Search data sources…" total=total %}
 <div class="panel">
 <div class="ui-table-scroll" data-settings-refresh="datasources">
-<table class="ui-table" data-mobile-cards>
+<table class="ui-table ds-table" data-mobile-cards>
   <thead>
     <tr><th>Source</th><th>Scope</th><th>Type</th><th>Status</th><th>Used by</th><th></th></tr>
   </thead>
@@ -64,7 +64,28 @@
         {% else %}<span class="ui-chip acc">from repository</span>{% endif %}
       {% endif %}
       <br data-ds-description-break{% if not row.description %} hidden{% endif %}>
-      <span class="muted" data-ds-description{% if not row.description %} hidden{% endif %}>{{ row.description }}</span></td>
+      <span class="muted" data-ds-description{% if not row.description %} hidden{% endif %}>{{ row.description }}</span>
+      {% if row.upload_url %}
+      <div class="ds-file" data-ds-file>
+        <span class="muted" data-ds-filename>{{ row.filename|default:"No file uploaded" }}</span>
+        <div class="ds-file-controls" data-ds-file-controls>
+        <label class="ui-btn ghost"
+               title="{{ row.name }} is stored by the portal — this replaces its file">
+          <input type="file" class="ds-file-input"
+                 data-pk="{{ row.key }}" data-url="{{ row.upload_url }}"
+                 data-name="{{ row.name }}"{% if row.file_accept %} accept="{{ row.file_accept }}"{% endif %}>
+          <span data-ds-upload-label>{% if row.file_available %}Replace{% else %}Upload file{% endif %}</span>
+        </label>
+        <form class="inline" method="post" action="{{ row.upload_url }}" data-ds-remove
+              data-settings-form data-settings-save{% if not row.filename %} hidden{% endif %}>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="remove">
+          <button class="ui-btn ghost ds-remove-file" type="submit">Remove</button>
+        </form>
+        </div>
+      </div>
+      {% endif %}
+    </td>
     <td data-label="Scope">{% if row.ds.scope == "org" %}<span class="scope-chip org">organization</span>
         {% elif row.ds %}<span class="scope-chip studio">studio</span>
         {% else %}<span class="muted">—</span>{% endif %}</td>
@@ -83,31 +104,24 @@
           {% else %}<span class="muted">Not declared by any studio</span>{% endif %}
         {% elif row.used_by %}{{ row.used_by }} report{{ row.used_by|pluralize }}
         {% else %}<span class="muted">0 reports</span>{% endif %}</td>
-    <td class="ui-row-actions" data-label="Actions">
+    <td class="ui-row-actions ds-actions" data-label="Actions">
       {% if row.state.state == "needs_credentials" and row.configurable %}
         {# A link, so ghost: the page's primary action is the form it opens. #}
         <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Configure</a>
         <button class="ui-btn ghost" type="button" data-ds-test disabled title="Add the credentials first">Test</button>
       {% else %}
-        {% if row.upload_url %}
-        <label class="ui-btn {% if row.state.state == "needs_upload" %}primary{% else %}ghost{% endif %}"
-               title="{{ row.name }} is stored by the portal — this replaces its file">
-          <input type="file" class="ds-file-input"
-                 data-pk="{{ row.key }}" data-url="{{ row.upload_url }}"
-                 data-name="{{ row.name }}">
-          <span data-ds-upload-label>{% if row.file_available %}Replace file{% elif row.state.state == "needs_upload" %}Upload{% else %}Upload file{% endif %}</span>
-        </label>
-        {% endif %}
+        <button type="button" class="ui-btn ghost" data-ds-more popovertarget="ds-actions-{{ forloop.counter }}" aria-expanded="false" aria-controls="ds-actions-{{ forloop.counter }}" aria-label="More actions for {{ row.name }}">More <span aria-hidden="true">⋯</span></button>
+        <div id="ds-actions-{{ forloop.counter }}" class="ds-action-menu" data-ds-action-menu popover role="group" aria-label="Actions for {{ row.name }}">
         {% if row.download_url %}
         <a class="ui-btn ghost" data-ds-download href="{{ row.download_url }}">Download</a>
         {% endif %}
-        {% if row.ds %}
+        {% if row.ds and not row.scalar %}
         <button class="ui-btn ghost" type="button" data-ds-test
                 onclick="testSource({{ row.ds.pk }}, '{{ row.name|escapejs }}', this)">Test</button>
         {% endif %}
         {% if row.state.declared and not org_page %}
           {% if row.configurable and row.can_manage %}
-          <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Edit credentials</a>
+          <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">{% if row.scalar %}Edit value{% else %}Edit credentials{% endif %}</a>
           {% elif row.configurable and not row.ds %}
           <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Configure</a>
           {% elif row.manage_url %}
@@ -129,6 +143,7 @@
         {% elif row.ds %}
         <span class="muted" title="Shared sources are managed by org admins.">org-managed</span>
         {% endif %}
+        </div>
       {% endif %}
     </td>
   </tr>
@@ -147,8 +162,8 @@
 </div>
 {% include "_pagination.html" with page=page %}
 {% if not org_page %}
-<p class="ui-help">Repo-declared fields (type, host, port, database, path) are read-only
-  here. Change them in the repository and publish.</p>
+<p class="ui-help">Repo-declared connection settings are read-only here. Change them in the repository
+  and publish. Uploaded files can be replaced or removed here.</p>
 {% endif %}
 
 {% if unknown %}
@@ -182,8 +197,55 @@
   var pathHelp = form.querySelector('[data-f="path"] .helptext');
   var filePathLabel = pathLabel ? pathLabel.textContent : 'Path';
 
-  function applyType() {
-    var relevant = TYPE_FIELDS[typeSelect.value] || [];
+  function applyType(event) {
+    var relevant = (TYPE_FIELDS[typeSelect.value] || []).slice();
+    var scalar = relevant.indexOf('value') !== -1;
+    var clear = form.querySelector('[name="clear_value"]');
+    if (scalar && clear && clear.type !== 'hidden') relevant.push('clear_value');
+    var value = form.querySelector('[name="value"]');
+    var secret = form.querySelector('[name="secret"]');
+    var reference = form.querySelector('[name="secret_reference"]');
+    if (value) {
+      var masked = typeSelect.value === 'secret' || (secret && secret.checked) || (reference && reference.value);
+      // Keep multiline replacements as textareas: password inputs discard line breaks.
+      var multiline = ['text', 'json'].indexOf(typeSelect.value) !== -1;
+      var boolean = typeSelect.value === 'boolean' && !masked;
+      var tag = multiline ? 'TEXTAREA' : boolean ? 'SELECT' : 'INPUT';
+      var preserveFocus = document.activeElement === value && (!event || event.type !== 'change');
+      if (value.tagName !== tag && preserveFocus && !value._dsPendingWidget) {
+        value._dsPendingWidget = true;
+        value.addEventListener('blur', function () { this._dsPendingWidget = false; applyType(); }, {once: true});
+      }
+      if (value.tagName !== tag && form.getAttribute('aria-busy') !== 'true' && !preserveFocus) {
+        var replacement = document.createElement(tag.toLowerCase());
+        Array.from(value.attributes).forEach(function (attr) { if (['type', 'value', 'rows', 'step'].indexOf(attr.name) === -1) replacement.setAttribute(attr.name, attr.value); });
+        if (boolean) [['', 'No value'], ['true', 'True'], ['false', 'False']].forEach(function (option) {
+          replacement.add(new Option(option[1], option[0]));
+        });
+        replacement.value = value.value;
+        if (multiline) replacement.rows = 5;
+        value.replaceWith(replacement);
+        value = replacement;
+        if (window.TrellumSettingsForms) TrellumSettingsForms.trackControls(form, [value]);
+      }
+      if (value.tagName === 'INPUT') {
+        value.type = masked ? 'password' : typeSelect.value === 'number' ? 'number' : 'text';
+        if (value.type === 'number') value.step = 'any';
+      }
+      value.autocomplete = masked ? 'off' : '';
+      var valueRow = value.closest('[data-f="value"]');
+      if (valueRow) {
+        var help = valueRow.querySelector('.ui-help');
+        if (!help) { help = document.createElement('span'); help.className = 'ui-help'; valueRow.appendChild(help); }
+        help.textContent = masked
+          ? (multiline ? 'Replacement text is visible while editing and cleared after saving. ' : '') + (clear && clear.type !== 'hidden' ? 'Blank keeps the saved secret. ' : '') + 'Saved secrets are never shown again.'
+          : 'Available to reports that list this source.';
+      }
+      if (reference && reference.value) relevant = relevant.filter(function (name) { return name !== 'value'; });
+    }
+    if (typeSelect.value === 'secret') relevant = relevant.filter(function (name) { return name !== 'secret'; });
+    document.querySelectorAll('[data-ds-connection-only]').forEach(function (node) { node.hidden = scalar; node.style.display = scalar ? 'none' : ''; });
+
     form.querySelectorAll('[data-f]').forEach(function (row) {
       row.style.display = relevant.indexOf(row.getAttribute('data-f')) === -1 ? 'none' : '';
     });
@@ -204,14 +266,17 @@
      and the person may know something we do not. */
   var IS_ORG_PAGE = {% if org_page %}true{% else %}false{% endif %};
   function applyGitWarning() {
+    if (!pathInput || !uploadBox) return;
     var rel = (pathInput.value || '').replace(/\\/g, '/').replace(/^\.?\//, '');
     var risky = !IS_ORG_PAGE && uploadBox.checked && rel.indexOf('reports/') === 0;
     if (gitWarning) gitWarning.hidden = !risky;
   }
 
   typeSelect.addEventListener('change', applyType);
-  pathInput.addEventListener('input', applyGitWarning);
-  uploadBox.addEventListener('change', applyGitWarning);
+  ['secret', 'secret_reference'].forEach(function (name) { var control = form.querySelector('[name="' + name + '"]'); if (control) control.addEventListener('change', applyType); });
+  if (pathInput) pathInput.addEventListener('input', applyGitWarning);
+  if (uploadBox) uploadBox.addEventListener('change', applyGitWarning);
+  form.addEventListener('settings:success', applyType);
   applyType();
   applyGitWarning();
 })();
@@ -226,6 +291,76 @@ document.addEventListener('click', function (event) {
   }
 });
 
+/* Native popovers keep row actions above the table's scrolling boundary.
+   They are nonmodal groups of ordinary links/buttons, using normal Tab order. */
+var dsActionMenuCount = 0;
+function dsActionMenu(row) {
+  var cell = row.querySelector('[data-label="Actions"]');
+  var menu = cell.querySelector('[data-ds-action-menu]');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'ds-actions-new-' + (++dsActionMenuCount);
+  menu.className = 'ds-action-menu';
+  menu.dataset.dsActionMenu = '';
+  menu.setAttribute('popover', 'auto');
+  menu.setAttribute('role', 'group');
+  menu.setAttribute('aria-label', 'Actions for ' + row.dataset.sourceName);
+  var trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'ui-btn ghost';
+  trigger.dataset.dsMore = '';
+  trigger.setAttribute('popovertarget', menu.id);
+  trigger.setAttribute('aria-controls', menu.id);
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.setAttribute('aria-label', 'More actions for ' + row.dataset.sourceName);
+  trigger.textContent = 'More ⋯';
+  while (cell.firstChild) menu.appendChild(cell.firstChild);
+  cell.classList.add('ui-row-actions', 'ds-actions');
+  cell.appendChild(trigger);
+  cell.appendChild(menu);
+  return menu;
+}
+function dsPositionMenu(menu) {
+  var trigger = menu.closest('tr').querySelector('[data-ds-more]');
+  var rect = trigger.getBoundingClientRect();
+  var left = Math.max(8, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8));
+  var top = rect.bottom + 6;
+  if (top + menu.offsetHeight > innerHeight - 8) top = Math.max(8, rect.top - menu.offsetHeight - 6);
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+}
+document.addEventListener('toggle', function (event) {
+  var menu = event.target;
+  if (!menu.matches('[data-ds-action-menu]')) return;
+  var open = event.newState === 'open';
+  menu.closest('tr').querySelector('[data-ds-more]').setAttribute('aria-expanded', String(open));
+  if (open) dsPositionMenu(menu);
+}, true);
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'Escape') return;
+  var menu = document.querySelector('[data-ds-action-menu]:popover-open');
+  if (!menu) return;
+  event.preventDefault();
+  menu.hidePopover();
+  menu.closest('tr').querySelector('[data-ds-more]').focus({preventScroll:true});
+}, true);
+document.addEventListener('click', function (event) {
+  var action = event.target.closest('[data-ds-action-menu] a, [data-ds-action-menu] button');
+  if (!action) return;
+  var menu = action.closest('[data-ds-action-menu]');
+  setTimeout(function () {
+    if (event.defaultPrevented || !menu.matches(':popover-open')) return;
+    menu.hidePopover();
+    menu.closest('tr').querySelector('[data-ds-more]').focus({preventScroll:true});
+  }, 0);
+});
+function dsPositionOpenMenu() {
+  var menu = document.querySelector('[data-ds-action-menu]:popover-open');
+  if (menu) dsPositionMenu(menu);
+}
+window.addEventListener('resize', dsPositionOpenMenu);
+document.addEventListener('scroll', dsPositionOpenMenu, true);
+
 /* ── Uploads ──────────────────────────────────────────────────────────────
    XHR rather than fetch: only XHR reports upload progress, and these files
    are the ones big enough to need it. */
@@ -238,8 +373,90 @@ function dsFormatSize(n) {
   return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + ' ' + units[i];
 }
 
+function dsFileControls(row, filename) {
+  var input = row.querySelector('.ds-file-input');
+  if (!input) return;
+  var actions = input.closest('[data-ds-file-controls]') || input.closest('td');
+  var name = row.querySelector('[data-ds-filename]');
+  if (!name) {
+    name = document.createElement('span');
+    name.className = 'muted';
+    name.dataset.dsFilename = '';
+    (row.querySelector('[data-ds-file]') || actions).prepend(name);
+  }
+  name.textContent = filename || 'No file uploaded';
+  var form = row.querySelector('[data-ds-remove]');
+  if (!form) {
+    form = document.createElement('form');
+    form.method = 'post';
+    form.className = 'inline';
+    form.dataset.dsRemove = '';
+    form.dataset.settingsForm = '';
+    form.dataset.settingsSave = '';
+    [['csrfmiddlewaretoken', getCookie('csrftoken')], ['action', 'remove']].forEach(function (entry) {
+      var field = document.createElement('input');
+      field.type = 'hidden'; field.name = entry[0]; field.value = entry[1];
+      form.appendChild(field);
+    });
+    var button = document.createElement('button');
+    button.type = 'submit'; button.className = 'ui-btn ghost ds-remove-file';
+    button.textContent = 'Remove';
+    form.appendChild(button);
+    actions.appendChild(form);
+    TrellumSettingsForms.init(form);
+  }
+  form.action = input.dataset.url;
+  var status = form.querySelector('[data-settings-dirty-status]');
+  if (status) status.textContent = '';
+  form.querySelectorAll('[data-settings-error]').forEach(function (error) { error.remove(); });
+  form.hidden = !filename;
+  form.style.display = filename ? '' : 'none';
+}
+
+document.addEventListener('submit', function (event) {
+  if (!event.target.matches('[data-ds-remove]')) return;
+  var row = event.target.closest('tr');
+  if (row._dsFileBusy) { event.preventDefault(); return; }
+  row._dsFileBusy = true;
+  row.querySelector('[data-ds-result]').textContent = '';
+  row.querySelector('.ds-progress').hidden = true;
+  row.querySelector('.ds-file-input').disabled = true;
+  var more = row.querySelector('[data-ds-more]');
+  if (more) more.disabled = true;
+});
+function dsReleaseRemove(event) {
+  if (!event.target.matches('[data-ds-remove]')) return;
+  var row = event.target.closest('tr');
+  row._dsFileBusy = false;
+  row.querySelector('.ds-file-input').disabled = false;
+  var more = row.querySelector('[data-ds-more]');
+  if (more) more.disabled = false;
+}
+document.addEventListener('settings:error', dsReleaseRemove);
+document.addEventListener('settings:success', function (event) {
+  if (!event.target.matches('[data-ds-remove]')) return;
+  dsReleaseRemove(event);
+  var data = event.detail;
+  var row = event.target.closest('tr');
+  if (!data.removed) return;
+  row._dsGeneration = (row._dsGeneration || 0) + 1;
+  row.dataset.revision = data.revision;
+  dsFileControls(row, '');
+  row.querySelector('[data-ds-upload-label]').textContent = 'Upload file';
+  var download = row.querySelector('[data-ds-download]');
+  if (download) download.remove();
+  var progress = row.querySelector('.ds-progress');
+  if (progress) progress.hidden = true;
+  dsBadge(row, data.badge, data.label, data.detail);
+  var result = row.querySelector('[data-ds-result]');
+  result.textContent = 'File removed. Takes effect on the next build.';
+  result.style.color = 'var(--text2)';
+  row.querySelector('.ds-file-input').focus({preventScroll:true});
+});
+
 function dsUpload(input) {
   if (!input.files || !input.files.length) return;
+  if (input.closest('tr')._dsFileBusy) return;
   var file = input.files[0];
   var pk = input.dataset.pk;
   var box = document.getElementById('ds-progress-' + pk);
@@ -250,6 +467,7 @@ function dsUpload(input) {
   row._dsGeneration = (row._dsGeneration || 0) + 1;
   var generation = row._dsGeneration;
   input.value = '';
+  box.hidden = true;
 
   if (DS_MAX_UPLOAD_BYTES && file.size > DS_MAX_UPLOAD_BYTES) {
     result.textContent = '✗ ' + dsFormatSize(file.size) + ' is over the '
@@ -263,6 +481,17 @@ function dsUpload(input) {
   bar.style.width = '0%';
   label.textContent = 'Starting…';
   input.disabled = true;
+  row._dsFileBusy = true;
+  var moreButton = row.querySelector('[data-ds-more]');
+  if (moreButton) moreButton.disabled = true;
+  var removeButton = row.querySelector('[data-ds-remove] button');
+  if (removeButton) removeButton.disabled = true;
+  function releaseFileAction() {
+    input.disabled = false;
+    row._dsFileBusy = false;
+    if (removeButton) removeButton.disabled = false;
+    if (moreButton) moreButton.disabled = false;
+  }
 
   var data = new FormData();
   data.append('file', file);
@@ -270,28 +499,30 @@ function dsUpload(input) {
   xhr.open('POST', input.dataset.url);
   xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
   xhr.withCredentials = true;
+  xhr.timeout = 120000;
 
   xhr.upload.addEventListener('progress', function (e) {
     if (row._dsGeneration !== generation) return;
     if (!e.lengthComputable) return;
     var pct = Math.round((e.loaded / e.total) * 100);
     bar.style.width = pct + '%';
-    label.textContent = pct + '% — ' + dsFormatSize(e.loaded)
+    label.textContent = pct === 100 ? 'Saving file…' : pct + '% — ' + dsFormatSize(e.loaded)
       + ' of ' + dsFormatSize(e.total);
   });
 
   xhr.addEventListener('load', function () {
-    input.disabled = false;
+    releaseFileAction();
     if (row._dsGeneration !== generation) return;
     var body = {};
     try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON error page */ }
     if (xhr.status === 200 && body.ok) {
       bar.style.width = '100%';
-      label.textContent = 'Uploaded ' + (body.size_label || '') + '.';
+      label.textContent = 'Uploaded ' + (body.size_label || '') + '. Takes effect on the next build.';
       row.dataset.revision = body.revision;
       row.dataset.sourceId = body.source_id;
       dsBadge(row, body.badge || 'ok', body.label || 'Connected', body.detail || body.size_label || 'File uploaded.');
-      input.parentElement.querySelector('[data-ds-upload-label]').textContent = 'Replace file';
+      dsFileControls(row, body.filename || file.name);
+      input.parentElement.querySelector('[data-ds-upload-label]').textContent = 'Replace';
       input.parentElement.classList.remove('primary');
       input.parentElement.classList.add('ghost');
       if (body.download_url && !row.querySelector('[data-ds-download]')) {
@@ -300,23 +531,29 @@ function dsUpload(input) {
         download.dataset.dsDownload = '';
         download.href = body.download_url;
         download.textContent = 'Download';
-        row.querySelector('[data-label="Actions"]').appendChild(download);
+        dsActionMenu(row).prepend(download);
       }
       return;
     }
     box.hidden = true;
-    result.textContent = '✗ ' + (body.error || ('Upload failed (' + xhr.status + ')'));
+    result.textContent = '✗ ' + (body.error || body.message || ('Upload failed (' + xhr.status + ')'));
     result.style.color = 'var(--red)';
   });
 
   xhr.addEventListener('error', function () {
-    input.disabled = false;
+    releaseFileAction();
     if (row._dsGeneration !== generation) return;
     box.hidden = true;
-    result.textContent = '✗ Upload failed — the connection dropped.';
+    result.textContent = 'Upload outcome unconfirmed — the connection dropped. Check the current file before trying again.';
     result.style.color = 'var(--red)';
   });
 
+  xhr.addEventListener('timeout', function () {
+    releaseFileAction();
+    if (row._dsGeneration !== generation) return;
+    box.hidden = true;
+    result.textContent = 'Upload outcome unconfirmed. Check the current file before trying again.';
+  });
   xhr.send(data);
 }
 
@@ -477,14 +714,14 @@ function dsSavedRow(data) {
   row.querySelector('[data-label="Scope"]').replaceChildren(scope);
   row.querySelector('[data-label="Type"]').textContent = data.type_label;
   row.querySelector('[data-ds-result]').id = 'test-result-' + data.source_id;
-  var actions = row.querySelector('[data-label="Actions"]');
+  var actions = dsActionMenu(row);
   var download = actions.querySelector('[data-ds-download]');
   if (!download && data.download_url) {
     download = document.createElement('a');
     download.className = 'ui-btn ghost';
     download.dataset.dsDownload = '';
     download.textContent = 'Download';
-    actions.appendChild(download);
+    actions.prepend(download);
   }
   if (download && !data.download_url) download.remove();
   else if (download) download.href = data.download_url;
@@ -503,7 +740,7 @@ function dsSavedRow(data) {
     configure.setAttribute('href', data.configure_url || data.edit_url);
   }
   if (data.can_edit) dsDeleteForm(actions, data);
-  var upload = actions.querySelector('.ds-file-input');
+  var upload = row.querySelector('.ds-file-input');
   if (data.upload_url && !upload) {
     var uploadLabel = document.createElement('label');
     uploadLabel.className = 'ui-btn ghost';
@@ -515,8 +752,16 @@ function dsSavedRow(data) {
     uploadText.textContent = 'Upload file';
     uploadLabel.appendChild(upload);
     uploadLabel.appendChild(uploadText);
-    actions.appendChild(uploadLabel);
-    upload.addEventListener('change', function () { dsUpload(upload); });
+    var fileBlock = document.createElement('div');
+    fileBlock.className = 'ds-file';
+    fileBlock.dataset.dsFile = '';
+    var fileControls = document.createElement('div');
+    fileControls.className = 'ds-file-controls';
+    fileControls.dataset.dsFileControls = '';
+    fileControls.appendChild(uploadLabel);
+    fileBlock.appendChild(fileControls);
+    sourceCell.appendChild(fileBlock);
+    dsFileControls(row, '');
     var progress = document.createElement('div');
     progress.className = 'ds-progress';
     progress.hidden = true;
@@ -530,11 +775,13 @@ function dsSavedRow(data) {
     row.querySelector('[data-label="Status"]').appendChild(progress);
   }
   if (upload) {
-    if (!data.upload_url) upload.parentElement.remove();
+    if (!data.upload_url) (upload.closest('[data-ds-file]') || upload.parentElement).remove();
     else {
       upload.dataset.pk = data.source_id;
       upload.dataset.name = data.source_name;
       upload.dataset.url = data.upload_url;
+      var remove = row.querySelector('[data-ds-remove]');
+      if (remove) remove.action = data.upload_url;
       row.querySelector('.ds-progress').id = 'ds-progress-' + data.source_id;
     }
   }
@@ -600,9 +847,17 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
       }
     };
   }
+  function scalarType() {
+    var type = form.querySelector('[name="type"]');
+    return type && ['string', 'secret', 'text', 'number', 'boolean', 'json'].indexOf(type.value) !== -1;
+  }
   function invalidateTest() {
     if (!form._dsTestingRow) return;
     form._dsTestingRow._dsGeneration += 1;
+    if (scalarType()) {
+      form._dsTestingRow.querySelector('[data-ds-result]').textContent = 'Unsaved changes.';
+      return;
+    }
     if (editor) form._dsTestingRow.querySelector('[data-ds-test]').disabled = true;
     dsBadge(form._dsTestingRow, 'warn', editor ? 'Draft changed' : 'Not confirmed');
     form._dsTestingRow.querySelector('[data-ds-result]').textContent = editor ? 'Test draft or save changes to confirm this configuration.' : 'Save changes to test the new configuration.';
@@ -624,7 +879,7 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
   form.addEventListener('settings:success', function (event) {
     var data = event.detail;
     if (data.redirect) return;
-    if (!data.test_url) return;
+    if (!data.test_url && !data.source_type) return;
     if (editor) {
       form.dataset.revision = data.editor_revision || data.revision;
       form.dataset.orgRevision = data.org_revision || '';
@@ -637,10 +892,18 @@ document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(functio
       document.querySelector('[data-ds-saved-evidence]').textContent = data.label + (data.detail ? ' · ' + data.detail : '');
       document.querySelectorAll('[data-ds-editor-name]').forEach(function (name) { name.textContent = data.source_name; });
       var savedScope = document.querySelector('[data-ds-saved-scope]');
-      if (savedScope) savedScope.textContent = data.source_scope === 'org' ? 'Organization credentials shared with every studio.' : 'Credentials for this studio.';
+      if (savedScope) savedScope.textContent = scalarType()
+        ? (data.source_scope === 'org' ? 'Available to reports in this organization that list the source.' : 'Available to reports in this studio that list the source.')
+        : (data.source_scope === 'org' ? 'Organization credentials shared with every studio.' : 'Credentials for this studio.');
       var savedType = document.querySelector('[data-ds-editor-type]');
       if (savedType) savedType.textContent = data.source_type;
       var row = form._dsTestingRow;
+      if (!data.test_url) {
+        dsBadge(row, data.badge || '', data.label);
+        row.querySelector('[data-ds-detail]').textContent = data.detail || '';
+        row.querySelector('[data-ds-result]').textContent = form._dsGeneration !== form._dsSubmittedGeneration ? 'Saved. There are newer unsaved changes.' : '';
+        return;
+      }
       row.querySelector('[data-ds-test]').disabled = form._dsGeneration !== form._dsSubmittedGeneration;
       if (form._dsGeneration !== form._dsSubmittedGeneration) {
         dsBadge(row, 'warn', 'Draft changed');

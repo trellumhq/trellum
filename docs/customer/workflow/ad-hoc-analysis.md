@@ -54,10 +54,10 @@ None of it requires the report machinery.
 
 ## When to promote it to a report
 
-To preserve the explanation of a finding, publish an
-[analysis article](/docs/latest/workflow/published-analyses/) with written
-conclusions and captured evidence. It keeps the result readable without
-adding a recurring data query.
+To preserve the explanation of a finding, create a local
+[analysis article](/docs/latest/workflow/local-analysis/) with written
+conclusions and captured evidence. You can use unpublished reports in this
+project; reviewing the analysis locally does not publish or push it.
 
 Move an ad-hoc script into `reports/` when any of these is true:
 

@@ -303,6 +303,16 @@ class FakeProc:
 def fake_popen(monkeypatch):
     from apps.runner import executor as executor_mod
 
+    from apps.runner.ai_broker import AIBroker
+
+    brokers = []
+    start_broker = AIBroker.start
+
+    def tracked_start(broker):
+        brokers.append(broker)
+        return start_broker(broker)
+
+    monkeypatch.setattr(AIBroker, "start", tracked_start)
     holder: dict = {}
 
     def _popen(cmd, **kwargs):
@@ -311,7 +321,9 @@ def fake_popen(monkeypatch):
         return proc
 
     monkeypatch.setattr(executor_mod.subprocess, "Popen", _popen)
-    return holder
+    yield holder
+    for broker in brokers:
+        broker.close()
 
 
 @pytest.fixture

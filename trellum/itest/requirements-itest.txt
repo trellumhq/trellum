@@ -17,4 +17,4 @@ snowflake-connector-python<5
 # this. Today it only rides in transitively via snowflake-connector-python
 # -- pinned explicitly here so the itest venv doesn't depend on that
 # staying true.
-cryptography>=42
+cryptography>=50.0.2

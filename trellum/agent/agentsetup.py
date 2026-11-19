@@ -31,129 +31,21 @@ import re
 import sys
 from pathlib import Path
 
+from trellum.agent.project_guidance import (
+    BLOCK_END,
+    BLOCK_START,
+    POINTER,
+    PORTAL_SECTION,
+    RELATIVE_INTERPRETER_NOTE,
+    SIGNPOST,
+)
+
 MARKER = "trellum"
-
-#: For CLAUDE.md / AGENTS.md in a consumer project. Deliberately tiny: it exists
-#: to route, not to teach. The teaching lives behind `trellum guide`, which is
-#: fetched when relevant instead of resident always.
-#: `{py}` is substituted with the interpreter that actually has the framework
-#: installed. It is not decoration: a bare `trellum` is only on PATH inside an
-#: activated virtualenv, and agents do not activate virtualenvs -- a measured run
-#: burned ten tool calls working out the right invocation because this file told
-#: it to type `trellum`.
-POINTER = """\
-# Reports in this repository
-
-Reports here are built with the BI report framework, installed as a Python
-package. **The framework describes itself — ask it rather than reading its
-source.**
-
-Use this exact interpreter, **run from the repository root**:
-
-```
-{py} -m trellum                      what it is, the components, the commands
-{py} -m trellum guide <topic>...     depth on demand; several topics at once
-{py} -m trellum checks [<id>...]     validator check ids, or what one means
-{py} -m trellum validate reports/<x> validation state of a built report
-```
-
-Read `context/README.md` and source/metric notes first; use `analysis/README.md` for findings.
-Keep exports in `analysis/results/`; update verified context and preserve questions.
-
-`trellum` alone is not on PATH. Report paths like `reports/<slug>` are
-relative to the repository root, so run these from there.{cwd_note}
-
-Before writing a generator, read these two. They are not guessable from the
-API, and getting them wrong produces a report that builds cleanly and shows
-nothing useful:
-
-```
-{py} -m trellum guide queries format
-```
-
-Column names come from the warehouse, never from an example — check them before
-writing SQL rather than after the build fails:
-
-```
-{py} -m trellum data
-```
-
-To connect a database, hand the details to this rather than writing
-`data-sources/config.yaml` and `.env` yourself. It puts each part where it
-belongs, then connects — so a wrong password is reported now, not at the next
-build:
-
-```
-{py} -m trellum datasource add <name> --type postgres --host <h> --port <p> --database <db> --user <u> --password <pw>
-```
-
-Read files with your file-reading tool rather than `cat`, `ls` or `grep` in a
-shell: every shell command starts a process and your native tools do not.
-Batching reads into one `cat a; cat b; cat c` looks cheaper and is the opposite
-— three native reads cost nothing, one shell command does. Keep the shell for
-the build, the validator and git.
-
-Ask for several topics in one command rather than one at a time — every command
-re-reads your whole context, so four separate calls cost four times the context,
-not four times the content. `guide report` returns the whole authoring contract
-at once.
-
-Build. `--no-serve` exits when the build is done:
-
-```
-{py} -m trellum.run reports/<slug> --no-serve
-{py} -m trellum.new <slug>
-```
-
-When a person will review a local report, start review mode. It prints the
-preview URL and enables feedback:
-
-```
-{py} -m trellum review start reports/<slug>
-{py} -m trellum review poll --report <slug>
-```
-Keep the report-scoped poll active. Apply feedback, rebuild with `--no-serve`,
-then reply and continue polling:
-
-```
-{py} -m trellum.run reports/<slug> --no-serve
-{py} -m trellum review poll --report <slug> --session <session> --reply "what changed"
-```
-
-Continue until the user ends review; use `review end` if they ask you to wrap
-up. Build-only work stops after `--no-serve`. If someone explicitly asks for a
-plain preview without feedback, use `{py} -m trellum serve --background` and
-share its printed URL.
-{portal}
-A report is not finished until the validator reports no FAILs.
-"""
-
-#: Appended to POINTER only when the interpreter above came out relative, which
-#: is the normal case and the one with the confusing failure. Kept conditional
-#: because the same file is written with an absolute path when the virtualenv
-#: lives outside the project, and a warning about relative paths would then be
-#: describing something the reader cannot see.
-RELATIVE_INTERPRETER_NOTE = """ The interpreter path is relative too, so a
-command run after a `cd` into a subdirectory fails with `No such file or
-directory` — naming the interpreter, not your command. If one dies that way,
-`cd` back to the root rather than going looking for a Python."""
 
 #: The environment variable both MCP config files reference for the key. The
 #: value lives in `.env` and nowhere else.
 MCP_ENV_VAR = "TRELLUM_API_KEY"
 
-#: Added to both pointers only when `.mcp.json` names a `trellum` server, so a
-#: repository with no portal never reads about one. Under ten lines: the loop
-#: itself lives behind `guide portal`, fetched when relevant.
-PORTAL_SECTION = """
-## Portal
-
-The portal this repository publishes to is reachable as MCP server `trellum`
-(see .mcp.json). Use its tools to check what changed since the last publish,
-publish, run a report, read build status and errors, test or configure a
-data source, and manage alerts. `{py} -m trellum guide portal` walks the
-loop. The key is TRELLUM_API_KEY in .env; never paste it anywhere else.
-"""
 
 
 def _hook_entry(command: str, timeout: int = 10) -> dict:
@@ -291,8 +183,11 @@ def verify_hook(root: str | os.PathLike[str]) -> tuple[bool, str]:
         argv[0] = str((Path(root) / exe).resolve())
 
     try:
+        # Doctor already checks the version. This child only verifies that
+        # the hook runs; avoid a second network probe or cache write here.
         proc = subprocess.run(argv, cwd=str(root),
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, timeout=30,
+                              env={**os.environ, "FW_UPDATE_CHECK": "0"})
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"{cmd!r} could not run: {exc}"
     if proc.returncode != 0:
@@ -302,42 +197,6 @@ def verify_hook(root: str | os.PathLike[str]) -> tuple[bool, str]:
     return True, cmd
 
 
-#: Fence markers for the block appended to a file the user already owns.
-#: Everything between them is ours to rewrite; everything outside is theirs and
-#: is never touched. Same contract as ``merge_hooks`` -- re-running repairs in
-#: place instead of appending a second copy.
-BLOCK_START = "<!-- trellum:start -->"
-BLOCK_END = "<!-- trellum:end -->"
-
-#: What we add to somebody else's file. Deliberately a few lines rather than
-#: the full POINTER: their file is theirs, and a signpost only has to name the
-#: interpreter and the command. The framework answers the rest itself, so
-#: nothing here can go stale.
-SIGNPOST = """\
-{start}
-## Reports in this repository
-
-Reports here are built with the Trellum reporting framework. **It describes
-itself — ask it rather than reading its source.** Run from the repository root:
-
-```
-{py} -m trellum                  what it is, the components, the commands
-{py} -m trellum guide <topic>... depth on demand, several topics at once
-```
-
-Read `context/README.md` and source/metric notes first; use `analysis/README.md` for findings.
-Keep exports in `analysis/results/`; update verified context and preserve questions.
-
-`trellum` alone is not on PATH, so name the interpreter as shown.
-
-For human-facing local previews, the current default is
-`{py} -m trellum review start reports/<slug>`. Keep
-`{py} -m trellum review poll --report <slug>` active; rebuild with `--no-serve`
-before replying with the feedback session, and continue until the user ends
-review. Follow `{py} -m trellum guide review` for the full loop. Build-only work
-stops after the build; use plain preview only when explicitly requested.
-{portal}{end}
-"""
 
 
 def _signpost(py: str, portal: str = "") -> str:

@@ -18,6 +18,7 @@ from apps.datasources.models import (
     CREDENTIAL_KEYS,
     ENV_SUFFIXES,
     INLINE_TYPES,
+    SCALAR_TYPES,
     ORG_ALLOWED_TYPES,
     REQUIRED_FIELDS,
     TYPE_FIELDS,
@@ -619,7 +620,9 @@ class TestFrameworkLockstep:
         for type_, fields in TYPE_FIELDS.items():
             assert set(REQUIRED_FIELDS[type_]) <= set(fields), type_
             assert set(fields) <= CONFIG_KEYS | CREDENTIAL_KEYS, type_
-            if type_ not in INLINE_TYPES:
+            if type_ in SCALAR_TYPES:
+                assert set(fields) == {"value", "secret", "secret_reference"}
+            elif type_ not in INLINE_TYPES:
                 # Anything else the materializer would silently drop.
                 assert set(fields) <= set(ENV_SUFFIXES), type_
 

@@ -61,7 +61,7 @@
 }
 .fw-ab-vol-table td:first-child { text-align: left; color: var(--text-secondary); font-weight: 500; }
 .fw-ab-kpi-row {
-    display: grid; grid-template-columns: minmax(140px, 1.2fr) 80px 80px minmax(80px, 1fr) 80px;
+    display: grid; grid-template-columns: minmax(140px, 1.2fr) 80px 80px minmax(80px, 1fr) minmax(80px, 140px);
     gap: 8px; align-items: center;
     padding: 8px 4px; border-bottom: 1px solid var(--border-color);
     cursor: pointer; transition: background 0.15s;
@@ -99,7 +99,7 @@
 .fw-ab-kpi-ci.insig { color: var(--text-muted); font-style: italic; }
 .fw-ab-kpi-val { font-size: 12px; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
 .fw-ab-kpi-hdr {
-    display: grid; grid-template-columns: minmax(140px, 1.2fr) 80px 80px minmax(80px, 1fr) 80px;
+    display: grid; grid-template-columns: minmax(140px, 1.2fr) 80px 80px minmax(80px, 1fr) minmax(80px, 140px);
     gap: 8px; align-items: center; padding: 4px 8px 6px 8px;
     border-bottom: 1px solid var(--border-color); margin-bottom: 2px;
 }
@@ -116,7 +116,7 @@
 @media (max-width: 640px) {
     .fw-ab-kpi-row,
     .fw-ab-kpi-hdr {
-        grid-template-columns: minmax(110px, 1.4fr) minmax(80px, 1fr) 60px;
+        grid-template-columns: minmax(110px, 1.4fr) minmax(80px, 1fr) 100px;
         gap: 6px;
     }
     .fw-ab-kpi-row .fw-ab-kpi-val,
@@ -139,7 +139,7 @@
 @media (max-width: 400px) {
     .fw-ab-kpi-row,
     .fw-ab-kpi-hdr {
-        grid-template-columns: 1fr minmax(60px, 1fr) 50px;
+        grid-template-columns: 1fr minmax(60px, 1fr) 100px;
         padding-left: 2px; padding-right: 2px;
     }
 }

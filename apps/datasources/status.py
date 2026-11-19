@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.utils.timesince import timesince
 
 from apps.datasources.models import (
+    SCALAR_TYPES,
     CREDENTIAL_KEYS,
     INLINE_TYPES,
     REQUIRED_FIELDS,
@@ -87,6 +88,9 @@ class SourceState:
     NEEDS_CREDENTIALS: ClassVar[str] = "needs_credentials"
     NEEDS_UPLOAD: ClassVar[str] = "needs_upload"
     CONNECTED: ClassVar[str] = "connected"
+    SAVED: ClassVar[str] = "saved"
+    EMPTY: ClassVar[str] = "empty"
+    REFERENCED: ClassVar[str] = "referenced"
     FAILING: ClassVar[str] = "failing"
     CHECKING: ClassVar[str] = "checking"
     NOT_IN_REPO: ClassVar[str] = "not_in_repo"
@@ -148,7 +152,10 @@ def effective_fields(declaration, binding) -> dict:
     # override (including False) ahead of the repository declaration.
     if "new_connection_per_query" in (binding.config or {}):
         fields["new_connection_per_query"] = binding.config["new_connection_per_query"]
-    if declaration.type in INLINE_TYPES and (binding.config or {}).get("path"):
+    if declaration.type in INLINE_TYPES and (
+        (binding.config or {}).get("path")
+        or ((binding.config or {}).get("upload") and "path" in binding.config)
+    ):
         fields["path"] = binding.config["path"]
     return fields
 
@@ -183,6 +190,18 @@ def _state(name, declaration, binding, used_by) -> SourceState:
         st.last_check_at = binding.last_check_at
         st.last_check_ok = binding.last_check_ok
         st.last_check_error = binding.last_check_error
+
+    if st.type in SCALAR_TYPES:
+        if binding and (binding.config or {}).get("secret_reference"):
+            st.state = SourceState.REFERENCED
+            st.detail = "Organization secret is resolved during the build."
+        elif binding and str((binding.credentials or {}).get("value", "")).strip():
+            st.state = SourceState.SAVED
+            st.detail = "Available to reports that list this source."
+        else:
+            st.state = SourceState.EMPTY
+            st.detail = "No value saved. Reports can handle an empty source."
+        return st
 
     if declaration is not None and declaration.file_error and st.type in INLINE_TYPES:
         # git sync refused to ship the declared file (it escapes the project,

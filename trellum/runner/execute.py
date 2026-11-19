@@ -8,6 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from trellum.project import get_project_root
+from trellum.redaction import protected_build
 from trellum.rendering.html_builder import render_report
 from trellum.report import BaseReport, ReportContext, _validate_output_filename
 from trellum.runner.console import _ts
@@ -83,6 +84,7 @@ def _output_is_fresh(output_dir: str, max_age: int) -> bool:
         print(f"  WARNING: Could not check output freshness: {exc}", flush=True)
         return False
 
+@protected_build
 def run_report(
     report_dir: str,
     output_dir: str | None = None,
@@ -130,6 +132,7 @@ def _resolve_report_theme(config: dict):
     return resolve_theme(config.get("theme"))
 
 
+@protected_build
 def _run_report(
     report_dir: str,
     output_dir: str | None = None,

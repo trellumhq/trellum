@@ -284,11 +284,13 @@ class RawHTML(Component):
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
         if self.data_key and self.data:
-            ctx.add_raw_data(self.data_key, self.data)
+            from trellum.rendering.redaction import content
+            ctx.add_raw_data(self.data_key, content(self.data))
         if self.js:
             ctx.add_raw_js(self.js)
             self._warn_reimplemented_utils()
-        return f'<div id="{cid}" class="fw-raw">{self.html}</div>'
+        from trellum.rendering.redaction import html_content
+        return f'<div id="{cid}" class="fw-raw">{html_content(self.html, trusted_code=False)}</div>'
 
     def _warn_reimplemented_utils(self) -> None:
         """Warn at generation time if custom JS re-implements framework utilities."""

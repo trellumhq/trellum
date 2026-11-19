@@ -2019,6 +2019,12 @@ function _renderOpsContent() {
             _opsFetchSources().catch(function() {})
         ]).then(function(results) {
             if (!isCurrent()) return;
+            var fileNotice = document.querySelector('[data-studio-files-status]');
+            var fileStatus = (window._gitStatus || {}).files;
+            if (fileNotice && fileStatus) {
+                fileNotice.hidden = fileStatus.ready || fileStatus.state === 'unchecked';
+                fileNotice.textContent = fileStatus.message || '';
+            }
             var status = results[0];
             _opsRetryCount = 0;
             clearTimeout(_opsRetryTimer);
@@ -2243,9 +2249,13 @@ function _buildOpsHTML(status, reportList) {
 function _opsRepoCard(gs) {
     var manual = gs.publish_mode === 'manual', pending = gs.pending || null;
     var n = pending ? (pending.commits_total || (pending.commits || []).length) : 0;
-    var state = gs.publishing ? ['running', 'Publishing…']
+    var files = gs.files || {};
+    var state = files.state === 'missing' ? ['error', 'Studio files missing']
+        : files.state === 'mismatch' ? ['error', 'Studio files need restoring']
+        : gs.publishing ? ['running', 'Publishing…']
         : pending ? ['queued', n + ' commit' + (n === 1 ? '' : 's') + ' ahead']
-        : ['success', 'Up to date'];
+        : files.ready ? ['success', 'Up to date']
+        : ['queued', 'Files not checked'];
     var html = '<div class="ops-actions"><span class="ops-actions-label">Repository &middot; '
         + (manual ? 'Manual' : 'Automatic') + ' publishing</span>'
         + '<span class="ops-status ' + state[0] + '"><span class="ops-status-dot"></span>' + esc(state[1]) + '</span>';

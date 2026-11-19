@@ -102,7 +102,9 @@ def test_gitsync_preserves_last_good_report_when_source_is_rejected(tmp_path):
     sync = object.__new__(StudioGitSync)
     sync.cache_dir = str(cache)
     sync.repo = SimpleNamespace(path="reports")
-    sync.studio = SimpleNamespace(reports_dir=destination.parent)
+    sync.studio = SimpleNamespace(
+        project_root=destination.parent.parent, reports_dir=destination.parent,
+    )
     with pytest.raises(ValueError, match="symlinks"):
         sync._copy_reports()
     assert (destination / "generator.py").read_text() == "last good"

@@ -360,11 +360,11 @@ from, so it is recognisable in your history later.
 
 ## Turning it on
 
-**Organization settings → AI settings**, as an organization admin. These settings select the shared provider and model for portal chats and alert evaluations. If the assistant proposes an action, an organization member must approve it before it runs.
+**Organization settings → AI settings**, as an organization admin. These settings select the shared provider and model for portal chats, alert evaluations and report-build completions. If the assistant proposes an action, an organization member must approve it before it runs.
 
 Choose **Anthropic, OpenAI, LiteLLM, OpenRouter, DeepSeek, Azure OpenAI,
 Amazon Bedrock, Vertex AI**, or a **custom OpenAI-compatible endpoint**. One
-saved connection serves both chats and alerts; gateways control their own
+saved connection serves chats, alerts and report builds; gateways control their own
 routing and fallbacks.
 
 | Setting | What it does |
@@ -401,9 +401,10 @@ add that authorization themselves. See [instance configuration](/docs/latest/ins
 Missing organization credentials never silently select a server identity.
 
 The page separates **Chat**, **Alerts**, and **Cost metering** capability checks
-from the overall saved-settings readiness and model pricing. Chat can work when
+from saved-settings chat readiness and model pricing. Chat can work when
 an endpoint cannot force an alert tool call; alerts remain unavailable in that
-case. New providers require verification before use. Existing native provider
+case. New providers require verification for chats and alerts. Report completions
+do not require a successful Test connection. Existing native provider
 configurations retain their established behavior until rechecked.
 
 ### Budgets
@@ -420,6 +421,47 @@ Because the key is yours, these caps are Trellum's accounting of what it
 spent on your behalf, not a limit enforced by your provider. Set a limit at
 the provider too if the number matters.
 
+### AI during report builds
+
+A generator can call `ctx.ai.complete(system=..., user=..., max_tokens=8000)`
+using this same saved connection. The worker keeps credentials private: report
+code receives neither the API key nor the endpoint, and needs no vendor SDK or
+key file. Model and endpoint changes apply on the next call. **Test connection**
+verifies the same saved endpoint when an admin runs it; it is not a prerequisite
+for report completions.
+
+This is a blocking, one-shot completion, without tools or streaming. Reports
+must catch `trellum.ai.ReportAIError` to publish their remaining sections when
+AI is disabled, unavailable, over budget, times out or fails. Uncaught errors
+fail the build. Local framework builds without the portal return `unavailable`.
+See `python -m trellum guide ai` for the API and catch pattern.
+
+All report-build spend uses the shared monthly organization cap and meter.
+It never counts against a user's monthly cap, even for a manual build. There
+is no per-build call-count cap; once the organization cap is reached, later
+calls fail cleanly with `budget`, while a report that catches the error can
+still publish. Budgeted reports need known pricing and returned token usage,
+but never need a stored successful Cost metering check. Missing usage fails
+that call without booking a guessed charge; the next call can try again.
+If returned usage is valid but the answer is rejected, that usage still counts
+toward the organization cap.
+
+A provider may still charge for a request that times out or is stopped before
+usage is returned. Trellum cannot record that unknown charge. Use a provider-side
+limit when you need a hard billing cap, and compare the recorded totals with
+provider billing.
+
+The optional `model=` argument selects another model for one call. Saved prices
+apply only to the saved model; an override uses its own known direct-provider
+prices. Budgeted calls fail before contacting a model whose prices are unknown.
+For a gateway or cloud model, save the desired model and its prices in AI settings.
+
+Optional `response_format="json"` uses native JSON response format on
+OpenAI-protocol providers. Anthropic, Bedrock and Vertex instead receive a
+best-effort instruction to return JSON. Invalid JSON raises `ReportAIError`
+with `invalid_response`. Reports should parse the returned text and validate
+their own schema as well.
+
 ### Routing requests through your own endpoint
 
 Use **LiteLLM** or **Custom OpenAI-compatible endpoint** for a gateway or local
@@ -435,9 +477,11 @@ API key. Cloud providers use their own authentication and endpoint rules.
 Gateways and cloud providers do not inherit direct-provider prices from a model
 name. Enter your actual input and output prices if needed. Without prices,
 uncapped calls may run with unknown cost; unknown charges are excluded from
-recorded totals. Budgeted calls require both pricing and verified token usage.
-If a provider stops returning usage, further budgeted inference is blocked until
-metering is checked again. Compare recorded estimates with provider billing.
+recorded totals. Budgeted chat and alert calls require both pricing and verified
+token usage. If a provider stops returning usage, further budgeted chat and alert
+calls are blocked until metering is checked again. Report completions fail that
+call without booking a guessed charge or requiring a new connection test.
+Compare recorded estimates with provider billing.
 
 **Test connection** uses only synthetic prompts and harmless synthetic tools.
 It verifies streamed chat, a tool roundtrip, a forced alert tool, and token usage.

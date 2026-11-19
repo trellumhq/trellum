@@ -268,6 +268,33 @@ def test_is_newer_needs_both_sides_to_parse():
 
 # ── doctor ────────────────────────────────────────────────────────────────
 
+def test_session_overview_checks_updates_once_per_day(home, monkeypatch, capsys):
+    from trellum.cli import main
+
+    calls = serve(monkeypatch, [_release(f"v{NEWER}")])
+    for _ in range(2):
+        assert main([]) == 0
+        overview = capsys.readouterr().out
+        assert f"{NEWER} is available (pip install -U trellum)" in overview
+    assert len(calls) == 1
+
+    monkeypatch.setattr(update_check, "_today", lambda: "2026-09-06")
+    assert main([]) == 0
+    assert f"{NEWER} is available" in capsys.readouterr().out
+    assert len(calls) == 2
+
+
+def test_session_overview_is_usable_offline(home, monkeypatch, capsys):
+    from trellum.cli import main
+
+    calls = serve(monkeypatch, OSError("offline"))
+    assert main([]) == 0
+    overview = capsys.readouterr().out
+    assert f"Trellum {__version__} --" in overview
+    assert "offline" not in overview and "is available" not in overview
+    assert len(calls) == 1
+
+
 def _version_row(out: str) -> str:
     (row,) = [line for line in out.splitlines() if line.startswith("[  ok  ] version")]
     return row

@@ -72,6 +72,12 @@ interpreter invoked `run.py` (so a venv "just works"), then tears the
 containers back down (`docker compose down -v`) unless you pass `--keep`.
 Everything after a literal `--` passes straight through to pytest.
 
+For the managed SSH bastion, Docker assigns a free host port and `run.py`
+passes the actual mapping to pytest. This avoids collisions with port 52222.
+Set `ITEST_SSH_PORT` to request a fixed port; `--keep` prints the assigned port
+for subsequent manual runs. Manual Compose/pytest commands and `--no-docker`
+retain the default port 52222 unless overridden.
+
 ## Engine matrix
 
 | engine | container | notes |

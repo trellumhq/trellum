@@ -137,7 +137,9 @@ class TestRepoPublishing:
         assert "<code>aaaaaaa</code>" in page
         assert f"by {org_admin.email}" in page and "(manual)" in page
         assert "Remote <code>main</code>" in page
-        assert '<span class="ui-badge ok">Up to date</span>' in page
+        # A matching database SHA cannot establish health on an empty disk.
+        assert '<span class="ui-badge warn">Studio files missing</span>' in page
+        assert '<span class="ui-badge ok">Up to date</span>' not in page
         assert "commits ahead" not in page
 
     def test_commits_ahead_and_a_stale_check(self, html, prefix, manual):
@@ -160,7 +162,7 @@ class TestRepoPublishing:
         assert 'name="publish_mode" value="manual" checked' in page
         assert "nothing goes live until you press Publish" in page
         assert ">Check for changes</button>" in page
-        assert 'disabled title="Up to date">Up to date</button>' in page
+        assert 'disabled>Files not ready</button>' in page
         assert "<dialog" not in page
 
     def test_pending_chips_warnings_and_commits(self, html, prefix, manual):
@@ -380,7 +382,8 @@ class TestDataSourceScreen:
         # Only the portal-only source can be deleted; declared ones cannot.
         assert page.count('class="ui-btn danger"') == 1
         assert f'href="{prefix}/settings/datasources/{portal_only.name}/edit"' in page
-        assert "Repo-declared fields (type, host, port, database, path) are read-only" in page
+        assert "Repo-declared connection settings are read-only here" in page
+        assert "Uploaded files can be replaced or removed here" in page
         assert "Declared by your repository" in page
 
     def test_banner_counts_sources_and_waiting_reports(self, html, prefix, studio_tree):

@@ -97,6 +97,9 @@ Then:
 - Delegate long test runs and mechanical execution to cheaper or faster
   models where your tool supports subagents. Give them exact scopes and ask
   for short reports: commit SHA, what passed, what is still open.
+- Update the relevant framework API, framework guide (including topic and bundle
+  registration), customer documentation, and changelog with every feature. State
+  explicitly when the feature needs no portal UI changes.
 - Add an `[Unreleased]` entry to `CHANGELOG.md`.
 - Commit messages, code comments and docs state product facts. Product
   strategy, roadmap reasoning and research belong in the maintainers' private
@@ -122,8 +125,16 @@ the internet.
 
 ## Local report previews
 
-To show someone a local report, run
-`python -m trellum review start reports/<slug>`, then follow
-`python -m trellum guide review`. Poll with `--report <slug>` and rebuild
-before replying. Build changed source first with `--no-serve`, or pass
-`--rebuild`.
+Creating or updating a report for a person includes opening it for review;
+do this automatically without waiting for a separate request. Build and
+validate the report, run `python -m trellum review start reports/<slug>`,
+then follow `python -m trellum guide review`. Open the printed report URL
+in the browser available to the user, verify the intended report loads, and
+share a clickable link. A folder path alone is not a completed handoff.
+On a remote/headless host, use the agent's browser integration; the CLI's
+attempt to open the host browser does not prove the user can see it. If
+opening is unavailable, explain that limitation and provide a working link.
+Poll with `--report <slug>` and rebuild before replying. Build changed source
+first with `--no-serve`, or pass `--rebuild`. Skip the local review session
+for explicitly requested build-only/source-only work, CI or unattended
+publication; honor an explicit request for a plain preview or no browser.
