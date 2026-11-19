@@ -48,12 +48,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Keep saved scalar types and secret classification intact, including cleared
   and multiline values and significant whitespace. Filter secrets from report
   artifacts and build logs, including Python string and byte representations,
+  writes across nested builds and custom numeric exception payloads,
   while preserving framework markup and identities.
 - Retain saved secret protection when repository scalar declarations change,
   and discard older connection-test results after switching to a scalar type.
 - Detect missing studio checkouts and report files on page load and startup,
   then restore published files during sync even when the commit is unchanged.
   Remove reports left by a failed publish when restoring the previous version.
+  Bound inline file inspection for large registries and leave them unchecked
+  when complete verification would exceed the request budget.
 - Keep long filter bars usable on phones, improve demo card and table spacing,
   and preserve visible events in the Player Overview trends. Give A/B comparison
   intervals more space and simplify the visual-upgrade guide's navigation.

@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 
 
+MAX_REPORTS_PER_INSPECTION = 1000
+
 _MESSAGES = {
     "ready": "Studio files ready.",
     "missing": "Studio files missing. Restore the published version to continue.",
@@ -68,8 +70,9 @@ def check_studio_files(repo) -> dict:
     """Return ``{state, message, ready}`` without writes or network access.
 
     All present registry rows count, including disabled and private reports.
-    Slugs stream in one query with bounded memory; intentionally removed rows
-    do not require files. Messages never contain paths or report identities.
+    Read at most one bounded page of slugs; larger registries remain unchecked,
+    never partially verified as ready. Intentionally removed rows do not require
+    files. Messages never contain paths or report identities.
     """
     from apps.reports.models import Report
 
@@ -82,10 +85,12 @@ def check_studio_files(repo) -> dict:
             if head != repo.last_synced_sha:
                 state = "mismatch"
             else:
-                state = "ready"
-                slugs = Report.objects.filter(
+                slugs = list(Report.objects.filter(
                     studio_id=repo.studio_id, present_in_scan=True,
-                ).order_by().values_list("slug", flat=True).iterator(chunk_size=200)
+                ).order_by().values_list("slug", flat=True)[:MAX_REPORTS_PER_INSPECTION + 1])
+                if len(slugs) > MAX_REPORTS_PER_INSPECTION:
+                    return {"state": "unchecked", "message": _MESSAGES["unchecked"], "ready": False}
+                state = "ready"
                 for slug in slugs:
                     if not _safe_slug(slug):
                         state = "mismatch"

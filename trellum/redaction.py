@@ -13,15 +13,28 @@ import sys
 import threading
 import traceback
 import types
+from subprocess import CalledProcessError, TimeoutExpired
+from urllib.error import HTTPError
 from urllib.parse import quote
 
 from trellum.secret_prefix import SecretPrefixes
 
 _values = contextvars.ContextVar('trellum_scalar_secrets', default=())
+_build_depth = contextvars.ContextVar('trellum_redaction_depth', default=0)
 _lock = threading.RLock()
 _users = 0
 _active = {}
 _thread_secrets = ()
+
+_NUMERIC_EXCEPTION_CONTROLS = (
+    (SystemExit, {'code'}),
+    (OSError, {'errno', 'winerror', 'characters_written'}),
+    (SyntaxError, {'lineno', 'offset', 'end_lineno', 'end_offset', 'print_file_and_line'}),
+    (UnicodeError, {'start', 'end'}),
+    (CalledProcessError, {'returncode'}),
+    (TimeoutExpired, {'timeout'}),
+    (HTTPError, {'code'}),
+)
 
 
 def _secret_values():
@@ -253,8 +266,14 @@ def _scrub_exception(error, seen):
         # Group message/children are immutable and already rebuilt above.
         if group and attribute in {'message', 'exceptions'}:
             continue
-        if not isinstance(value, (int, float, bool, type(None))):
-            setattr(safe, attribute, _exception_value(value, seen))
+        # Preserve numeric fields used for exception control flow/formatting;
+        # custom numeric payloads can contain scalar secrets just like strings.
+        if isinstance(value, (int, float)) and any(
+            isinstance(error, cls) and attribute in fields
+            for cls, fields in _NUMERIC_EXCEPTION_CONTROLS
+        ):
+            continue
+        setattr(safe, attribute, _exception_value(value, seen))
     cause, context, suppress = error.__cause__, error.__context__, error.__suppress_context__
     safe.__cause__ = _scrub_exception(cause, seen)
     safe.__context__ = _scrub_exception(context, seen)
@@ -268,6 +287,8 @@ def build_redaction(config):
     secrets = _secrets(config)
     inherited = set(_values.get())
     token = _values.set(tuple(sorted(inherited.union(secrets), key=len, reverse=True)))
+    depth = _build_depth.get()
+    depth_token = _build_depth.set(depth + 1)
     with _lock:
         for secret in secrets:
             _active[secret] = _active.get(secret, 0) + 1
@@ -320,8 +341,11 @@ def build_redaction(config):
             safe.__context__ = context
     finally:
         with _lock:
-            sys.stdout.finish(all_contexts=_users == 1)
-            sys.stderr.finish(all_contexts=_users == 1)
+            # A nested scope shares its parent's pending text. Keep possible
+            # secret prefixes buffered until that outer scope finishes.
+            if depth == 0 or _users == 1:
+                sys.stdout.finish(all_contexts=_users == 1)
+                sys.stderr.finish(all_contexts=_users == 1)
             _users -= 1
             for secret in secrets:
                 _active[secret] -= 1
@@ -334,6 +358,7 @@ def build_redaction(config):
                 logging.Logger.makeRecord = logging.Logger.makeRecord.previous
                 logging.Handler.format = logging.Handler.format.previous
         _values.reset(token)
+        _build_depth.reset(depth_token)
 
 
 def protected_build(function):

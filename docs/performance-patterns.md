@@ -48,6 +48,10 @@ with `main` on desktop and mobile. Specifically:
 - Load secondary sections, like favorites, indicators and statistics, after
   the primary content and independently of it. A slow or failed secondary read
   must not delay or break the primary list.
+- The local studio-file health check reads at most 1,001 report slugs. It checks
+  individual report files only for registries of at most 1,000 present reports;
+  larger registries stay unchecked rather than claiming partial coverage as
+  ready. This bounds page and status-request work without limiting report use.
 
 ## 2. Requests never wait on slow or unbounded work
 

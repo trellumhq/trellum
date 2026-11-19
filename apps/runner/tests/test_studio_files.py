@@ -151,7 +151,7 @@ def test_git_inspection_is_explicit_local_and_timed(published_repo, monkeypatch)
 
 @pytest.mark.heavy
 @pytest.mark.parametrize("count", [1, 450])
-def test_report_inspection_uses_one_streamed_query(published_repo, count, django_assert_num_queries):
+def test_report_inspection_uses_one_bounded_query(published_repo, count, django_assert_num_queries):
     studio = published_repo.studio
     Report.objects.bulk_create([Report(studio=studio, slug=f"report-{i}") for i in range(count)])
     for i in range(count):
@@ -160,3 +160,28 @@ def test_report_inspection_uses_one_streamed_query(published_repo, count, django
         (directory / "report.yaml").write_text("name: Report\n")
     with django_assert_num_queries(1):
         assert check_studio_files(published_repo)["ready"]
+
+
+@pytest.mark.heavy
+@pytest.mark.parametrize("count", [1001, 3000])
+def test_large_registry_inspection_bounds_rows_and_filesystem_work(published_repo, count):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from apps.runner import studio_files
+
+    Report.objects.bulk_create([
+        Report(studio=published_repo.studio, slug=f"large-report-{i}")
+        for i in range(count)
+    ])
+    with CaptureQueriesContext(connection) as queries, patch.object(
+        studio_files, "_checked_path", wraps=studio_files._checked_path,
+    ) as paths:
+        health = check_studio_files(published_repo)
+    assert health == {
+        "state": "unchecked", "message": "Studio files have not been checked.", "ready": False,
+    }
+    assert len(queries) == 1
+    assert "LIMIT 1001" in queries[0]["sql"]
+    # Project and Git metadata only: no per-report filesystem probes at either size.
+    assert paths.call_count == 4
