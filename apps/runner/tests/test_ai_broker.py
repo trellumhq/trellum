@@ -343,6 +343,72 @@ print(ctx.ai.complete(system='system', user='facts').text)
 
 
 @pytest.mark.heavy
+@pytest.mark.parametrize("prompt_size", [11, 256 * 1024 - len("system")])
+def test_busy_broker_replies_before_closing_request(monkeypatch, prompt_size):
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+    results = []
+    errors = []
+
+    def dispatch(request):
+        calls.append(request)
+        entered.set()
+        assert release.wait(10)
+        return {"result": {"text": "ok", "finish_reason": "stop", "model": "test"}}
+
+    studio = SimpleNamespace(org_id="org")
+    with live_broker(studio, monkeypatch) as broker:
+        monkeypatch.setattr(broker, "_dispatch", dispatch)
+
+        def first_call():
+            try:
+                results.append(ReportAI().complete(system="system", user="facts", timeout=10))
+            except ReportAIError as error:
+                errors.append(error.code)
+
+        caller = threading.Thread(target=first_call)
+        caller.start()
+        try:
+            assert entered.wait(5)
+            with pytest.raises(ReportAIError) as caught:
+                ReportAI().complete(system="system", user="x" * prompt_size, timeout=5)
+            assert caught.value.code == "invalid_request"
+            assert len(calls) == 1
+        finally:
+            release.set()
+            caller.join(5)
+        assert not caller.is_alive()
+        assert not errors
+        assert [result.text for result in results] == ["ok"]
+
+
+@pytest.mark.heavy
+@pytest.mark.parametrize("frame", [b"{", b"x" * (2 * 1024 * 1024 + 1)], ids=["incomplete", "oversized"])
+def test_busy_broker_bounds_rejected_frames(monkeypatch, frame):
+    studio = SimpleNamespace(org_id="org")
+    with live_broker(studio, monkeypatch) as broker:
+        broker._busy.set()
+        dispatch = Mock()
+        monkeypatch.setattr(broker, "_dispatch", dispatch)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(2)
+            with unix_socket_address(broker.path) as address:
+                connection.connect(address)
+            try:
+                connection.sendall(frame)
+                assert connection.recv(1) == b""
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        # An invalid peer must not keep the listener from rejecting the next
+        # complete request, or start a second provider operation.
+        with pytest.raises(ReportAIError) as caught:
+            ReportAI().complete(system="system", user="facts", timeout=2)
+        assert caught.value.code == "invalid_request"
+        dispatch.assert_not_called()
+
+
+@pytest.mark.heavy
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_call_is_rejected_and_close_stops_worker(studio, saved, provider, monkeypatch):
     provider.state["delay"] = 5

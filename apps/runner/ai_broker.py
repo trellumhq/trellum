@@ -157,10 +157,26 @@ class AIBroker:
                 break
             if self._busy.is_set():
                 with connection:
-                    connection.settimeout(0.2)
                     try:
+                        # Closing with unread request bytes can reset the socket
+                        # before the client receives the rejection. Drain one
+                        # bounded frame without dispatching another completion.
+                        deadline = time.monotonic() + 0.2
+                        remaining = MAX_REQUEST_BYTES + 1
+                        while remaining:
+                            timeout = deadline - time.monotonic()
+                            if timeout <= 0:
+                                raise TimeoutError
+                            connection.settimeout(timeout)
+                            part = connection.recv(min(65536, remaining))
+                            remaining -= len(part)
+                            if not part or not remaining:
+                                raise ValueError
+                            if b"\n" in part:
+                                break
+                        connection.settimeout(0.2)
                         connection.sendall(json.dumps(_error("invalid_request", "An AI completion is already in progress for this build.")).encode() + b"\n")
-                    except OSError:
+                    except (OSError, ValueError):
                         pass
                 continue
             self._busy.set()
