@@ -35,6 +35,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep deeply nested, malformed AI broker replies catchable as completion errors.
 - Keep scope dropdowns aligned with the active dataset and dispose old controls,
   listeners and subscriptions before scope replacement. Keep retained live
   results and recreated datasets responsive to local filtering.

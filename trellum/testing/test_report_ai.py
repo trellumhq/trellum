@@ -97,6 +97,16 @@ def test_structured_failure(broker, response, code):
     assert "private-capability" not in str(error.value)
 
 
+def test_deeply_nested_response_is_a_catchable_failure(broker):
+    depth = 10000
+    response = b'[' * depth + b'0' + b']' * depth + b'\n'
+    assert len(response) < MAX_RESPONSE_BYTES
+    broker(response)
+    with pytest.raises(ReportAIError) as error:
+        ReportAI().complete(system="system", user="facts")
+    assert error.value.code == "invalid_response"
+
+
 def test_missing_listener_is_safe(tmp_path, monkeypatch):
     monkeypatch.setenv("TRELLUM_AI_SOCKET", str(tmp_path / "absent.sock"))
     monkeypatch.setenv("TRELLUM_AI_TOKEN", "private-capability")

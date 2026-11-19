@@ -124,5 +124,5 @@ class ReportAI:
             raise ReportAIError("timeout", "AI completion timed out.") from None
         except OSError:
             raise ReportAIError("unavailable", "AI completion broker is unavailable.") from None
-        except (ValueError, KeyError, TypeError, UnicodeError):
+        except (ValueError, KeyError, TypeError, UnicodeError, RecursionError):
             raise ReportAIError("invalid_response", "AI broker returned an invalid response.") from None
