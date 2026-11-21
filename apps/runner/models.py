@@ -115,6 +115,7 @@ class Run(models.Model):
     def to_history_dict(self, include_output: bool = False) -> dict:
         """Legacy RunRecord shape (portal.js renders these fields)."""
         d = {
+            "id": str(self.id) if self.id else None,
             "slug": self.slug,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
