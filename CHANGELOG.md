@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Make the Operations report view more compact and eliminate layout shifts during live runs: expanding a report now updates in place without rebuilding the page, opens directly on the live or latest terminal inside a fixed-height tabbed panel with a one-line health summary, moves run history and validation checks into separate tabs with status badges and historical log selection, and opens per-run recovery and diagnostic evidence in a compact modal dialog instead of inline table rows.
+- Include run `id` in `/api/reports/<slug>/status` history entries so operators can open any historical run's log tail directly in the Operations terminal.
+
 ## [0.11.0] — 2026-11-19
 
 ### Added

@@ -2,7 +2,10 @@
 
 A failed build is recorded with its cause, its logs, and its memory figures.
 Start in the studio's **Operations** tab, which shows the queue, running
-builds, and per-run logs that survive restarts.
+builds, and per-run logs that survive restarts. Expanding a report opens on its
+**Terminal** tab with a run selector for historical logs, alongside **Runs**
+(per-run status and diagnostics) and **Checks & Info** (validation warnings and
+report metadata).
 
 ## Read the classification first
 
@@ -91,9 +94,11 @@ attempt. A newer permanent or unsafe failure closes the older retry intent;
 an overall deadline never overrides observed permanent-error evidence.
 Exhaustion never disables future ordinary cron occurrences.
 
-Operations run history shows the last known connect, execute, fetch, render or
-publish stage, bounded timings, driver classes/codes, query attempt and managed-read retry counts with bounded reasons,
-effective timeout and recovery disposition. Identifiers and traceback locations
+In **Operations**, each report's **Runs** tab shows compact per-run outcomes
+with a **Diagnostics** dialog for runs that carry failure, recovery, or
+diagnostic evidence: the last known connect, execute, fetch, render or publish
+stage, bounded timings, driver classes/codes, query attempt and managed-read
+retry counts with bounded reasons, effective timeout and recovery disposition. Identifiers and traceback locations
 are hashed; new structured evidence contains no SQL, parameters, result data,
 connection strings or exception messages. A hard kill retains the last snapshot,
 which is evidence of progress, not proof of the underlying cause. Existing log

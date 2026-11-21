@@ -1944,6 +1944,10 @@ function _opsFetchSources() {
         });
 }
 var _opsExpandedSlugs = {};
+var _opsActiveTabs = {};
+var _opsSelectedRunIds = {};
+var _opsHistoryCache = {};
+var _opsOpenDiag = null;
 var _opsLivePollers = {};
 var _opsUserRoles = null;
 var _opsSystemActions = {};
@@ -2026,6 +2030,7 @@ function _renderOpsContent() {
                 fileNotice.textContent = fileStatus.message || '';
             }
             var status = results[0];
+            window._opsLatestStatus = status;
             _opsRetryCount = 0;
             clearTimeout(_opsRetryTimer);
             container.innerHTML = _buildOpsHTML(status, reports);
@@ -2135,17 +2140,15 @@ function _buildOpsHTML(status, reportList) {
         if (state === 'oom' || state === 'timeout') counts.error++;
         counts[state]++;
     });
-    window._opsLatestStatus = status;
     var uptime = status.server_uptime_seconds ? _fmtDuration(status.server_uptime_seconds) : '-';
 
-    /* Data sources that need someone's attention sit above everything else;
-       otherwise the section keeps its place under the system actions. */
+    /* Keep Data Sources in one stable slot under System actions so attention
+       changes never shove the summary strip up or down. */
     var dsAttention = _dsSources.filter(function(s) { return _DS_ATTENTION.indexOf(s.state) >= 0; }).length;
     if (dsAttention && !_dsTouched) _dsExpanded = true;
     var dsHtml = _dsSectionHTML(dsAttention);
 
-    var html = dsAttention ? dsHtml : '';
-    html += '<div class="ops-summary">';
+    var html = '<div class="ops-summary">';
     html += _opsStat(counts.total, 'Reports', '');
     html += _opsStat(counts.running, 'Running', 'running');
     html += _opsStat(counts.queued, 'Queued', '');
@@ -2178,7 +2181,7 @@ function _buildOpsHTML(status, reportList) {
         if (window._gitSyncConfigured) html += _opsRepoCard(gs);
     }
 
-    if (!dsAttention) html += dsHtml;
+    html += dsHtml;
 
     html += '<div class="ops-filters">';
     /* Count validation states */
@@ -2205,7 +2208,7 @@ function _buildOpsHTML(status, reportList) {
     reportList.forEach(function(r) {
         var isRunning = !!running[r.slug], isQueued = queueSlugs.indexOf(r.slug) >= 0;
         var expanded = !!_opsExpandedSlugs[r.slug];
-        html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '"' + (_opsFilterMatches(r, running, queueSlugs) ? '' : ' hidden') + '>';
+        html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '" aria-expanded="' + (expanded ? 'true' : 'false') + '"' + (_opsFilterMatches(r, running, queueSlugs) ? '' : ' hidden') + '>';
         html += '<td class="ops-report-cell" data-label="Report"><div class="ops-report-name">' + esc(r.name) + '</div><div class="ops-report-slug">' + (r.kind === 'analysis' ? 'Analysis' : 'Report') + ' · ' + esc(r.slug) + '</div></td>';
         html += '<td data-label="Data">' + _opsDataCell(r) + '</td>';
         html += '<td data-label="Schedule">' + _opsCronCell(r, status) + '</td>';
@@ -2216,20 +2219,7 @@ function _buildOpsHTML(status, reportList) {
         html += '<td class="ops-actions-cell" data-label="Actions">' + _opsActionsCell(r, isRunning, isQueued) + '</td>';
         html += '</tr>';
         if (expanded) {
-            var isStarting = !!((window._opsRunPending || {})[r.slug]) && !isRunning && !isQueued;
-            var mode = isRunning ? 'live' : (isQueued ? 'queued' : (isStarting ? 'starting' : (_opsIsFailedStatus(r.build_status || r.last_status) ? 'error' : 'log')));
-            var title = isRunning ? 'Running' : (isQueued ? 'Queued' : (isStarting ? 'Starting' : (_opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run')));
-            /* Report meta info shown in the expanded row */
-            var metaInfo = '<div style="padding:8px 14px;font-size:11px;color:var(--text3);display:flex;gap:16px;flex-wrap:wrap">';
-            if (r.framework_version) metaInfo += '<span>Framework: <strong style="color:var(--text2)">' + esc(r.framework_version) + '</strong></span>';
-            if (r.last_run) metaInfo += '<span>Last run: <strong style="color:var(--text2)">' + esc(r.last_run.replace('T',' ').substring(0,19)) + ' UTC</strong></span>';
-            if (r.description) metaInfo += '<span>' + esc(r.description) + '</span>';
-            metaInfo += '</div>';
-            html += '<tr class="ops-expand-row"><td colspan="8">'
-                + metaInfo
-                + '<div class="ops-run-history" id="opsHist_' + r.slug + '">Loading run history\u2026</div>'
-                + _opsTerminal(r.slug, mode, title + ' \u2014 ' + r.slug)
-                + '</td></tr>';
+            html += _opsBuildExpandRowHTML(r, status);
         }
     });
     html += '<tr data-ops-empty hidden><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No reports match this filter.'
@@ -2294,35 +2284,56 @@ function _opsCronCell(r, status) {
         + '<div class="ops-cron">' + esc(cron) + '</div>'
         + (next ? '<div class="ops-next-run">' + next + '</div>' : '');
 }
+function _opsStatusDetailHTML(text, rawTitle) {
+    if (!text) return '<div class="ops-status-detail ops-status-detail-empty" aria-hidden="true">&nbsp;</div>';
+    return '<div class="ops-status-detail" title="' + escAttr(rawTitle || text) + '">' + esc(text) + '</div>';
+}
 function _opsStatusCell(r, running, isQueued) {
     if ((window._opsRunPending || {})[r.slug]) {
-        return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Starting...</span></div>';
+        return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Starting...</span></div>'
+            + _opsStatusDetailHTML('');
     }
     if (running[r.slug]) {
         var el = Math.round(running[r.slug].elapsed_seconds || 0);
         return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Running</span></div>'
-            + '<div class="ops-status-detail">' + el + 's elapsed</div>';
+            + _opsStatusDetailHTML(el + 's elapsed');
     }
-    if (isQueued) return '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
+    if (isQueued) {
+        return '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>'
+            + _opsStatusDetailHTML('');
+    }
     var s = r.build_status || r.last_status || 'not_run';
-    if (s === 'running' || s === 'starting') return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">' + (s === 'starting' ? 'Starting...' : 'Running') + '</span></div>';
-    if (s === 'queued') return '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
+    if (s === 'running' || s === 'starting') {
+        return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">' + (s === 'starting' ? 'Starting...' : 'Running') + '</span></div>'
+            + _opsStatusDetailHTML('');
+    }
+    if (s === 'queued') {
+        return '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>'
+            + _opsStatusDetailHTML('');
+    }
     if (r.waiting) {
         /* Held before it started: not a failure of the build. */
+        var blocked = (r.blocked_by || []).join(', ');
         return '<div class="ops-status waiting"><span class="ops-status-dot"></span><span class="ops-status-text">Waiting for data source</span></div>'
-            + '<div class="ops-status-detail"><code>' + esc((r.blocked_by || []).join(', ')) + '</code></div>';
+            + '<div class="ops-status-detail" title="' + escAttr(blocked) + '"><code>' + esc(blocked) + '</code></div>';
     }
     var labels = {success:'Success', error:'Failed', oom_killed:'Out of memory', timeout:'Timed out', stopped:'Stopped'};
     var label = labels[s] || 'Not run';
     var failure = s === 'error' ? sourceFailure(r.last_error) : null;
     if (failure) label += ' \u00b7 data source <code>' + esc(failure.name) + '</code>';
     var detail = '';
+    var fullDetail = '';
     if (r.last_run) {
         detail = _timeAgo(r.last_run);
-        if (_opsIsFailedStatus(s) && r.last_error) detail += ' \u2014 ' + (failure ? failure.message : r.last_error).substring(0, 60);
+        fullDetail = detail;
+        if (_opsIsFailedStatus(s) && r.last_error) {
+            var errMsg = failure ? failure.message : r.last_error;
+            fullDetail += ' \u2014 ' + errMsg;
+            detail += ' \u2014 ' + errMsg.substring(0, 60);
+        }
     }
     return '<div class="ops-status ' + s + '"><span class="ops-status-dot"></span><span class="ops-status-text">' + label + '</span></div>'
-        + (detail ? '<div class="ops-status-detail">' + esc(detail) + '</div>' : '');
+        + _opsStatusDetailHTML(detail, fullDetail);
 }
 function _opsDurationCell(slug) {
     var st = _opsRunStats[slug];
@@ -2414,8 +2425,325 @@ function _opsTerminal(slug, mode, title) {
     var bodyClass = mode === 'live' || mode === 'starting' ? ' live' : '';
     return '<div class="ops-terminal' + cls + '" id="opsTerm_' + slug + '">'
         + '<div class="ops-terminal-header"><div class="ops-terminal-dots"><span></span><span></span><span></span></div>'
-        + '<span class="ops-terminal-title">' + esc(title) + '</span></div>'
+        + '<span class="ops-terminal-title">' + esc(title) + '</span>'
+        + '<select class="ops-terminal-run-select" id="opsRunSelect_' + slug + '" data-ops-run-select="' + escAttr(slug) + '" aria-label="Select run log" hidden></select>'
+        + '</div>'
         + '<div class="ops-terminal-body' + bodyClass + '" id="opsTermBody_' + slug + '">' + (mode === 'queued' ? '(queued...)' : (mode === 'starting' ? '(starting...)' : 'Loading...')) + '</div></div>';
+}
+function _opsHealthSummary(r, status, history) {
+    var running = (status && status.running) || {};
+    var queueSlugs = ((status && status.queue) || []).map(function(q) { return q.slug || q; });
+    var isRunning = !!running[r.slug];
+    var isQueued = queueSlugs.indexOf(r.slug) >= 0;
+    var isStarting = !!((window._opsRunPending || {})[r.slug]) && !isRunning && !isQueued;
+    var st = _opsRunStats[r.slug];
+    var metaParts = [];
+    if (st && st.agg && st.agg.p95_duration_s != null) metaParts.push('p95 ' + _fmtDuration(st.agg.p95_duration_s));
+    if (st && st.agg && st.agg.max_peak_memory_mb != null) metaParts.push(_fmtMB(st.agg.max_peak_memory_mb));
+    var meta = metaParts.join(' \u00b7 ');
+    if (isStarting) return { level: 'running', text: 'Starting build\u2026', meta: meta };
+    if (isRunning) {
+        var el = Math.round(running[r.slug].elapsed_seconds || 0);
+        return { level: 'running', text: 'Building live \u00b7 ' + el + 's elapsed', meta: meta };
+    }
+    if (isQueued) return { level: 'queued', text: 'Queued for worker', meta: meta };
+    if (r.waiting) {
+        var blocked = (r.blocked_by || []).join(', ');
+        return { level: 'warn', text: 'Waiting for data source' + (blocked ? ': ' + blocked : ''), meta: meta };
+    }
+    var latest = history && history.length ? history[0] : null;
+    var rec = (latest && latest.recovery) || {};
+    var failCount = 0;
+    if (history && history.length) {
+        history.forEach(function(h) { if (_opsIsFailedStatus(h.status)) failCount++; });
+    }
+    var buildStatus = r.build_status || r.last_status || (latest && latest.status) || 'not_run';
+    if (rec.state === 'pending' || rec.state === 'running') {
+        var recMsg = rec.state === 'running' ? 'Automatic retry running' : 'Automatic retry pending';
+        if (rec.attempt != null) recMsg += ' \u00b7 ' + rec.attempt + ' of 2 retries used';
+        return { level: 'warn', text: recMsg, meta: meta };
+    }
+    if (rec.state === 'unconfirmed') {
+        return { level: 'warn', text: 'Previous outcome unconfirmed; no automatic replay', meta: meta };
+    }
+    if (_opsIsFailedStatus(buildStatus)) {
+        var err = r.last_error ? ' \u00b7 ' + r.last_error.substring(0, 90) : '';
+        var suffix = failCount > 1 ? ' (' + failCount + ' of ' + history.length + ' recent failed)' : '';
+        return { level: 'error', text: 'Last run failed' + suffix + err, meta: meta };
+    }
+    if (buildStatus === 'success') {
+        var v = r.validation && r.validation.summary;
+        if (v && v.fail > 0) return { level: 'error', text: 'Built OK \u00b7 ' + v.fail + ' validation ' + (v.fail === 1 ? 'failure' : 'failures'), meta: meta };
+        if (v && v.warn > 0) return { level: 'warn', text: 'Built OK \u00b7 ' + v.warn + ' validation ' + (v.warn === 1 ? 'warning' : 'warnings'), meta: meta };
+        if (history && history.length) {
+            if (failCount > 0) return { level: 'ok', text: 'Latest OK \u00b7 ' + failCount + ' of ' + history.length + ' recent runs failed', meta: meta };
+            return { level: 'ok', text: 'Healthy \u00b7 ' + history.length + '/' + history.length + ' recent runs OK', meta: meta };
+        }
+        return { level: 'ok', text: 'Last run succeeded' + (r.last_run ? ' ' + _timeAgo(r.last_run) : ''), meta: meta };
+    }
+    if (buildStatus === 'stopped') return { level: 'warn', text: 'Last run was stopped', meta: meta };
+    return { level: 'idle', text: 'Not run yet', meta: meta };
+}
+function _opsHealthStripInnerHTML(info) {
+    var icons = { ok: '\u2713', error: '\u2717', warn: '\u26A0', running: '\u25CF', queued: '\u25CB', idle: '\u2014' };
+    return '<span class="ops-health-msg"><span class="ops-health-icon" aria-hidden="true">' + (icons[info.level] || '') + '</span>'
+        + '<span class="ops-health-text">' + esc(info.text) + '</span></span>'
+        + (info.meta ? '<span class="ops-health-meta">' + esc(info.meta) + '</span>' : '');
+}
+function _opsUpdateHealthStrip(slug, status, history) {
+    var strip = document.getElementById('opsHealth_' + slug);
+    if (!strip) return;
+    var r = reports.find(function(x) { return x.slug === slug; });
+    if (!r) return;
+    var hist = history !== undefined ? history : _opsHistoryCache[slug];
+    var info = _opsHealthSummary(r, status || window._opsLatestStatus || {}, hist);
+    strip.className = 'ops-health-strip ' + info.level;
+    strip.innerHTML = _opsHealthStripInnerHTML(info);
+}
+function _opsRunsBadgeInfo(history) {
+    if (!history) return { cls: '', text: '\u2026' };
+    if (!history.length) return { cls: '', text: '0' };
+    var latest = history[0] || {};
+    var rec = (latest.recovery || {}).state;
+    if (rec === 'pending' || rec === 'running') return { cls: 'warn', text: 'Retry' };
+    if (rec === 'unconfirmed') return { cls: 'warn', text: 'Unconfirmed' };
+    var failed = 0;
+    history.forEach(function(h) { if (_opsIsFailedStatus(h.status)) failed++; });
+    if (failed > 0) return { cls: 'err', text: failed + ' err' };
+    return { cls: 'ok', text: history.length + ' OK' };
+}
+function _opsUpdateRunsBadge(slug, history) {
+    var badge = document.getElementById('opsRunsBadge_' + slug);
+    if (!badge) return;
+    var info = _opsRunsBadgeInfo(history);
+    badge.className = 'ops-tab-badge' + (info.cls ? ' ' + info.cls : '');
+    badge.textContent = info.text;
+}
+function _opsPopulateRunSelect(slug, history) {
+    var select = document.getElementById('opsRunSelect_' + slug);
+    if (!select) return;
+    var runsWithId = (history || []).filter(function(h) { return !!h.id; });
+    if (!runsWithId.length) {
+        select.hidden = true;
+        return;
+    }
+    var status = window._opsLatestStatus || {};
+    var isRunning = !!((status.running || {})[slug]);
+    var currentVal = _opsSelectedRunIds[slug] || '';
+    var opts = '<option value="">' + (isRunning ? '\u25CF Live tail' : 'Latest run') + '</option>';
+    runsWithId.forEach(function(h, idx) {
+        var started = h.started_at || h.created_at;
+        var ago = started ? _timeAgo(started) : ('Run ' + (runsWithId.length - idx));
+        var label = ago + ' \u00b7 ' + _opsStatusLabel(h.status) + (h.duration_seconds != null ? ' (' + _fmtDuration(h.duration_seconds) + ')' : '');
+        opts += '<option value="' + escAttr(h.id) + '"' + (currentVal === h.id ? ' selected' : '') + '>' + esc(label) + '</option>';
+    });
+    select.innerHTML = opts;
+    select.value = currentVal;
+    select.hidden = false;
+}
+function _opsInfoBadgeHTML(r) {
+    var v = r.validation && r.validation.summary;
+    if (!v) return '';
+    if (v.fail > 0) return '<span class="ops-tab-badge err">' + v.fail + ' fail</span>';
+    if (v.warn > 0) return '<span class="ops-tab-badge warn">' + v.warn + ' warn</span>';
+    return '<span class="ops-tab-badge ok">OK</span>';
+}
+function _opsInfoPaneHTML(r) {
+    var html = '<div class="ops-info-pane">';
+    html += '<div class="ops-info-meta">';
+    if (r.framework_version) html += '<span>Framework: <strong>' + esc(r.framework_version) + '</strong></span>';
+    if (r.last_run) html += '<span>Last run: <strong>' + esc(r.last_run.replace('T', ' ').substring(0, 19)) + ' UTC</strong></span>';
+    if (r.schedule) html += '<span>Schedule: <code>' + esc(r.schedule) + '</code></span>';
+    html += '<span>Mode: <strong>' + (r.live ? 'Live at view' : 'Static build') + '</strong></span>';
+    html += '</div>';
+    if (r.description) html += '<p class="ops-info-desc">' + esc(r.description) + '</p>';
+    var v = r.validation && r.validation.summary;
+    if (v) {
+        var checks = (r.validation.checks || []).filter(function(c) {
+            return (c.level === 'fail' || c.level === 'warn') && !c.suppressed;
+        });
+        html += '<div class="ops-info-checks">';
+        html += '<div class="ops-info-checks-head"><span>Validation: '
+            + (v.pass || 0) + ' passed'
+            + (v.warn ? ' \u00b7 ' + v.warn + ' warnings' : '')
+            + (v.fail ? ' \u00b7 ' + v.fail + ' failed' : '')
+            + '</span>'
+            + '<button type="button" class="ops-row-btn" onclick="event.stopPropagation(); showValidation(\'' + escAttr(r.slug) + '\')">Open full details</button></div>';
+        if (checks.length) {
+            html += '<ul class="ops-info-check-list">';
+            checks.slice(0, 8).forEach(function(c) {
+                var cls = c.level === 'fail' ? 'fail' : 'warn';
+                html += '<li><span class="ops-details-badge ' + cls + '">' + esc(c.id || c.level) + '</span> ' + esc(c.message || c.title || '') + '</li>';
+            });
+            html += '</ul>';
+        } else {
+            html += '<p class="ops-history-empty">No active warnings or failures.</p>';
+        }
+        html += '</div>';
+    }
+    return html + '</div>';
+}
+function _opsBuildExpandRowHTML(r, status) {
+    var running = (status && status.running) || {};
+    var queueSlugs = ((status && status.queue) || []).map(function(q) { return q.slug || q; });
+    var isRunning = !!running[r.slug], isQueued = queueSlugs.indexOf(r.slug) >= 0;
+    var isStarting = !!((window._opsRunPending || {})[r.slug]) && !isRunning && !isQueued;
+    var mode = isRunning ? 'live' : (isQueued ? 'queued' : (isStarting ? 'starting' : (_opsIsFailedStatus(r.build_status || r.last_status) ? 'error' : 'log')));
+    var title = isRunning ? 'Running' : (isQueued ? 'Queued' : (isStarting ? 'Starting' : (_opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run')));
+    var activeTab = _opsActiveTabs[r.slug] || 'terminal';
+    var cachedHistory = _opsHistoryCache[r.slug];
+    var health = _opsHealthSummary(r, status, cachedHistory);
+    var badge = _opsRunsBadgeInfo(cachedHistory);
+    return '<tr class="ops-expand-row" data-ops-expand="' + escAttr(r.slug) + '"><td colspan="8">'
+        + '<div class="ops-panel" data-ops-panel="' + escAttr(r.slug) + '">'
+        + '<div class="ops-health-strip ' + health.level + '" id="opsHealth_' + escAttr(r.slug) + '">'
+        + _opsHealthStripInnerHTML(health) + '</div>'
+        + '<div class="ops-panel-tabs" role="tablist" aria-label="Details for ' + escAttr(r.name || r.slug) + '">'
+        + '<button type="button" id="opsTabBtnTerm_' + escAttr(r.slug) + '" class="ops-panel-tab' + (activeTab === 'terminal' ? ' active' : '') + '" role="tab" aria-selected="' + (activeTab === 'terminal' ? 'true' : 'false') + '" tabindex="' + (activeTab === 'terminal' ? '0' : '-1') + '" aria-controls="opsTabTerm_' + escAttr(r.slug) + '" data-ops-tab="terminal" data-ops-slug="' + escAttr(r.slug) + '">Terminal</button>'
+        + '<button type="button" id="opsTabBtnRuns_' + escAttr(r.slug) + '" class="ops-panel-tab' + (activeTab === 'runs' ? ' active' : '') + '" role="tab" aria-selected="' + (activeTab === 'runs' ? 'true' : 'false') + '" tabindex="' + (activeTab === 'runs' ? '0' : '-1') + '" aria-controls="opsTabRuns_' + escAttr(r.slug) + '" data-ops-tab="runs" data-ops-slug="' + escAttr(r.slug) + '">Runs <span class="ops-tab-badge' + (badge.cls ? ' ' + badge.cls : '') + '" id="opsRunsBadge_' + escAttr(r.slug) + '">' + esc(badge.text) + '</span></button>'
+        + '<button type="button" id="opsTabBtnInfo_' + escAttr(r.slug) + '" class="ops-panel-tab' + (activeTab === 'info' ? ' active' : '') + '" role="tab" aria-selected="' + (activeTab === 'info' ? 'true' : 'false') + '" tabindex="' + (activeTab === 'info' ? '0' : '-1') + '" aria-controls="opsTabInfo_' + escAttr(r.slug) + '" data-ops-tab="info" data-ops-slug="' + escAttr(r.slug) + '">Checks &amp; Info ' + _opsInfoBadgeHTML(r) + '</button>'
+        + '</div>'
+        + '<div class="ops-panel-body">'
+        + '<div class="ops-panel-pane ops-panel-pane-terminal" id="opsTabTerm_' + escAttr(r.slug) + '" role="tabpanel" aria-labelledby="opsTabBtnTerm_' + escAttr(r.slug) + '" data-ops-pane="terminal"' + (activeTab === 'terminal' ? '' : ' hidden') + '>'
+        + _opsTerminal(r.slug, mode, title + ' \u2014 ' + r.slug)
+        + '</div>'
+        + '<div class="ops-panel-pane" id="opsTabRuns_' + escAttr(r.slug) + '" role="tabpanel" aria-labelledby="opsTabBtnRuns_' + escAttr(r.slug) + '" data-ops-pane="runs"' + (activeTab === 'runs' ? '' : ' hidden') + '>'
+        + '<div class="ops-run-history" id="opsHist_' + escAttr(r.slug) + '">Loading run history\u2026</div>'
+        + '</div>'
+        + '<div class="ops-panel-pane" id="opsTabInfo_' + escAttr(r.slug) + '" role="tabpanel" aria-labelledby="opsTabBtnInfo_' + escAttr(r.slug) + '" data-ops-pane="info"' + (activeTab === 'info' ? '' : ' hidden') + '>'
+        + _opsInfoPaneHTML(r)
+        + '</div>'
+        + '</div></div></td></tr>';
+}
+function _opsSwitchTab(slug, tabName) {
+    _opsActiveTabs[slug] = tabName;
+    var panel = document.querySelector('.ops-panel[data-ops-panel="' + slug + '"]');
+    if (!panel) return;
+    panel.querySelectorAll('[data-ops-tab]').forEach(function(btn) {
+        var on = btn.dataset.opsTab === tabName;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        btn.setAttribute('tabindex', on ? '0' : '-1');
+    });
+    panel.querySelectorAll('[data-ops-pane]').forEach(function(pane) {
+        pane.hidden = pane.dataset.opsPane !== tabName;
+    });
+}
+function _opsSelectRunLog(slug, runId) {
+    _opsSelectedRunIds[slug] = runId || null;
+    var select = document.getElementById('opsRunSelect_' + slug);
+    if (select) select.value = runId || '';
+    _opsSwitchTab(slug, 'terminal');
+    if (runId) {
+        if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
+        _opsLoadLog(slug, runId);
+        return;
+    }
+    var status = window._opsLatestStatus || {};
+    if ((window._opsRunPending || {})[slug]) _opsSetTerminalState(slug, 'Starting', false, '(starting...)');
+    else if ((status.running || {})[slug]) {
+        _opsSetTerminalState(slug, 'Running', false, 'Loading...');
+        _opsStartLivePoll(slug);
+    } else if ((status.queue || []).some(function(item) { return (item.slug || item) === slug; })) {
+        _opsSetTerminalState(slug, 'Queued', false, '(queued...)');
+    } else {
+        _opsLoadLog(slug);
+    }
+}
+function _opsBindExpandRow(slug) {
+    var panel = document.querySelector('.ops-panel[data-ops-panel="' + slug + '"]');
+    if (!panel) return;
+    var tabButtons = Array.from(panel.querySelectorAll('[data-ops-tab]'));
+    tabButtons.forEach(function(btn, index) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            _opsSwitchTab(slug, this.dataset.opsTab);
+        });
+        btn.addEventListener('keydown', function(e) {
+            var next = -1;
+            if (e.key === 'ArrowRight') next = (index + 1) % tabButtons.length;
+            else if (e.key === 'ArrowLeft') next = (index - 1 + tabButtons.length) % tabButtons.length;
+            else if (e.key === 'Home') next = 0;
+            else if (e.key === 'End') next = tabButtons.length - 1;
+            if (next >= 0) {
+                e.preventDefault();
+                _opsSwitchTab(slug, tabButtons[next].dataset.opsTab);
+                tabButtons[next].focus();
+            }
+        });
+    });
+    var select = document.getElementById('opsRunSelect_' + slug);
+    if (select) {
+        select.addEventListener('click', function(e) { e.stopPropagation(); });
+        select.addEventListener('change', function(e) {
+            e.stopPropagation();
+            _opsSelectRunLog(slug, this.value);
+        });
+    }
+    var hist = document.getElementById('opsHist_' + slug);
+    if (hist) {
+        hist.addEventListener('click', function(e) {
+            var diagBtn = e.target.closest('[data-ops-diag-run]');
+            if (diagBtn) {
+                e.stopPropagation();
+                _opsOpenDiagDialog(slug, diagBtn.dataset.opsDiagRun, diagBtn);
+                return;
+            }
+            var btn = e.target.closest('[data-ops-view-run]');
+            if (!btn) return;
+            e.stopPropagation();
+            _opsSelectRunLog(slug, btn.dataset.opsViewRun);
+        });
+    }
+}
+function _opsStartExpandLoads(slug, status) {
+    var selectedRun = _opsSelectedRunIds[slug];
+    if (selectedRun) {
+        _opsLoadLog(slug, selectedRun);
+    } else if ((window._opsRunPending || {})[slug]) {
+        _opsSetTerminalState(slug, 'Starting', false, '(starting...)');
+    } else if ((status.running || {})[slug]) {
+        _opsStartLivePoll(slug);
+    } else if ((status.queue || []).some(function(item) { return (item.slug || item) === slug; })) {
+        _opsSetTerminalState(slug, 'Queued', false, '(queued...)');
+    } else {
+        _opsLoadLog(slug);
+    }
+    _opsLoadHistory(slug);
+}
+function _opsExpandInPlace(slug) {
+    var row = document.querySelector('[data-ops-row="' + slug + '"]');
+    var r = reports.find(function(x) { return x.slug === slug; });
+    if (!row || !r) {
+        _opsExpandedSlugs[slug] = true;
+        renderOperations();
+        return;
+    }
+    _opsExpandedSlugs[slug] = true;
+    _opsActiveTabs[slug] = 'terminal';
+    delete _opsSelectedRunIds[slug];
+    row.classList.add('expanded');
+    row.setAttribute('aria-expanded', 'true');
+    var existing = row.nextElementSibling;
+    if (existing && existing.classList.contains('ops-expand-row')) existing.remove();
+    var status = window._opsLatestStatus || { running: {}, queue: [] };
+    row.insertAdjacentHTML('afterend', _opsBuildExpandRowHTML(r, status));
+    var inserted = row.nextElementSibling;
+    if (inserted && inserted.classList.contains('ops-expand-row') && row.hidden) inserted.hidden = true;
+    _opsBindExpandRow(slug);
+    _opsStartExpandLoads(slug, status);
+}
+function _opsCollapseInPlace(slug) {
+    delete _opsExpandedSlugs[slug];
+    delete _opsActiveTabs[slug];
+    delete _opsSelectedRunIds[slug];
+    if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
+    var row = document.querySelector('[data-ops-row="' + slug + '"]');
+    if (!row) { renderOperations(); return; }
+    row.classList.remove('expanded');
+    row.setAttribute('aria-expanded', 'false');
+    var next = row.nextElementSibling;
+    if (next && next.classList.contains('ops-expand-row')) next.remove();
 }
 function _opsSetTerminalState(slug, title, failed, body) {
     var terminal = document.getElementById('opsTerm_' + slug);
@@ -2509,12 +2837,8 @@ function _opsBindEvents(status, reportList) {
         tr.addEventListener('click', function() { opsToggleExpand(this.dataset.opsRow); });
     });
     Object.keys(_opsExpandedSlugs).forEach(function(slug) {
-        if ((window._opsRunPending || {})[slug]) _opsSetTerminalState(slug, 'Starting', false, '(starting...)');
-        else if ((status.running || {})[slug]) _opsStartLivePoll(slug);
-        else if ((status.queue || []).some(function(item) { return (item.slug || item) === slug; })) {
-            _opsSetTerminalState(slug, 'Queued', false, '(queued...)');
-        } else _opsLoadLog(slug);
-        _opsLoadHistory(slug);
+        _opsBindExpandRow(slug);
+        _opsStartExpandLoads(slug, status);
     });
     _opsApplyFilterToRows(status);
 }
@@ -2524,8 +2848,10 @@ function _opsAbortHistory(slug) {
     delete _opsHistoryInFlight[slug];
 }
 function _opsHistoryVisible(slug, el) {
-    return _opsPageActive && viewMode === 'ops' && !document.hidden && _opsExpandedSlugs[slug]
-        && el && el.isConnected && !el.closest('[hidden]');
+    if (!(_opsPageActive && viewMode === 'ops' && !document.hidden && _opsExpandedSlugs[slug] && el && el.isConnected)) return false;
+    var expandRow = el.closest('.ops-expand-row');
+    if (expandRow) return !expandRow.hidden && !expandRow.parentElement.closest('[hidden]');
+    return !el.closest('[hidden]');
 }
 function _opsLoadHistory(slug) {
     var el = document.getElementById('opsHist_' + slug);
@@ -2548,27 +2874,32 @@ function _opsLoadHistory(slug) {
         .then(function(r) { if (!r.ok) throw new Error('History unavailable'); return r.json(); })
         .then(function(data) {
             if (!isCurrent()) return;
-            var payload = JSON.stringify([data.aggregates || {}, data.history || []]);
-            if (el._historyPayload === payload || el.contains(document.activeElement)) return;
-            var open = {};
-            el.querySelectorAll('tr[data-run-created] details[open]').forEach(function(details) {
-                open[details.closest('tr').dataset.runCreated] = true;
-            });
-            var replacement = document.createElement('div');
-            replacement.innerHTML = _opsHistoryHTML(data.aggregates || {}, data.history || []);
-            replacement.querySelectorAll('tr[data-run-created] details').forEach(function(details) {
-                details.open = !!open[details.closest('tr').dataset.runCreated];
-            });
-            var scroller = el.querySelector('.ops-history-scroll');
-            var scrollLeft = scroller ? scroller.scrollLeft : 0;
-            var x = window.scrollX, y = window.scrollY;
-            el.replaceChildren.apply(el, Array.from(replacement.childNodes));
-            scroller = el.querySelector('.ops-history-scroll');
-            if (scroller) scroller.scrollLeft = scrollLeft;
-            window.scrollTo(x, y);
-            el._historyPayload = payload;
-            var latest = (data.history || [])[0] || {};
+            var history = data.history || [];
+            var agg = data.aggregates || {};
+            _opsHistoryCache[slug] = history;
+            _opsUpdateRunsBadge(slug, history);
+            _opsUpdateHealthStrip(slug, window._opsLatestStatus || {}, history);
+            _opsPopulateRunSelect(slug, history);
+            var payload = JSON.stringify([agg, history]);
+            if (el._historyPayload === payload) return;
+            if (!el.contains(document.activeElement)) {
+                var replacement = document.createElement('div');
+                replacement.innerHTML = _opsHistoryHTML(agg, history, slug);
+                var pane = el.closest('.ops-panel-pane');
+                var paneScrollTop = pane ? pane.scrollTop : 0;
+                var scroller = el.querySelector('.ops-history-scroll');
+                var scrollLeft = scroller ? scroller.scrollLeft : 0;
+                var x = window.scrollX, y = window.scrollY;
+                el.replaceChildren.apply(el, Array.from(replacement.childNodes));
+                scroller = el.querySelector('.ops-history-scroll');
+                if (scroller) scroller.scrollLeft = scrollLeft;
+                if (pane) pane.scrollTop = paneScrollTop;
+                window.scrollTo(x, y);
+                el._historyPayload = payload;
+            }
+            var latest = history[0] || {};
             el._historyNeedsPoll = ['pending', 'running', 'unconfirmed'].indexOf((latest.recovery || {}).state) !== -1;
+            _opsRefreshOpenDiagDialog(slug, history);
         })
         .catch(function() {
             if (!isCurrent()) return;
@@ -2580,38 +2911,10 @@ function _opsLoadHistory(slug) {
         });
     return entry.promise;
 }
-function _opsHistoryHTML(agg, history) {
-    if (!history.length) return '<div class="ops-history-empty">No completed runs yet.</div>';
-    var rateCls = '';
-    if (agg.success_rate != null) {
-        rateCls = agg.success_rate >= 0.9 ? 'ok' : (agg.success_rate < 0.5 ? 'error' : '');
-    }
-    var html = '<div class="ops-summary ops-history-stats">';
-    html += _opsStat(agg.runs != null ? agg.runs : '—', 'Runs (' + (agg.window_days || 90) + 'd)', '');
-    html += _opsStat(_fmtPct(agg.success_rate), 'Success rate', rateCls);
-    html += _opsStat(agg.avg_duration_s != null ? _fmtDuration(agg.avg_duration_s) : '—', 'Avg duration (successful)', '');
-    html += _opsStat(agg.p95_duration_s != null ? _fmtDuration(agg.p95_duration_s) : '—', 'P95 duration (successful)', '');
-    html += _opsStat(_fmtMB(agg.avg_peak_memory_mb), 'Avg peak mem', '');
-    html += _opsStat(_fmtMB(agg.max_peak_memory_mb), 'Max observed mem', '');
-    html += '</div>';
-    html += '<div class="ops-history-scroll"><table class="ops-history-table"><thead><tr>'
-        + '<th>Started</th><th>Trigger</th><th>Status</th><th>Queue wait</th><th>Duration</th><th>Peak mem</th>'
-        + '</tr></thead><tbody>';
-    history.forEach(function(h) {
-        var started = h.started_at || h.created_at;
-        html += '<tr data-run-created="' + escAttr(h.created_at || h.started_at || '') + '">'
-            + '<td>' + (started ? _timeAgo(started) : '—') + '</td>'
-            + '<td>' + esc(h.trigger || '') + '</td>'
-            + '<td><span class="ops-history-status ' + esc(h.status || '') + '">' + esc(_opsStatusLabel(h.status)) + '</span>' + _opsRecoveryHTML(h) + '</td>'
-            + '<td>' + (h.queue_wait_seconds != null ? _fmtDuration(h.queue_wait_seconds) : '—') + '</td>'
-            + '<td>' + (h.duration_seconds != null ? _fmtDuration(h.duration_seconds) : '—') + '</td>'
-            + '<td>' + _fmtMB(h.peak_memory_mb) + '</td>'
-            + '</tr>';
-    });
-    html += '</tbody></table></div>';
-    return html;
+function _opsRunKey(h, idx) {
+    return String(h.id || h.created_at || h.started_at || idx);
 }
-function _opsRecoveryHTML(run) {
+function _opsParseRunDiagnostics(run) {
     var diagnostics = run.diagnostics || {};
     var recovery = run.recovery || {};
     var lines = [];
@@ -2622,10 +2925,10 @@ function _opsRecoveryHTML(run) {
         publication_failed: 'Output publication failed', unknown_kill: 'Process killed; cause unknown',
         source_blocked: 'Data source unavailable', start_failed: 'Build could not start', cancelled: 'Build stopped'
     };
-    if (diagnostics.cause) lines.push(causes[diagnostics.cause] || String(diagnostics.cause).replace(/_/g, ' '));
-    else if (diagnostics.transient === true) lines.push('Transient connection failure');
-    else if (['error', 'timeout', 'oom_killed'].indexOf(run.status) !== -1) lines.push('Cause unknown');
-    if (diagnostics.stage) lines.push('Last stage: ' + diagnostics.stage + (diagnostics.state ? ' (' + diagnostics.state + ')' : ''));
+    if (diagnostics.cause) lines.push({ kind: 'cause', text: causes[diagnostics.cause] || String(diagnostics.cause).replace(/_/g, ' ') });
+    else if (diagnostics.transient === true) lines.push({ kind: 'cause', text: 'Transient connection failure' });
+    else if (['error', 'timeout', 'oom_killed'].indexOf(run.status) !== -1) lines.push({ kind: 'cause', text: 'Cause unknown' });
+    if (diagnostics.stage) lines.push({ kind: 'meta', text: 'Last stage: ' + diagnostics.stage + (diagnostics.state ? ' (' + diagnostics.state + ')' : '') });
     var labels = {
         pending: 'Automatic retry pending', running: 'Automatic retry running',
         succeeded: 'Recovered automatically', exhausted: 'Automatic retries exhausted',
@@ -2635,11 +2938,11 @@ function _opsRecoveryHTML(run) {
     };
     if (recovery.state) {
         var disposition = labels[recovery.state] || String(recovery.state).replace(/_/g, ' ');
-        if (recovery.attempt != null) disposition += ' · ' + recovery.attempt + ' of 2 retries used';
-        lines.push(disposition);
+        if (recovery.attempt != null) disposition += ' \u00b7 ' + recovery.attempt + ' of 2 retries used';
+        lines.push({ kind: 'recovery', state: recovery.state, text: disposition });
         if (recovery.state === 'pending' && recovery.due_at) {
             var due = new Date(recovery.due_at);
-            if (!isNaN(due.getTime())) lines.push('Retry due: ' + due.toLocaleString());
+            if (!isNaN(due.getTime())) lines.push({ kind: 'meta', text: 'Retry due: ' + due.toLocaleString() });
         }
         var reasons = {
             report_replay_not_safe: 'Report has no safe replay contract',
@@ -2652,29 +2955,280 @@ function _opsRecoveryHTML(run) {
             attempt_budget_exhausted: 'Two additional attempts used',
             report_unavailable_or_unsafe: 'Report is unavailable or no longer safe to replay'
         };
-        if (recovery.reason) lines.push(reasons[recovery.reason] || String(recovery.reason).replace(/_/g, ' '));
+        if (recovery.reason) lines.push({ kind: 'reason', text: reasons[recovery.reason] || String(recovery.reason).replace(/_/g, ' ') });
     }
-    if (!lines.length) return '';
-    var evidence = [];
+    var kv = [];
+    var timings = [];
+    var refs = [];
     var timeout = diagnostics.timeout_seconds != null ? diagnostics.timeout_seconds : diagnostics.effective_timeout_seconds;
-    if (timeout != null) evidence.push('Build limit: ' + timeout + ' seconds');
-    if (diagnostics.attempt != null) evidence.push('Query attempt: ' + diagnostics.attempt);
-    if (diagnostics.retry_count) evidence.push('Managed read retries: ' + diagnostics.retry_count + (diagnostics.retry_count >= 255 ? '+' : ''));
-    (diagnostics.retry_history || []).forEach(function(retry) {
-        evidence.push('Retry after attempt ' + retry.attempt + ': ' + retry.reason.replace(/_/g, ' ') + ' · ' + retry.class);
-    });
-    if (diagnostics.source_type) evidence.push('Source type: ' + diagnostics.source_type);
-    if (diagnostics.source_id) evidence.push('Source reference: ' + diagnostics.source_id);
-    if (diagnostics.query_id) evidence.push('Query reference: ' + diagnostics.query_id);
+    if (timeout != null) kv.push({ k: 'Build limit', v: timeout + ' seconds' });
     (diagnostics.errors || []).forEach(function(error) {
-        evidence.push([error.class, error.code].filter(Boolean).join(' · '));
+        kv.push({ k: 'Error', v: [error.class, error.code].filter(Boolean).join(' \u00b7 '), err: true });
+    });
+    if (diagnostics.attempt != null) kv.push({ k: 'Query attempt', v: String(diagnostics.attempt) });
+    if (diagnostics.retry_count) kv.push({ k: 'Managed read retries', v: diagnostics.retry_count + (diagnostics.retry_count >= 255 ? '+' : '') });
+    (diagnostics.retry_history || []).forEach(function(retry) {
+        kv.push({ k: 'Retry after attempt ' + retry.attempt, v: retry.reason.replace(/_/g, ' ') + ' \u00b7 ' + retry.class });
     });
     (diagnostics.timings || []).forEach(function(timing) {
-        evidence.push(timing.stage + ': ' + timing.elapsed_ms + ' ms');
+        timings.push({ k: String(timing.stage), v: timing.elapsed_ms + ' ms' });
     });
-    var html = '<div class="ops-run-diagnosis">' + lines.map(function(line) { return '<div>' + esc(line) + '</div>'; }).join('');
-    if (evidence.length) html += '<details><summary>Diagnostic evidence</summary>' + evidence.map(function(line) { return '<div>' + esc(line) + '</div>'; }).join('') + '</details>';
-    return html + '</div>';
+    if (diagnostics.source_type) refs.push({ k: 'Source type', v: String(diagnostics.source_type), copy: false });
+    if (diagnostics.source_id) refs.push({ k: 'Source reference', v: String(diagnostics.source_id), copy: true });
+    if (diagnostics.query_id) refs.push({ k: 'Query reference', v: String(diagnostics.query_id), copy: true });
+    var evidenceCount = kv.length + timings.length + refs.length;
+    var tone = recovery.state === 'succeeded' ? 'ok'
+        : (recovery.state === 'pending' || recovery.state === 'running' || recovery.state === 'unconfirmed' || run.status === 'timeout' ? 'warn'
+            : (_opsIsFailedStatus(run.status) ? 'error' : 'neutral'));
+    return {
+        lines: lines, kv: kv, timings: timings, refs: refs,
+        evidenceCount: evidenceCount, tone: tone, recoveryState: recovery.state || '',
+        hasAny: lines.length > 0 || evidenceCount > 0
+    };
+}
+function _opsDispositionBadgeHTML(recovery) {
+    var state = (recovery || {}).state;
+    if (!state) return '';
+    var map = {
+        pending: ['warn', 'Pending'],
+        running: ['info', 'Active'],
+        exhausted: ['error', 'Exhausted'],
+        unconfirmed: ['warn', 'Unconfirmed'],
+        ineligible: ['neutral', 'Ineligible'],
+        succeeded: ['ok', 'Recovered'],
+        cancelled: ['neutral', 'Cancelled'],
+        expired: ['neutral', 'Expired'],
+        superseded: ['neutral', 'Superseded']
+    };
+    var item = map[state] || ['neutral', String(state).replace(/_/g, ' ')];
+    var dot = state === 'running' ? '<span class="ops-disp-dot" aria-hidden="true"></span>' : '';
+    return '<span class="ops-disp-badge ' + item[0] + '">' + dot + esc(item[1]) + '</span>';
+}
+function _opsHistoryHTML(agg, history, slug) {
+    if (!history.length) return '<div class="ops-history-empty">No completed runs yet.</div>';
+    var rateCls = '';
+    if (agg.success_rate != null) {
+        rateCls = agg.success_rate >= 0.9 ? 'ok' : (agg.success_rate < 0.5 ? 'error' : '');
+    }
+    var parsed = history.map(function(h) { return _opsParseRunDiagnostics(h); });
+    var showActions = history.some(function(h, idx) { return !!h.id || parsed[idx].hasAny; });
+    var html = '<div class="ops-summary ops-history-stats">';
+    html += _opsStat(agg.runs != null ? agg.runs : '—', 'Runs (' + (agg.window_days || 90) + 'd)', '');
+    html += _opsStat(_fmtPct(agg.success_rate), 'Success rate', rateCls);
+    html += _opsStat(agg.avg_duration_s != null ? _fmtDuration(agg.avg_duration_s) : '—', 'Avg duration (successful)', '');
+    html += _opsStat(agg.p95_duration_s != null ? _fmtDuration(agg.p95_duration_s) : '—', 'P95 duration (successful)', '');
+    html += _opsStat(_fmtMB(agg.avg_peak_memory_mb), 'Avg peak mem', '');
+    html += _opsStat(_fmtMB(agg.max_peak_memory_mb), 'Max observed mem', '');
+    html += '</div>';
+    html += '<div class="ops-history-scroll"><table class="ops-history-table"><thead><tr>'
+        + '<th>Started</th><th>Trigger</th><th>Status</th><th>Queue wait</th><th>Duration</th><th>Peak mem</th>'
+        + (showActions ? '<th class="ops-history-actions-col">Actions</th>' : '')
+        + '</tr></thead><tbody>';
+    history.forEach(function(h, idx) {
+        var started = h.started_at || h.created_at;
+        var diag = parsed[idx];
+        var key = _opsRunKey(h, idx);
+        var isInspected = _opsOpenDiag && _opsOpenDiag.slug === slug && _opsOpenDiag.key === key;
+        var actionsHtml = '';
+        if (showActions) {
+            var btns = '';
+            if (diag.hasAny) {
+                var countBadge = diag.evidenceCount > 0 ? ' <span class="ops-diag-count">' + diag.evidenceCount + '</span>' : '';
+                btns += '<button type="button" class="ops-history-btn ops-diag-btn" data-ops-diag-run="' + escAttr(key) + '" aria-haspopup="dialog" aria-expanded="' + (isInspected ? 'true' : 'false') + '">Diagnostics' + countBadge + '</button>';
+            }
+            if (h.id) {
+                btns += '<button type="button" class="ops-history-btn ops-history-log-btn" data-ops-view-run="' + escAttr(h.id) + '">View log</button>';
+            }
+            actionsHtml = '<td class="ops-history-actions-cell"><div class="ops-history-actions-wrap">' + (btns || '\u2014') + '</div></td>';
+        }
+        html += '<tr data-run-created="' + escAttr(h.created_at || h.started_at || '') + '" data-run-key="' + escAttr(key) + '"' + (isInspected ? ' class="is-inspected"' : '') + '>'
+            + '<td>' + (started ? _timeAgo(started) : '—') + '</td>'
+            + '<td>' + esc(h.trigger || '') + '</td>'
+            + '<td><span class="ops-history-status-wrap"><span class="ops-history-status ' + esc(h.status || '') + '">' + esc(_opsStatusLabel(h.status)) + '</span>' + _opsDispositionBadgeHTML(h.recovery) + '</span></td>'
+            + '<td>' + (h.queue_wait_seconds != null ? _fmtDuration(h.queue_wait_seconds) : '—') + '</td>'
+            + '<td>' + (h.duration_seconds != null ? _fmtDuration(h.duration_seconds) : '—') + '</td>'
+            + '<td>' + _fmtMB(h.peak_memory_mb) + '</td>'
+            + actionsHtml
+            + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+}
+function _opsEnsureDiagDialog() {
+    var dialog = document.getElementById('opsDiagDialog');
+    if (dialog) return dialog;
+    dialog = document.createElement('dialog');
+    dialog.id = 'opsDiagDialog';
+    dialog.className = 'ui-dialog ops-diag-dialog';
+    dialog.setAttribute('aria-labelledby', 'opsDiagTitle');
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) { dialog.close(); return; }
+        var closeBtn = e.target.closest('[data-ops-diag-close]');
+        if (closeBtn) { dialog.close(); return; }
+        var copyBtn = e.target.closest('[data-ops-diag-copy]');
+        if (copyBtn) {
+            var val = copyBtn.dataset.opsDiagCopy || '';
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(val).then(function() {
+                    copyBtn.textContent = 'Copied \u2713';
+                    copyBtn.classList.add('copied');
+                    setTimeout(function() { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 1500);
+                }).catch(function() {});
+            }
+            return;
+        }
+        var logBtn = e.target.closest('[data-ops-diag-open-log]');
+        if (logBtn && _opsOpenDiag) {
+            var targetSlug = _opsOpenDiag.slug;
+            var targetRunId = logBtn.dataset.opsDiagOpenLog;
+            dialog.close();
+            _opsSelectRunLog(targetSlug, targetRunId);
+        }
+    });
+    dialog.addEventListener('close', function() {
+        var prev = _opsOpenDiag;
+        _opsOpenDiag = null;
+        document.querySelectorAll('.ops-diag-btn[aria-expanded="true"]').forEach(function(btn) {
+            btn.setAttribute('aria-expanded', 'false');
+        });
+        document.querySelectorAll('.ops-history-table tr.is-inspected').forEach(function(tr) {
+            tr.classList.remove('is-inspected');
+        });
+        if (prev) {
+            var target = document.querySelector('#opsHist_' + prev.slug + ' [data-ops-diag-run="' + CSS.escape(prev.key) + '"]') || prev.opener;
+            if (target && target.isConnected) target.focus({ preventScroll: true });
+        }
+    });
+    document.body.appendChild(dialog);
+    return dialog;
+}
+function _opsDiagDialogInnerHTML(slug, run) {
+    var r = reports.find(function(x) { return x.slug === slug; });
+    var reportName = (r && r.name) || slug;
+    var started = run.started_at || run.created_at;
+    var diag = _opsParseRunDiagnostics(run);
+    var kicker = [reportName, started ? _timeAgo(started) : '', run.trigger || ''].filter(Boolean).join(' \u00b7 ');
+    var header = '<div class="ops-diag-header">'
+        + '<div class="ops-diag-header-main">'
+        + '<div class="ops-diag-kicker">' + esc(kicker) + '</div>'
+        + '<div class="ops-diag-title-row">'
+        + '<h2 id="opsDiagTitle" class="ops-diag-title">Run diagnostics</h2>'
+        + '<span class="ops-diag-status-badge ' + esc(run.status || '') + '">' + esc(_opsStatusLabel(run.status)) + '</span>'
+        + '</div></div>'
+        + '<button type="button" class="ops-diag-close-btn" data-ops-diag-close aria-label="Close run diagnostics">&times;</button>'
+        + '</div>';
+    var body = '<div class="ops-diag-body">';
+    if (diag.lines.length) {
+        body += '<div class="ops-diag-callout ' + diag.tone + '">'
+            + diag.lines.map(function(item) {
+                return '<div class="ops-diag-line ops-diag-' + item.kind + '">' + esc(item.text) + '</div>';
+            }).join('')
+            + '</div>';
+    }
+    body += '<div class="ops-diag-metrics">'
+        + '<div class="ops-diag-metric"><span class="ops-diag-metric-lbl">Queue</span><span class="ops-diag-metric-val">' + (run.queue_wait_seconds != null ? _fmtDuration(run.queue_wait_seconds) : '\u2014') + '</span></div>'
+        + '<div class="ops-diag-metric"><span class="ops-diag-metric-lbl">Duration</span><span class="ops-diag-metric-val">' + (run.duration_seconds != null ? _fmtDuration(run.duration_seconds) : '\u2014') + '</span></div>'
+        + '<div class="ops-diag-metric"><span class="ops-diag-metric-lbl">Peak mem</span><span class="ops-diag-metric-val">' + _fmtMB(run.peak_memory_mb) + '</span></div>'
+        + '<div class="ops-diag-metric"><span class="ops-diag-metric-lbl">Limit</span><span class="ops-diag-metric-val">' + _fmtMB(run.memory_limit_mb) + '</span></div>'
+        + '</div>';
+    if (diag.kv.length) {
+        body += '<div class="ops-diag-section"><div class="ops-diag-section-title">Diagnostic evidence</div><div class="ops-diag-kv-card">'
+            + diag.kv.map(function(row) {
+                return '<div class="ops-diag-kv-row"><span class="ops-diag-kv-k">' + esc(row.k + ': ') + '</span>'
+                    + '<span class="ops-diag-kv-v' + (row.err ? ' is-err' : '') + '">' + esc(row.v) + '</span></div>';
+            }).join('')
+            + '</div></div>';
+    }
+    if (diag.timings.length) {
+        body += '<div class="ops-diag-section"><div class="ops-diag-section-title">Stage timings</div><div class="ops-diag-kv-card">'
+            + diag.timings.map(function(row) {
+                return '<div class="ops-diag-kv-row"><span class="ops-diag-kv-k">' + esc(row.k + ': ') + '</span>'
+                    + '<span class="ops-diag-kv-v">' + esc(row.v) + '</span></div>';
+            }).join('')
+            + '</div></div>';
+    }
+    if (diag.refs.length) {
+        body += '<div class="ops-diag-section"><div class="ops-diag-section-title">Source &amp; query references</div>';
+        diag.refs.forEach(function(ref) {
+            if (!ref.copy) {
+                body += '<div class="ops-diag-kv-card"><div class="ops-diag-kv-row"><span class="ops-diag-kv-k">' + esc(ref.k + ': ') + '</span><span class="ops-diag-kv-v">' + esc(ref.v) + '</span></div></div>';
+            } else {
+                body += '<div class="ops-diag-ref-item"><div class="ops-diag-ref-head">'
+                    + '<span class="ops-diag-ref-label">' + esc(ref.k) + '</span>'
+                    + '<button type="button" class="ops-diag-copy-btn" data-ops-diag-copy="' + escAttr(ref.v) + '">Copy</button>'
+                    + '</div><div class="ops-diag-ref-code">' + esc(ref.v) + '</div></div>';
+            }
+        });
+        body += '</div>';
+    }
+    if (diag.evidenceCount === 0) {
+        body += '<div class="ops-diag-empty">No additional structured evidence was recorded for this run.</div>';
+    }
+    body += '</div>';
+    var footerNote = (diag.recoveryState === 'pending' || diag.recoveryState === 'running')
+        ? 'Updates automatically while open.'
+        : (diag.recoveryState === 'unconfirmed'
+            ? 'Unconfirmed outcomes are never replayed automatically.'
+            : 'Read-only diagnostic snapshot.');
+    var footer = '<div class="ops-diag-footer">'
+        + '<span class="ops-diag-footer-note">' + esc(footerNote) + '</span>'
+        + '<div class="ops-diag-footer-actions">'
+        + (run.id ? '<button type="button" class="ops-history-btn ops-history-log-btn" data-ops-diag-open-log="' + escAttr(run.id) + '">View run log</button>' : '')
+        + '<button type="button" class="ops-history-btn" data-ops-diag-close>Close</button>'
+        + '</div></div>';
+    return '<div class="ops-diag-shell">' + header + body + footer + '</div>';
+}
+function _opsOpenDiagDialog(slug, key, opener) {
+    var history = _opsHistoryCache[slug] || [];
+    var run = null;
+    for (var i = 0; i < history.length; i++) {
+        if (_opsRunKey(history[i], i) === key) { run = history[i]; break; }
+    }
+    if (!run) return;
+    var dialog = _opsEnsureDiagDialog();
+    _opsOpenDiag = { slug: slug, key: key, opener: opener || null, payload: JSON.stringify(run) };
+    dialog.innerHTML = _opsDiagDialogInnerHTML(slug, run);
+    document.querySelectorAll('.ops-diag-btn[aria-expanded="true"]').forEach(function(btn) {
+        btn.setAttribute('aria-expanded', 'false');
+    });
+    document.querySelectorAll('.ops-history-table tr.is-inspected').forEach(function(tr) {
+        tr.classList.remove('is-inspected');
+    });
+    if (opener) {
+        opener.setAttribute('aria-expanded', 'true');
+        var tr = opener.closest('tr');
+        if (tr) tr.classList.add('is-inspected');
+    }
+    if (!dialog.open) dialog.showModal();
+    var closeBtn = dialog.querySelector('.ops-diag-close-btn');
+    if (closeBtn) closeBtn.focus({ preventScroll: true });
+}
+function _opsRefreshOpenDiagDialog(slug, history) {
+    if (!_opsOpenDiag || _opsOpenDiag.slug !== slug) return;
+    var dialog = document.getElementById('opsDiagDialog');
+    if (!dialog || !dialog.open) return;
+    var run = null;
+    for (var i = 0; i < history.length; i++) {
+        if (_opsRunKey(history[i], i) === _opsOpenDiag.key) { run = history[i]; break; }
+    }
+    if (!run) return;
+    var nextPayload = JSON.stringify(run);
+    if (nextPayload === _opsOpenDiag.payload) return;
+    /* Defer replacement while the person is focused on a copy/action control inside the modal. */
+    if (dialog.contains(document.activeElement) && document.activeElement !== dialog && !document.activeElement.classList.contains('ops-diag-close-btn')) {
+        return;
+    }
+    var bodyEl = dialog.querySelector('.ops-diag-body');
+    var scrollTop = bodyEl ? bodyEl.scrollTop : 0;
+    var hadCloseFocus = document.activeElement && document.activeElement.classList.contains('ops-diag-close-btn');
+    dialog.innerHTML = _opsDiagDialogInnerHTML(slug, run);
+    _opsOpenDiag.payload = nextPayload;
+    bodyEl = dialog.querySelector('.ops-diag-body');
+    if (bodyEl) bodyEl.scrollTop = scrollTop;
+    if (hadCloseFocus) {
+        var newClose = dialog.querySelector('.ops-diag-close-btn');
+        if (newClose) newClose.focus({ preventScroll: true });
+    }
 }
 function _opsStatusLabel(s) {
     if (s === 'success') return 'OK';
@@ -2710,9 +3264,7 @@ function _opsRefreshAfterAction(slug, needsExpand) {
     _opsSystemStatusController = null;
     _opsSystemStatusRequest = null;
     if (needsExpand && !_opsExpandedSlugs[slug]) {
-        _opsExpandedSlugs[slug] = true;
-        renderOperations();
-        return;
+        _opsExpandInPlace(slug);
     }
     /* Use the serialized poll so an old status response cannot overwrite an action. */
     setTimeout(function() { _opsScheduleStatusPoll(0); }, 300);
@@ -2724,6 +3276,7 @@ function opsRun(slug, mode) {
     document.querySelectorAll('.ops-run-menu.open').forEach(function(m) { m.classList.remove('open'); });
     _opsStatusRevision++;
     _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+    delete _opsSelectedRunIds[slug];
     if (!window._opsRunPending) window._opsRunPending = {};
     window._opsRunPending[slug] = true;
     if (_opsSystemStatusController) _opsSystemStatusController.abort();
@@ -2734,7 +3287,8 @@ function opsRun(slug, mode) {
     if (tr) {
         var tds = tr.querySelectorAll('td');
         if (tds.length >= 7) {
-            tds[3].innerHTML = '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Starting...</span></div>';
+            tds[3].innerHTML = '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Starting...</span></div>'
+                + _opsStatusDetailHTML('');
             var r = null;
             reports.forEach(function(rep) { if (rep.slug === slug) r = rep; });
             if (r) tds[7].innerHTML = _opsActionsCell(r, true, false);
@@ -2748,7 +3302,9 @@ function opsRun(slug, mode) {
     }
     var termBody = document.getElementById('opsTermBody_' + slug);
     if (termBody) {
+        _opsSwitchTab(slug, 'terminal');
         _opsSetTerminalState(slug, 'Starting', false, '(starting...)');
+        _opsUpdateHealthStrip(slug, window._opsLatestStatus || {});
     }
     _opsApplyFilterToRows(window._opsLatestStatus || {}, focusedSlug);
 
@@ -2766,6 +3322,7 @@ function opsRun(slug, mode) {
         delete window._opsRunPending[slug];
         _opsSetTerminalState(slug, 'Run request unconfirmed', false,
             'The run request could not be confirmed: ' + (error.message || 'network error'));
+        _opsUpdateHealthStrip(slug, window._opsLatestStatus || {});
         showToast('Run request could not be confirmed: ' + (error.message || 'network error'), 'error');
         _opsRefreshAfterAction(slug, false);
     });
@@ -2793,7 +3350,8 @@ function opsStop(slug) {
     if (tr) {
         var tds = tr.querySelectorAll('td');
         if (tds.length >= 7) {
-            tds[3].innerHTML = '<div class="ops-status not_run"><span class="ops-status-dot"></span><span class="ops-status-text">Stopping...</span></div>';
+            tds[3].innerHTML = '<div class="ops-status not_run"><span class="ops-status-dot"></span><span class="ops-status-text">Stopping...</span></div>'
+                + _opsStatusDetailHTML('');
             var r = null;
             reports.forEach(function(rep) { if (rep.slug === slug) r = rep; });
             if (r) tds[7].innerHTML = _opsActionsCell(r, false, false);
@@ -2812,13 +3370,14 @@ function opsStop(slug) {
     });
 }
 function opsToggleExpand(slug) {
+    document.querySelectorAll('.ops-secondary[open]').forEach(function(menu) { menu.open = false; });
     _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
     _opsAbortHistory(slug);
     if (_opsExpandedSlugs[slug]) {
-        delete _opsExpandedSlugs[slug];
-        if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
-    } else { _opsExpandedSlugs[slug] = true; }
-    renderOperations();
+        _opsCollapseInPlace(slug);
+    } else {
+        _opsExpandInPlace(slug);
+    }
 }
 function _opsDoAction(action) {
     /* Server log toggle — no API call, no re-render */
@@ -3050,7 +3609,7 @@ document.addEventListener('visibilitychange', function() {
 });
 function _opsStartLivePollers(status) {
     Object.keys(_opsExpandedSlugs).forEach(function(slug) {
-        if ((status.running || {})[slug]) _opsStartLivePoll(slug);
+        if ((status.running || {})[slug] && !_opsSelectedRunIds[slug]) _opsStartLivePoll(slug);
     });
 }
 function _opsStartLivePoll(slug) {
@@ -3063,7 +3622,7 @@ function _opsFetchLive(slug) {
     _opsLiveRequests[slug] = requestId;
     boundedFetch(apiUrl('/api/operations/reports/' + encodeURIComponent(slug) + '/log?mode=live'), { cache: 'no-store' })
         .then(function(r) { return r.json(); }).then(function(data) {
-            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
+            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug] || _opsSelectedRunIds[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (!el) return;
             var shown = TrellumOperations.logText(data);
@@ -3080,15 +3639,21 @@ function _opsFetchLive(slug) {
             el.innerHTML = _opsColorize(text);
             if (wasAtBottom) el.scrollTop = el.scrollHeight;
         }).catch(function() {
-            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
+            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug] || _opsSelectedRunIds[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (el && el.textContent === 'Loading...') el.textContent = '(waiting for output...)';
         });
 }
-function _opsLoadLog(slug) {
+function _opsLoadLog(slug, runId) {
     var requestId = (_opsLiveRequests[slug] || 0) + 1;
     _opsLiveRequests[slug] = requestId;
-    boundedFetch(apiUrl('/api/operations/reports/' + encodeURIComponent(slug) + '/log?mode=last'), { cache: 'no-store' })
+    var url = '/api/operations/reports/' + encodeURIComponent(slug) + '/log?mode=last'
+        + (runId ? '&run=' + encodeURIComponent(runId) : '');
+    if (runId) {
+        var bodyEl = document.getElementById('opsTermBody_' + slug);
+        if (bodyEl) bodyEl.textContent = 'Loading...';
+    }
+    boundedFetch(apiUrl(url), { cache: 'no-store' })
         .then(function(r) { return r.json().then(function(d) { d._http = r.status; return d; }); }).then(function(data) {
             if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
@@ -3096,7 +3661,8 @@ function _opsLoadLog(slug) {
             if (data._http === 404) { el.textContent = 'No log available. Run the report to generate output.'; return; }
             var run = data.run || {};
             var failed = _opsIsFailedStatus(run.status);
-            _opsSetTerminalState(slug, failed ? 'Failed' : 'Last run', failed, null);
+            var heading = runId ? (failed ? 'Failed run' : 'Run log') : (failed ? 'Failed' : 'Last run');
+            _opsSetTerminalState(slug, heading, failed, null);
             var shown = TrellumOperations.logText(data);
             if (shown.quiet) shown = { text: 'Status: ' + (run.status || 'unknown') + ' (exit ' + (run.exit_code == null ? '?' : run.exit_code) + ')' };
             el.innerHTML = shown.unavailable ? esc(shown.text) : _opsColorize(shown.text);
@@ -3382,29 +3948,33 @@ function _opsApplyStatus(status, revision, cycle) {
 
             /* Update status cell */
             if (isRunning) {
-                if (_opsExpandedSlugs[slug]) {
+                if (_opsExpandedSlugs[slug] && !_opsSelectedRunIds[slug]) {
                     if (!wasRunning && !wasQueued) {
                         _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
                         _opsSetTerminalState(slug, 'Starting', false, '(waiting for output...)');
                     }
                     _opsSetTerminalState(slug, 'Running', false, null);
+                    _opsStartLivePoll(slug);
                 }
-                if (_opsExpandedSlugs[slug]) _opsStartLivePoll(slug);
+                if (_opsExpandedSlugs[slug]) _opsUpdateHealthStrip(slug, status);
                 var el = Math.round(running[slug].elapsed_seconds || 0);
                 statusTd.innerHTML = '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Running</span></div>'
-                    + '<div class="ops-status-detail">' + el + 's elapsed</div>';
+                    + _opsStatusDetailHTML(el + 's elapsed');
             } else if (isQueued) {
-                if (_opsExpandedSlugs[slug]) {
+                if (_opsExpandedSlugs[slug] && !_opsSelectedRunIds[slug]) {
                     if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
                     _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
                     _opsSetTerminalState(slug, 'Queued', false, '(queued...)');
                 }
-                statusTd.innerHTML = '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
+                if (_opsExpandedSlugs[slug]) _opsUpdateHealthStrip(slug, status);
+                statusTd.innerHTML = '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>'
+                    + _opsStatusDetailHTML('');
             } else if (wasRunning || wasQueued || wasFinishing) {
                 /* Just finished — defer until we get the real outcome from
                    the registry refresh below. Show a transient "Finishing…"
                    so the user sees something happening and we don't lie. */
-                statusTd.innerHTML = '<div class="ops-status finishing"><span class="ops-status-dot"></span><span class="ops-status-text">Finishing…</span></div>';
+                statusTd.innerHTML = '<div class="ops-status finishing"><span class="ops-status-dot"></span><span class="ops-status-text">Finishing…</span></div>'
+                    + _opsStatusDetailHTML('');
                 transitioned.push(slug);
             }
 
@@ -3430,9 +4000,12 @@ function _opsApplyStatus(status, revision, cycle) {
                             if (cells[3]) cells[3].innerHTML = _opsStatusCell(r, {}, false);
                             if (cells[7]) cells[7].innerHTML = _opsActionsCell(r, false, false);
                             if (_opsExpandedSlugs[slug]) {
-                                _opsSetTerminalState(slug, _opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run',
-                                    _opsIsFailedStatus(r.build_status || r.last_status), null);
-                                _opsLoadLog(slug);
+                                _opsUpdateHealthStrip(slug, {});
+                                if (!_opsSelectedRunIds[slug]) {
+                                    _opsSetTerminalState(slug, _opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run',
+                                        _opsIsFailedStatus(r.build_status || r.last_status), null);
+                                    _opsLoadLog(slug);
+                                }
                             }
                         }
                         if (r && _opsIsFailedStatus(r.build_status || r.last_status)) {
@@ -3448,6 +4021,7 @@ function _opsApplyStatus(status, revision, cycle) {
                             var cells = row.querySelectorAll('td');
                             if (cells[4]) cells[4].innerHTML = _opsDurationCell(slug);
                             if (cells[5]) cells[5].innerHTML = _opsMemoryCell(slug);
+                            if (_opsExpandedSlugs[slug]) _opsUpdateHealthStrip(slug, {});
                         });
                     });
                 })
