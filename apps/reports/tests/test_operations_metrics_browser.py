@@ -112,9 +112,10 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
     try:
         page.goto("http://portal.test/s/acme/analytics/operations")
         page.locator('[data-ops-row="revenue-overview"]').wait_for()
-        # Use the real expansion control; each expansion renders and loads history.
+        # Use the real expansion control; each expansion opens Terminal first and loads history in the Runs tab.
         for row in rows:
             page.locator(f'[data-ops-row="{row["slug"]}"] [data-label="Report"]').click()
+            page.locator(f'.ops-panel[data-ops-panel="{row["slug"]}"] [data-ops-tab="runs"]').click()
             page.locator(f'#opsHist_{row["slug"]} .ops-history-stats').wait_for()
         histories = page.locator(".ops-history-stats")
         assert histories.count() == 2
@@ -176,7 +177,7 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
 
 @pytest.mark.parametrize("mobile_browser", ["chromium"], indirect=True)
 def test_run_log_toggle_rebuild_does_not_block_registry_refresh(mobile_browser):
-    """A log toggle can leave the previous log visible until its reads finish."""
+    """Toggling a report log updates in place without rebuilding toolbar actions."""
     from playwright.sync_api import expect
 
     status = {"running": {}, "queue": []}
@@ -208,33 +209,139 @@ def test_run_log_toggle_rebuild_does_not_block_registry_refresh(mobile_browser):
         log = page.locator('#opsTermBody_revenue-overview')
         # Accepted runs already open their own log; Log is a toggle, not Open.
         expect(log).to_contain_text("Published to LocalBackend")
-        page.evaluate("""() => {
-            window.__refreshBeforeToggle = document.querySelector('[data-ops-action=refresh]');
-            const fetch = window.fetch.bind(window);
-            window.fetch = (input, init) => {
-                if (String(input).includes('/api/operations/catalog')) {
-                    window.fetch = fetch;
-                    return new Promise(resolve => {
-                        window.__finishToggleRead = () => fetch(input, init).then(resolve);
-                    });
-                }
-                return fetch(input, init);
-            };
-        }""")
+        page.evaluate("window.__refreshBeforeToggle = document.querySelector('[data-ops-action=refresh]')")
         row.locator('details.ops-secondary summary').click()
         row.get_by_role('button', name='Log', exact=True).click()
-        page.wait_for_function("typeof window.__finishToggleRead === 'function'")
-        # An assertion on body text here would read the old, closing log.
-        expect(log).to_contain_text("Published to LocalBackend")
+        expect(log).to_have_count(0)
         assert page.evaluate("!_opsExpandedSlugs['revenue-overview']")
-        page.evaluate("() => { window.__finishToggleRead(); }")
-        # Click owns scrolling and re-resolves the locator across the rebuild.
+        assert page.evaluate("window.__refreshBeforeToggle.isConnected")
         with page.expect_response(lambda r: r.url.endswith('/api/system/registry/refresh')) as accepted:
             page.locator('[data-ops-action=refresh]').click()
         assert accepted.value.status == 202
-        expect(log).to_have_count(0)
-        assert page.evaluate("!window.__refreshBeforeToggle.isConnected")
         expect(page.locator('body')).to_contain_text("Registry refreshed")
         assert posts == ['POST']
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("mobile_browser", ["chromium"], indirect=True)
+def test_compact_tabbed_panel_zero_shift_and_run_log_switch(mobile_browser):
+    """Terminal opens first in a fixed-height tabbed panel; live updates & tab switches do not shift rows."""
+    from playwright.sync_api import expect
+
+    older_id = "11111111-1111-4111-8111-111111111111"
+    latest_id = "22222222-2222-4222-8222-222222222222"
+    rows = [
+        {**REPORT, "last_status": "error", "last_error": "Snowflake query timeout",
+         "validation": {"summary": {"pass": 5, "warn": 1, "fail": 0},
+                        "checks": [{"id": "freshness", "level": "warn", "message": "Data is 2h old"}]}},
+        {**REPORT, "id": 2, "slug": "second-report", "name": "Second report", "last_status": "success"},
+    ]
+    status = {"running": {}, "queue": [], "server_uptime_seconds": 120}
+    history = [
+        {"id": latest_id, "status": "error", "trigger": "manual", "duration_seconds": 45, "peak_memory_mb": 512,
+         "created_at": "2026-10-18T10:00:00Z"},
+        {"id": older_id, "status": "success", "trigger": "schedule", "duration_seconds": 18, "peak_memory_mb": 256,
+         "created_at": "2026-10-18T09:00:00Z"},
+    ]
+    agg = {"runs": 2, "success_rate": 0.5, "avg_duration_s": 18, "p95_duration_s": 18,
+           "avg_peak_memory_mb": 256, "max_peak_memory_mb": 512}
+    log_queries = []
+    release_history = []
+
+    def extra(route, path, query, reply):
+        assets = {"/static/ui.css": UI_CSS, "/static/portal.css": PORTAL_CSS,
+                  "/static/console-shell.css": CONSOLE_CSS}
+        for name in ("themes.generated.css", "choice-picker.css", "console-report-host.css"):
+            assets[f"/static/{name}"] = (settings.BASE_DIR / "static" / name).read_text()
+        if path.startswith("/_vendor/"):
+            asset = settings.BASE_DIR / "trellum" / "static" / "vendor" / path.removeprefix("/_vendor/")
+            route.fulfill(
+                content_type="text/css; charset=utf-8" if path.endswith(".css") else "font/ttf",
+                body=asset.read_bytes(),
+            )
+        elif path in assets:
+            route.fulfill(content_type="text/css; charset=utf-8", body=assets[path])
+        elif path.endswith("/status") and "/api/reports/" in path:
+            release_history.append(lambda: reply({"aggregates": agg, "history": history}))
+        elif "/api/operations/reports/" in path and path.endswith("/log"):
+            log_queries.append(query)
+            if query.get("run") == [older_id]:
+                reply(_ops_log("success", stdout="older run output OK"))
+            else:
+                reply(_ops_log("error", stderr="latest failure traceback"))
+        else:
+            return False
+        return True
+
+    context = mobile_browser.new_context(viewport={"width": 1280, "height": 900})
+    page = context.new_page()
+    page.route("**/*", _ops_respond(lambda: rows, lambda: status, extra=extra, html=_operations_fixture_html()))
+    try:
+        page.goto("http://portal.test/s/acme/analytics/operations")
+        page.locator('[data-ops-row="second-report"]').wait_for()
+        page.evaluate("clearTimeout(_opsStatusTimer); window.__secondRowNode = document.querySelector('[data-ops-row=\"second-report\"]')")
+
+        # Live status transitions on a row must not change the row height or shift rows below.
+        before_height = page.locator('[data-ops-row="revenue-overview"]').bounding_box()["height"]
+        before_second_y = page.locator('[data-ops-row="second-report"]').bounding_box()["y"]
+        for st in (
+            {"running": {}, "queue": [{"slug": "revenue-overview"}]},
+            {"running": {"revenue-overview": {"elapsed_seconds": 12}}, "queue": []},
+            {"running": {}, "queue": []},
+        ):
+            page.evaluate("s => _opsApplyStatus(s, _opsStatusRevision, _opsStatusCycle)", st)
+            assert abs(page.locator('[data-ops-row="revenue-overview"]').bounding_box()["height"] - before_height) < 1
+            assert abs(page.locator('[data-ops-row="second-report"]').bounding_box()["y"] - before_second_y) < 1
+
+        # Clicking a report expands in place (without rebuilding sibling rows) onto Terminal first.
+        page.locator('[data-ops-row="revenue-overview"] [data-label="Report"]').click()
+        assert page.evaluate("window.__secondRowNode === document.querySelector('[data-ops-row=\"second-report\"]')")
+        panel = page.locator('.ops-panel[data-ops-panel="revenue-overview"]')
+        expect(panel.locator('[data-ops-tab="terminal"]')).to_have_attribute("aria-selected", "true")
+        expect(panel.locator('[data-ops-tab="terminal"]')).to_have_attribute("tabindex", "0")
+        expect(panel.locator('[data-ops-tab="runs"]')).to_have_attribute("tabindex", "-1")
+        expect(panel.locator('[data-ops-tab="info"]')).to_have_attribute("tabindex", "-1")
+        expect(panel.locator("#opsTabTerm_revenue-overview")).to_have_attribute("aria-labelledby", "opsTabBtnTerm_revenue-overview")
+        expect(panel.locator("#opsTabRuns_revenue-overview")).to_have_attribute("aria-labelledby", "opsTabBtnRuns_revenue-overview")
+        expect(panel.locator("#opsTabInfo_revenue-overview")).to_have_attribute("aria-labelledby", "opsTabBtnInfo_revenue-overview")
+        expect(panel.locator("#opsTermBody_revenue-overview")).to_be_visible()
+        expect(panel.locator("#opsTermBody_revenue-overview")).to_contain_text("latest failure traceback")
+        expect(panel.locator("#opsTabRuns_revenue-overview")).to_be_hidden()
+
+        # Async history arrival must update the Runs badge & health strip with 0px shift on rows below.
+        y_before_history = page.locator('[data-ops-row="second-report"]').bounding_box()["y"]
+        assert len(release_history) == 1
+        release_history.pop()()
+        expect(panel.locator("#opsRunsBadge_revenue-overview")).to_have_text("1 err")
+        expect(panel.locator("#opsHealth_revenue-overview")).to_contain_text("Last run failed")
+        assert abs(page.locator('[data-ops-row="second-report"]').bounding_box()["y"] - y_before_history) < 1
+        # The run selector must stay compact on the right and never crush the terminal title.
+        select_box = panel.locator("#opsRunSelect_revenue-overview").bounding_box()
+        title_box = panel.locator("#opsTerm_revenue-overview .ops-terminal-title").bounding_box()
+        assert select_box["width"] <= 260
+        assert title_box["width"] >= 200 and title_box["height"] <= 28
+
+        # Switching across Runs and Checks & Info tabs must cause 0px shift and keep roving tabindex.
+        panel.locator('[data-ops-tab="terminal"]').focus()
+        page.keyboard.press("ArrowRight")
+        expect(panel.locator('[data-ops-tab="runs"]')).to_have_attribute("aria-selected", "true")
+        expect(panel.locator('[data-ops-tab="runs"]')).to_have_attribute("tabindex", "0")
+        expect(panel.locator('[data-ops-tab="terminal"]')).to_have_attribute("tabindex", "-1")
+        expect(panel.locator("#opsHist_revenue-overview .ops-history-table")).to_be_visible()
+        assert abs(page.locator('[data-ops-row="second-report"]').bounding_box()["y"] - y_before_history) < 1
+
+        panel.locator('[data-ops-tab="info"]').click()
+        expect(panel.locator('[data-ops-tab="info"]')).to_have_attribute("tabindex", "0")
+        expect(panel.locator('[data-ops-tab="runs"]')).to_have_attribute("tabindex", "-1")
+        expect(panel.locator("#opsTabInfo_revenue-overview")).to_contain_text("Data is 2h old")
+        assert abs(page.locator('[data-ops-row="second-report"]').bounding_box()["y"] - y_before_history) < 1
+
+        # Clicking "View log" on an older run switches back to Terminal and loads that run's log.
+        panel.locator('[data-ops-tab="runs"]').click()
+        panel.locator(f'[data-ops-view-run="{older_id}"]').click()
+        expect(panel.locator('[data-ops-tab="terminal"]')).to_have_attribute("aria-selected", "true")
+        expect(panel.locator("#opsTermBody_revenue-overview")).to_contain_text("older run output OK")
+        assert any(q.get("run") == [older_id] for q in log_queries)
     finally:
         context.close()
