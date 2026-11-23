@@ -12,5 +12,5 @@ PyJWT[crypto]>=2.15.1
 # AI assistant (lazy-imported; the portal runs fine without them, the
 # features report themselves unavailable). Install the one(s) you use.
 # Keep the HTTPX transport contract used by the portal and release tests.
-anthropic>=0.125.0,<1
-openai>=2.54.0,<3
+anthropic>=2.11.0,<3
+openai>=3.57.0,<4
