@@ -31,7 +31,10 @@ __all__ = [
 
 
 class LoginForm(forms.Form):
-    email = forms.EmailField(widget=forms.EmailInput(attrs={"autofocus": True, "autocomplete": "username"}))
+    email = forms.EmailField(widget=forms.EmailInput(attrs={
+        "autofocus": True, "autocomplete": "username", "inputmode": "email",
+        "autocapitalize": "none", "spellcheck": "false",
+    }))
     password = forms.CharField(widget=forms.PasswordInput, required=False)
     # No remember-me field: InstanceConfig.session_remember_me_enabled exists
     # as a stubbed-off knob (see its docstring) but the checkbox itself is
